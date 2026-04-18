@@ -1,0 +1,74 @@
+services:
+  neo4j:
+    image: neo4j:5-community
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-changeme}
+      NEO4J_PLUGINS: '["apoc", "graph-data-science"]'
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  questdb:
+    image: questdb/questdb:latest
+    ports:
+      - "9000:9000"
+      - "9009:9009"
+      - "8812:8812"
+    volumes:
+      - questdb_data:/var/lib/questdb
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/exec?query=select%201 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ayvid-api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-changeme}
+      QUESTDB_HOST: questdb
+      QUESTDB_PORT: 9009
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      questdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  ayvid-pipeline:
+    build: .
+    command: ["python", "-m", "cli.app", "data", "pipeline"]
+    env_file: .env
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-changeme}
+      QUESTDB_HOST: questdb
+      QUESTDB_PORT: 9009
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      questdb:
+        condition: service_healthy
+    profiles:
+      - pipeline
+
+volumes:
+  neo4j_data:
+  questdb_data:

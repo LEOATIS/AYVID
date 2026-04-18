@@ -1,0 +1,78 @@
+[project]
+name = "ayvid"
+version = "0.1.0"
+description = "AYVID - Asymmetric Yield Via Intelligent Decisions"
+authors = [{ name = "LEOATIS" }]
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    # --- Web / API ---
+    "fastapi[all]",
+    "uvicorn[standard]",
+    "pydantic",
+    "pydantic-settings",
+
+    # --- Broker & Numerics ---
+    "ib_async",
+    "numpy",
+    "pandas",
+    "scipy",
+    "polars",
+
+    # --- Graph & Vector Stores ---
+    "neo4j",
+    "qdrant-client",
+
+    # --- LLM Orchestration ---
+    "langgraph",
+    "langchain-anthropic",
+    "langchain-openai",
+    "langchain-core",
+    "openai",
+    "anthropic",
+
+    # --- Data Sources ---
+    "openbb>=4.7.0,<5.0",
+
+    # --- CLI & Terminal UI ---
+    "typer[all]",
+    "rich",
+
+    # --- Async & Resilience ---
+    "tenacity",
+    "httpx",
+    "aiofiles",
+]
+
+[project.optional-dependencies]
+feature-store = ["hopsworks", "hsfs"]
+dev = ["pytest", "pytest-asyncio", "ruff"]
+
+[project.scripts]
+ayvid = "cli.app:app"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = [
+    "shared*",
+    "backend*",
+    "data_primitives*",
+    "graph_intelligence*",
+    "execution_engine*",
+    "backtesting*",
+    "cli*",
+]
+exclude = [
+    "frontend*",
+    "infra*",
+    "document*",
+]
+
+[tool.ruff]
+line-length = 99
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP"]

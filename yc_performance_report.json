@@ -1,0 +1,441 @@
+{
+  "generated_at": "2026-04-16 20:14 UTC",
+  "engine": "AYVID AI-Native Quantitative Hedge Fund",
+  "version": "2.0",
+  "per_scenario": [
+    {
+      "scenario": "suez_canal_2021",
+      "scenario_name": "Suez Canal Blockage",
+      "total_return_pct": -0.23,
+      "sharpe_ratio": -1.65,
+      "max_drawdown_pct": 0.68,
+      "win_rate": 40.0,
+      "profit_factor": 0.38,
+      "total_trades": 5,
+      "r_distribution": {
+        "count": 0,
+        "mean": 0,
+        "median": 0,
+        "p25": 0,
+        "p75": 0,
+        "p90": 0,
+        "max": 0,
+        "min": 0,
+        "pct_positive": 0
+      }
+    },
+    {
+      "scenario": "semiconductor_2022",
+      "scenario_name": "Semiconductor Shortage",
+      "total_return_pct": 21.78,
+      "sharpe_ratio": 1.19,
+      "max_drawdown_pct": 17.36,
+      "win_rate": 42.36,
+      "profit_factor": 1.33,
+      "total_trades": 203,
+      "r_distribution": {
+        "count": 96,
+        "mean": 1.22,
+        "median": -1.0,
+        "p25": -1.0,
+        "p75": 1.42,
+        "p90": 3.17,
+        "max": 66.81,
+        "min": -1.0,
+        "pct_positive": 27.1
+      }
+    },
+    {
+      "scenario": "russia_ukraine_2022",
+      "scenario_name": "Russia-Ukraine Invasion",
+      "total_return_pct": 0.65,
+      "sharpe_ratio": 0.34,
+      "max_drawdown_pct": 3.88,
+      "win_rate": 51.22,
+      "profit_factor": 1.19,
+      "total_trades": 41,
+      "r_distribution": {
+        "count": 5,
+        "mean": -0.12,
+        "median": -1.0,
+        "p25": -1.0,
+        "p75": -1.0,
+        "p90": 1.63,
+        "max": 3.39,
+        "min": -1.0,
+        "pct_positive": 20.0
+      }
+    },
+    {
+      "scenario": "covid_crash_2020",
+      "scenario_name": "COVID-19 Market Crash",
+      "total_return_pct": 10.84,
+      "sharpe_ratio": 1.78,
+      "max_drawdown_pct": 8.47,
+      "win_rate": 44.72,
+      "profit_factor": 1.3,
+      "total_trades": 123,
+      "r_distribution": {
+        "count": 66,
+        "mean": 0.62,
+        "median": -1.0,
+        "p25": -1.0,
+        "p75": 1.95,
+        "p90": 3.54,
+        "max": 11.11,
+        "min": -1.0,
+        "pct_positive": 33.3
+      }
+    },
+    {
+      "scenario": "us_china_tariff_2018",
+      "scenario_name": "US-China Trade War Escalation",
+      "total_return_pct": -5.16,
+      "sharpe_ratio": -0.45,
+      "max_drawdown_pct": 12.04,
+      "win_rate": 39.42,
+      "profit_factor": 0.9,
+      "total_trades": 137,
+      "r_distribution": {
+        "count": 50,
+        "mean": 0.31,
+        "median": -1.0,
+        "p25": -1.0,
+        "p75": -1.0,
+        "p90": 1.82,
+        "max": 27.3,
+        "min": -1.0,
+        "pct_positive": 18.0
+      }
+    }
+  ],
+  "executive_summary": {
+    "period": "2018-06-01 \u2192 2022-06-30 (5 scenarios)",
+    "initial_equity": 1000000.0,
+    "final_equity": 1055792.87,
+    "total_return_pct": 5.58,
+    "annualized_return_pct": 18.36,
+    "sharpe_ratio": 0.24,
+    "max_drawdown_pct": 17.36,
+    "win_rate": 42.83,
+    "profit_factor": 1.21,
+    "total_trades": 509,
+    "fno_trades": 217,
+    "equity_trades": 292,
+    "avg_hold_days": 7.6
+  },
+  "risk_metrics": {
+    "sortino_ratio": 1.38,
+    "calmar_ratio": 4.08,
+    "max_consecutive_losses": 24,
+    "max_consecutive_wins": 13,
+    "var_5pct_daily": -1.956,
+    "best_day_pct": 19.9,
+    "worst_day_pct": -3.85
+  },
+  "alpha_decomposition": {
+    "equity_pnl": -205827.58,
+    "equity_return_pct": -20.58,
+    "fno_pnl": 501039.71,
+    "fno_return_pct": 50.1,
+    "total_pnl": 295212.13,
+    "graph_intelligence_pnl": 271954.19,
+    "graph_intelligence_pct": 27.2,
+    "graph_intelligence_trades": 437,
+    "equity_contribution_pct": -69.7,
+    "fno_contribution_pct": 169.7
+  },
+  "r_distribution": {
+    "count": 217,
+    "mean": 0.79,
+    "median": -1.0,
+    "p25": -1.0,
+    "p75": 1.42,
+    "p90": 3.17,
+    "max": 66.81,
+    "min": -1.0,
+    "pct_positive": 26.7
+  },
+  "strategy_attribution": [
+    {
+      "strategy": "shock_directed_put_kospi",
+      "pnl": 364470.33,
+      "trades": 30,
+      "win_rate": 36.7,
+      "avg_r": null
+    },
+    {
+      "strategy": "shock_directed_put_z",
+      "pnl": 165106.18,
+      "trades": 19,
+      "win_rate": 47.4,
+      "avg_r": null
+    },
+    {
+      "strategy": "shock_directed_put_ym",
+      "pnl": 34618.28,
+      "trades": 18,
+      "win_rate": 27.8,
+      "avg_r": null
+    },
+    {
+      "strategy": "deep_value_investment",
+      "pnl": 23257.94,
+      "trades": 72,
+      "win_rate": 73.6,
+      "avg_r": null
+    },
+    {
+      "strategy": "shock_directed_put_fesx",
+      "pnl": 11514.45,
+      "trades": 5,
+      "win_rate": 20.0,
+      "avg_r": null
+    },
+    {
+      "strategy": "shock_directed_put_es",
+      "pnl": 6163.66,
+      "trades": 67,
+      "win_rate": 20.9,
+      "avg_r": null
+    },
+    {
+      "strategy": "shock_directed_put_nq",
+      "pnl": 2077.29,
+      "trades": 46,
+      "win_rate": 21.7,
+      "avg_r": null
+    },
+    {
+      "strategy": "shock_directed_put_hsi",
+      "pnl": -82910.48,
+      "trades": 32,
+      "win_rate": 12.5,
+      "avg_r": null
+    },
+    {
+      "strategy": "supply_chain_oversold_dip",
+      "pnl": -106696.49,
+      "trades": 80,
+      "win_rate": 43.8,
+      "avg_r": null
+    },
+    {
+      "strategy": "supply_chain_beneficiary",
+      "pnl": -122389.03,
+      "trades": 140,
+      "win_rate": 49.3,
+      "avg_r": null
+    }
+  ],
+  "per_index_fno": [
+    {
+      "index": "^KS11",
+      "name": "KOSPI 200 Future",
+      "country": "KR",
+      "pnl": 364470.33,
+      "trades": 30,
+      "wins": 11,
+      "losses": 19,
+      "win_rate": 36.7,
+      "roi_pct": 109.8
+    },
+    {
+      "index": "^FTSE",
+      "name": "FTSE 100 Future",
+      "country": "GB",
+      "pnl": 165106.18,
+      "trades": 19,
+      "wins": 9,
+      "losses": 10,
+      "win_rate": 47.4,
+      "roi_pct": 80.3
+    },
+    {
+      "index": "^DJI",
+      "name": "E-mini Dow",
+      "country": "US",
+      "pnl": 34618.28,
+      "trades": 18,
+      "wins": 6,
+      "losses": 12,
+      "win_rate": 33.3,
+      "roi_pct": 24.4
+    },
+    {
+      "index": "^STOXX50E",
+      "name": "EURO STOXX 50 Future",
+      "country": "EU",
+      "pnl": 11514.45,
+      "trades": 5,
+      "wins": 1,
+      "losses": 4,
+      "win_rate": 20.0,
+      "roi_pct": 21.5
+    },
+    {
+      "index": "^GSPC",
+      "name": "E-mini S&P 500",
+      "country": "US",
+      "pnl": 6163.66,
+      "trades": 67,
+      "wins": 15,
+      "losses": 52,
+      "win_rate": 22.4,
+      "roi_pct": 0.9
+    },
+    {
+      "index": "^IXIC",
+      "name": "E-mini NASDAQ 100",
+      "country": "US",
+      "pnl": 2077.29,
+      "trades": 46,
+      "wins": 11,
+      "losses": 35,
+      "win_rate": 23.9,
+      "roi_pct": 0.5
+    },
+    {
+      "index": "^HSI",
+      "name": "Hang Seng Future",
+      "country": "HK",
+      "pnl": -82910.48,
+      "trades": 32,
+      "wins": 5,
+      "losses": 27,
+      "win_rate": 15.6,
+      "roi_pct": -23.3
+    }
+  ],
+  "aggregate": {
+    "num_scenarios": 5,
+    "avg_sharpe": 0.24,
+    "avg_return_pct": 5.58,
+    "worst_return_pct": -5.16,
+    "best_return_pct": 21.78,
+    "min_sharpe": -1.65,
+    "max_sharpe": 1.78,
+    "worst_drawdown_pct": 17.36,
+    "total_trades": 509,
+    "pooled_win_rate": 42.83,
+    "pooled_profit_factor": 1.21
+  },
+  "ai_vs_baseline": {
+    "per_scenario": [
+      {
+        "scenario": "suez_canal_2021",
+        "ai_return_pct": -0.23,
+        "baseline_return_pct": -0.31,
+        "alpha_delta_pct": 0.09,
+        "ai_sharpe": -1.65,
+        "baseline_sharpe": -1.33,
+        "sharpe_delta": -0.31,
+        "ai_max_dd": 0.68,
+        "baseline_max_dd": 0.89
+      },
+      {
+        "scenario": "semiconductor_2022",
+        "ai_return_pct": 21.78,
+        "baseline_return_pct": -13.85,
+        "alpha_delta_pct": 35.64,
+        "ai_sharpe": 1.19,
+        "baseline_sharpe": -2.59,
+        "sharpe_delta": 3.79,
+        "ai_max_dd": 17.36,
+        "baseline_max_dd": 14.23
+      },
+      {
+        "scenario": "russia_ukraine_2022",
+        "ai_return_pct": 0.65,
+        "baseline_return_pct": -3.52,
+        "alpha_delta_pct": 4.17,
+        "ai_sharpe": 0.34,
+        "baseline_sharpe": -2.05,
+        "sharpe_delta": 2.38,
+        "ai_max_dd": 3.88,
+        "baseline_max_dd": 4.41
+      },
+      {
+        "scenario": "covid_crash_2020",
+        "ai_return_pct": 10.84,
+        "baseline_return_pct": 3.89,
+        "alpha_delta_pct": 6.95,
+        "ai_sharpe": 1.78,
+        "baseline_sharpe": 0.72,
+        "sharpe_delta": 1.06,
+        "ai_max_dd": 8.47,
+        "baseline_max_dd": 7.0
+      },
+      {
+        "scenario": "us_china_tariff_2018",
+        "ai_return_pct": -5.16,
+        "baseline_return_pct": -10.56,
+        "alpha_delta_pct": 5.4,
+        "ai_sharpe": -0.45,
+        "baseline_sharpe": -2.54,
+        "sharpe_delta": 2.1,
+        "ai_max_dd": 12.04,
+        "baseline_max_dd": 11.33
+      }
+    ],
+    "avg_alpha_delta_pct": 10.45,
+    "avg_sharpe_delta": 1.8,
+    "conclusion": "AI-native strategy outperforms baseline by +10.45% return and +1.80 Sharpe on average across 5 scenarios."
+  },
+  "vs_buy_and_hold": {
+    "per_scenario": [
+      {
+        "scenario": "suez_canal_2021",
+        "scenario_name": "Suez Canal Blockage",
+        "ayvid_return_pct": -0.23,
+        "buy_hold_return_pct": 3.38,
+        "alpha_pct": -3.61,
+        "ayvid_max_dd_pct": 0.68,
+        "buy_hold_max_dd_pct": 6.82,
+        "tickers_held": 12
+      },
+      {
+        "scenario": "semiconductor_2022",
+        "scenario_name": "Semiconductor Shortage",
+        "ayvid_return_pct": 21.78,
+        "buy_hold_return_pct": -38.96,
+        "alpha_pct": 60.74,
+        "ayvid_max_dd_pct": 17.36,
+        "buy_hold_max_dd_pct": 41.67,
+        "tickers_held": 13
+      },
+      {
+        "scenario": "russia_ukraine_2022",
+        "scenario_name": "Russia-Ukraine Invasion",
+        "ayvid_return_pct": 0.65,
+        "buy_hold_return_pct": 17.51,
+        "alpha_pct": -16.86,
+        "ayvid_max_dd_pct": 3.88,
+        "buy_hold_max_dd_pct": 12.09,
+        "tickers_held": 12
+      },
+      {
+        "scenario": "covid_crash_2020",
+        "scenario_name": "COVID-19 Market Crash",
+        "ayvid_return_pct": 10.84,
+        "buy_hold_return_pct": -3.61,
+        "alpha_pct": 14.45,
+        "ayvid_max_dd_pct": 8.47,
+        "buy_hold_max_dd_pct": 41.67,
+        "tickers_held": 12
+      },
+      {
+        "scenario": "us_china_tariff_2018",
+        "scenario_name": "US-China Trade War Escalation",
+        "ayvid_return_pct": -5.16,
+        "buy_hold_return_pct": -21.14,
+        "alpha_pct": 15.98,
+        "ayvid_max_dd_pct": 12.04,
+        "buy_hold_max_dd_pct": 33.45,
+        "tickers_held": 10
+      }
+    ],
+    "avg_alpha_pct": 14.14,
+    "conclusion": "AYVID generated +14.14% alpha over equal-weight buy-and-hold across 5 historical shock scenarios."
+  }
+}
