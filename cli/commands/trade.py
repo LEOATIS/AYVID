@@ -12,6 +12,106 @@ console = Console()
 trade_app = typer.Typer(help="Trading signals & execution", no_args_is_help=True)
 
 
+@trade_app.command("paper-start")
+def paper_start(
+    shadow: bool = typer.Option(
+        False, "--shadow",
+        help="Run in shadow mode without IB (uses local OHLCV + simulated fills).",
+    ),
+    equity: float = typer.Option(
+        1_000_000.0, "--equity",
+        help="Starting NLV for shadow mode (ignored in IB mode — pulled from account).",
+    ),
+    interval: int = typer.Option(
+        60, "--interval",
+        help="Polling interval in seconds (e.g. 60 = once a minute, 86400 = once a day).",
+    ),
+):
+    """Start the live paper-trading runner with a daily equity-curve artifact.
+
+    Writes to ``live/equity_curve.jsonl`` (one row per cycle), ``live/trades.jsonl``
+    (one row per fill), and ``live/positions.json`` (current open positions).
+
+    IB mode requires an IB Gateway running on the configured port (defaults
+    to 7497 paper). Set PAPER_TRADING=true and IB_ACCOUNT in .env first.
+
+    Shadow mode runs without any IB connection — useful while IB credentials
+    are being provisioned. It still produces the same artifact format.
+    """
+    async def _run():
+        from execution_engine.paper_runner import run
+
+        mode = "shadow" if shadow else "ib_paper"
+        console.print(
+            Panel.fit(
+                f"[bold]AYVID Paper Trader[/bold]\n"
+                f"Mode: [cyan]{mode}[/cyan]\n"
+                f"Interval: {interval}s\n"
+                f"Initial equity: ${equity:,.0f}\n\n"
+                f"Artifacts:\n"
+                f"  live/equity_curve.jsonl\n"
+                f"  live/trades.jsonl\n"
+                f"  live/positions.json\n\n"
+                f"Press Ctrl-C to stop.",
+                border_style="green",
+            )
+        )
+        await run(shadow=shadow, initial_equity=equity, interval_seconds=interval)
+
+    asyncio.run(_run())
+
+
+@trade_app.command("paper-status")
+def paper_status():
+    """Show the most recent paper-trading equity snapshot."""
+    import json
+    from pathlib import Path
+
+    eq_path = Path("live/equity_curve.jsonl")
+    if not eq_path.exists():
+        console.print("[yellow]No equity curve yet — run 'ayvid trade paper-start' first.[/yellow]")
+        return
+
+    rows = [
+        json.loads(line)
+        for line in eq_path.read_text().splitlines()
+        if line.strip()
+    ]
+    if not rows:
+        console.print("[yellow]Equity curve file is empty.[/yellow]")
+        return
+
+    last = rows[-1]
+    first = rows[0]
+    table = Table(title="AYVID Live Paper Trading", border_style="green")
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right", style="bold cyan")
+    table.add_row("Mode", str(last.get("mode", "?")))
+    table.add_row("Snapshots", str(len(rows)))
+    table.add_row("Started", str(first.get("timestamp", "?")))
+    table.add_row("Last update", str(last.get("timestamp", "?")))
+    table.add_row("Initial equity", f"${first.get('equity', 0):,.2f}")
+    table.add_row("Current equity", f"${last.get('equity', 0):,.2f}")
+    table.add_row("Cash", f"${last.get('cash', 0):,.2f}")
+    table.add_row("Position value", f"${last.get('position_value', 0):,.2f}")
+    table.add_row("Open positions", str(last.get("open_positions", 0)))
+    table.add_row("Cumulative PnL", f"${last.get('cumulative_pnl', 0):+,.2f}")
+    table.add_row("Cumulative return", f"{last.get('cumulative_return_pct', 0):+.3f}%")
+    console.print(table)
+
+
+@trade_app.command("paper-render")
+def paper_render(
+    out: str = typer.Option("live/equity_curve.png", help="Output image path."),
+):
+    """Render the live paper equity curve as a PNG (or SVG fallback)."""
+    from pathlib import Path
+    from execution_engine.paper_runner import render_curve
+
+    path = render_curve(out_path=Path(out))
+    console.print(f"[green]Wrote {path}[/green]")
+
+
 @trade_app.command("portfolio")
 def portfolio():
     """Display current portfolio positions and P&L."""
