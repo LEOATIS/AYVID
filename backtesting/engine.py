@@ -22,6 +22,13 @@ from typing import Any
 
 import numpy as np
 
+from backtesting.cost_model import (
+    COST_DISCLOSURE,
+    equity_costs,
+    future_costs,
+    option_costs,
+    spread_costs,
+)
 from shared.logger import get_logger
 from shared.types import (
     AlphaHorizon,
@@ -848,11 +855,18 @@ def _close_position(pos: BacktestTrade, price: float, date: dt.date) -> None:
     pos.exit_price = price
     pos.exit_date = dt.datetime.combine(date, dt.time())
     if pos.signal.action == TradeAction.LONG:
-        pos.pnl = (price - pos.entry_price) * pos.shares
-        pos.pnl_pct = (price / pos.entry_price - 1) * 100
+        gross = (price - pos.entry_price) * pos.shares
     else:
-        pos.pnl = (pos.entry_price - price) * pos.shares
-        pos.pnl_pct = (pos.entry_price / price - 1) * 100
+        gross = (pos.entry_price - price) * pos.shares
+
+    costs = equity_costs(
+        entry_price=pos.entry_price,
+        exit_price=price,
+        shares=pos.shares,
+    )
+    pos.pnl = gross - costs.total
+    notional = pos.entry_price * max(pos.shares, 1)
+    pos.pnl_pct = (pos.pnl / notional) * 100 if notional > 0 else 0.0
     pos.hold_days = (date - pos.entry_date.date()).days
 
 
@@ -1057,6 +1071,12 @@ async def run_backtest(
     FNO_CAPITAL_CAP = 0.50
     _settled_fno: set[str] = set()
     r_distribution: dict[str, list[float]] = {"accepted": [], "rejected": [], "realized": []}
+    cost_breakdown: dict[str, float] = {
+        "commission_total": 0.0,
+        "slippage_total": 0.0,
+        "cost_total": 0.0,
+        "cost_count": 0,
+    }
     _idx_consec_losses: dict[str, int] = {}
     _idx_cooldown_until: dict[str, dt.date] = {}
 
@@ -1378,6 +1398,21 @@ async def run_backtest(
 
                 pnl_usd = pnl_pts * multiplier * usd_rate * lots
                 risk_usd = stop_dist * multiplier * usd_rate * lots
+
+                fut_costs = future_costs(
+                    underlying=idx_sym,
+                    entry_price=fut_entry_price,
+                    exit_price=fut_exit_price,
+                    lots=lots,
+                    multiplier=multiplier,
+                    usd_rate=usd_rate,
+                )
+                pnl_usd -= fut_costs.total
+                cost_breakdown["commission_total"] += fut_costs.commission
+                cost_breakdown["slippage_total"] += fut_costs.slippage_entry + fut_costs.slippage_exit
+                cost_breakdown["cost_total"] += fut_costs.total
+                cost_breakdown["cost_count"] += 1
+
                 realized_r = pnl_usd / max(risk_usd, 0.01)
                 # Defensive -1R cap — hard stop should enforce this in the sim loop
                 if realized_r < -1.0:
@@ -1536,6 +1571,21 @@ async def run_backtest(
 
                 pnl_usd = (exit_premium - entry_premium) * multiplier * usd_rate * lots
                 risk_usd = stop_dist_pts * multiplier * usd_rate * lots
+
+                opt_costs = option_costs(
+                    underlying=idx_sym,
+                    entry_premium=entry_premium,
+                    exit_premium=exit_premium,
+                    lots=lots,
+                    multiplier=multiplier,
+                    usd_rate=usd_rate,
+                )
+                pnl_usd -= opt_costs.total
+                cost_breakdown["commission_total"] += opt_costs.commission
+                cost_breakdown["slippage_total"] += opt_costs.slippage_entry + opt_costs.slippage_exit
+                cost_breakdown["cost_total"] += opt_costs.total
+                cost_breakdown["cost_count"] += 1
+
                 realized_r = pnl_usd / max(risk_usd, 0.01)
                 if realized_r < -1.0:
                     pnl_usd = -risk_usd
@@ -1716,6 +1766,21 @@ async def run_backtest(
 
                 pnl_usd = locked_pnl_pts * multiplier * usd_rate * lots
                 risk_usd = stop_dist_pts * multiplier * usd_rate * lots
+
+                spr_costs = spread_costs(
+                    underlying=idx_sym,
+                    net_debit=net_debit,
+                    exit_value=exit_spread_val,
+                    lots=lots,
+                    multiplier=multiplier,
+                    usd_rate=usd_rate,
+                )
+                pnl_usd -= spr_costs.total
+                cost_breakdown["commission_total"] += spr_costs.commission
+                cost_breakdown["slippage_total"] += spr_costs.slippage_entry + spr_costs.slippage_exit
+                cost_breakdown["cost_total"] += spr_costs.total
+                cost_breakdown["cost_count"] += 1
+
                 realized_r = pnl_usd / max(risk_usd, 0.01)
                 if realized_r < -1.0:
                     pnl_usd = -risk_usd
@@ -1966,6 +2031,11 @@ async def run_backtest(
         "r_75th": round(float(np.percentile(realized_r, 75)), 2) if realized_r else 0.0,
         "r_25th": round(float(np.percentile(realized_r, 25)), 2) if realized_r else 0.0,
     }
+    eq_costs_total = sum(
+        equity_costs(t.entry_price, t.exit_price or t.entry_price, t.shares).total
+        for t in all_closed_equity
+    )
+    fno_costs = cost_breakdown["cost_total"]
     result.extra_stats = {
         "fno_trades": len(all_fno),
         "equity_trades": len(all_closed_equity),
@@ -1973,6 +2043,18 @@ async def run_backtest(
         "indices_traded": indices_traded,
         "index_countries": index_country_map,
         "r_distribution": r_stats,
+        "transaction_costs": {
+            "fno_commission_usd": round(cost_breakdown["commission_total"], 2),
+            "fno_slippage_usd": round(cost_breakdown["slippage_total"], 2),
+            "fno_costs_usd": round(fno_costs, 2),
+            "equity_costs_usd": round(eq_costs_total, 2),
+            "total_costs_usd": round(fno_costs + eq_costs_total, 2),
+            "cost_drag_pct": round(
+                (fno_costs + eq_costs_total) / max(initial_equity, 1) * 100, 3
+            ),
+            "round_trip_count": cost_breakdown["cost_count"] + len(all_closed_equity),
+            "model": "IBKR Tiered (post-cost)",
+        },
     }
 
     log.info(

@@ -453,6 +453,10 @@ def generate_backtest_report(
     report_dict["strategy_attribution"] = strat_attr
     report_dict["per_index_fno"] = idx_summary
 
+    tx_costs = result.extra_stats.get("transaction_costs", {})
+    if tx_costs:
+        report_dict["transaction_costs"] = tx_costs
+
     # Top 10 equity trades by absolute PnL
     eq_trades_sorted = sorted(result.trades, key=lambda t: abs(t.pnl), reverse=True)[:10]
     report_dict["top_equity_trades"] = [
@@ -544,6 +548,20 @@ def _render_backtest_txt(report: dict[str, Any]) -> str:
         lines.append(f"  VaR (5% daily):      {rm.get('var_5pct_daily', 0):.3f}%")
         lines.append(f"  Best Day:            {rm.get('best_day_pct', 0):+.2f}%")
         lines.append(f"  Worst Day:           {rm.get('worst_day_pct', 0):+.2f}%")
+
+    tx = report.get("transaction_costs", {})
+    if tx:
+        lines.append(f"\n{'─' * w}")
+        lines.append("  TRANSACTION COSTS (post-cost PnL)")
+        lines.append(f"{'─' * w}")
+        lines.append(f"  Model:               {tx.get('model', 'IBKR Tiered')}")
+        lines.append(f"  F&O Commission:      ${tx.get('fno_commission_usd', 0):,.0f}")
+        lines.append(f"  F&O Slippage:        ${tx.get('fno_slippage_usd', 0):,.0f}")
+        lines.append(f"  F&O Total:           ${tx.get('fno_costs_usd', 0):,.0f}")
+        lines.append(f"  Equity Total:        ${tx.get('equity_costs_usd', 0):,.0f}")
+        lines.append(f"  All-In Costs:        ${tx.get('total_costs_usd', 0):,.0f}")
+        lines.append(f"  Cost Drag:           {tx.get('cost_drag_pct', 0):.3f}% of initial equity")
+        lines.append(f"  Round-trips:         {tx.get('round_trip_count', 0)}")
 
     alpha = report.get("alpha_decomposition", {})
     if alpha:
@@ -1003,6 +1021,23 @@ def _render_markdown(report: dict[str, Any]) -> str:
         lines.append(f"| Win Rate | {summary.get('win_rate', 0):.0f}% |")
         lines.append(f"| Profit Factor | {summary.get('profit_factor', 0):.2f} |")
         lines.append(f"| Total Trades | {summary.get('total_trades', 0)} (F&O: {summary.get('fno_trades', 0)}, Equity: {summary.get('equity_trades', 0)}) |")
+        lines.append("")
+
+    tx = report.get("transaction_costs", {})
+    if tx:
+        lines.append("## Transaction Costs (post-cost)")
+        lines.append("")
+        lines.append("| Item | Value |")
+        lines.append("|------|-------|")
+        lines.append(f"| Model | {tx.get('model', 'IBKR Tiered')} |")
+        lines.append(f"| F&O Commission | ${tx.get('fno_commission_usd', 0):,.0f} |")
+        lines.append(f"| F&O Slippage | ${tx.get('fno_slippage_usd', 0):,.0f} |")
+        lines.append(f"| Equity Costs | ${tx.get('equity_costs_usd', 0):,.0f} |")
+        lines.append(f"| **All-In Costs** | **${tx.get('total_costs_usd', 0):,.0f}** |")
+        lines.append(f"| Cost Drag | {tx.get('cost_drag_pct', 0):.3f}% of initial equity |")
+        lines.append(f"| Round-trips | {tx.get('round_trip_count', 0)} |")
+        lines.append("")
+        lines.append("> All Sharpe, return, win-rate, and R-multiple metrics in this report are net of these costs.")
         lines.append("")
 
     rm = report.get("risk_metrics", {})
