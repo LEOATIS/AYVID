@@ -102,23 +102,32 @@ def _write_meta(mode: str, initial_equity: float, interval_seconds: int) -> None
 # ────────────────────────────────────────────────────────────────
 
 async def _snapshot_from_ib(ib: Any, cycle: int, last_equity: float) -> EquitySnapshot:
-    """Pull NetLiquidation + cash + positions from the IB paper account."""
-    account_values = await asyncio.get_event_loop().run_in_executor(
-        None, ib.accountValues, settings.IB_ACCOUNT or ""
-    )
+    """Pull NetLiquidation + cash + positions from the IB paper account.
+
+    ``ib.accountValues()`` and ``ib.positions()`` are in-process cache
+    accessors that ib_async populates from the ``reqAccountUpdates``
+    subscription opened in ``connect()``. They are synchronous *and*
+    cheap — no executor / no event-loop juggling needed.
+    """
+    account_values = ib.accountValues()
+    positions = ib.positions()
+
+    target_account = (settings.IB_ACCOUNT or "").strip()
 
     nlv = 0.0
     cash = 0.0
     for av in account_values:
-        if av.currency != "BASE":
+        if target_account and av.account != target_account:
+            continue
+        if av.currency not in ("BASE", "USD"):
             continue
         if av.tag == "NetLiquidation":
-            nlv = float(av.value)
+            nlv = max(nlv, float(av.value))
         elif av.tag == "TotalCashValue":
-            cash = float(av.value)
+            cash = max(cash, float(av.value))
 
-    positions = await asyncio.get_event_loop().run_in_executor(None, ib.positions)
-    open_count = len([p for p in positions if p.position != 0])
+    open_positions = [p for p in positions if p.position != 0]
+    open_count = len(open_positions)
     position_value = max(nlv - cash, 0.0)
 
     daily_pnl = nlv - last_equity if last_equity > 0 else 0.0

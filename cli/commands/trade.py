@@ -40,6 +40,7 @@ def paper_start(
     """
     async def _run():
         from execution_engine.paper_runner import run
+        from shared.exceptions import IBKRDisconnectError
 
         mode = "shadow" if shadow else "ib_paper"
         console.print(
@@ -56,9 +57,28 @@ def paper_start(
                 border_style="green",
             )
         )
-        await run(shadow=shadow, initial_equity=equity, interval_seconds=interval)
+        try:
+            await run(shadow=shadow, initial_equity=equity, interval_seconds=interval)
+        except IBKRDisconnectError as exc:
+            console.print(
+                Panel.fit(
+                    f"[bold red]IB Gateway connection failed[/bold red]\n\n"
+                    f"{exc}\n\n"
+                    f"Checks:\n"
+                    f"  • IB Gateway / TWS running on {  '127.0.0.1' }:7497 (paper)?\n"
+                    f"  • API enabled in Gateway → Configure → Settings → API?\n"
+                    f"  • IB_HOST / IB_PORT / IB_CLIENT_ID set in .env?\n\n"
+                    f"Or run shadow mode (no IB needed):\n"
+                    f"  [cyan]ayvid trade paper-start --shadow --equity {int(equity)}[/cyan]",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(code=1)
 
-    asyncio.run(_run())
+    try:
+        asyncio.run(_run())
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Paper runner stopped.[/yellow]")
 
 
 @trade_app.command("paper-status")

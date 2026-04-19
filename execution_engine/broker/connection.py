@@ -43,12 +43,25 @@ async def connect() -> Any:
 
         account = settings.IB_ACCOUNT or ""
         if account:
-            _ib.reqAccountUpdates(account)
+            # MUST use the *Async variant — the sync reqAccountUpdates
+            # internally calls loop.run_until_complete and would raise
+            # "This event loop is already running" from inside our async
+            # caller. Same applies to every other ib_async RPC we call.
+            await _ib.reqAccountUpdatesAsync(True, account)
 
         log.info(
             f"Connected to IB Gateway at {settings.IB_HOST}:{settings.IB_PORT} "
-            f"(client={settings.IB_CLIENT_ID})"
+            f"(client={settings.IB_CLIENT_ID}, account={account or 'default'})"
         )
+
+        # Give IB Gateway a brief moment to push the first account
+        # snapshot into the local cache so the very first poll cycle
+        # has data instead of zeros.
+        try:
+            await asyncio.wait_for(_wait_for_first_account_value(_ib), timeout=3.0)
+        except asyncio.TimeoutError:
+            log.warning("IB account values not populated within 3s — first cycle may report 0")
+
         return _ib
 
     except Exception as exc:
@@ -101,6 +114,12 @@ async def reconnect_with_backoff(max_retries: int = 10) -> Any:
     raise IBKRDisconnectError(
         f"Failed to reconnect after {max_retries} attempts"
     )
+
+
+async def _wait_for_first_account_value(ib: Any) -> None:
+    """Block until ib_async has cached at least one account value."""
+    while not ib.accountValues():
+        await asyncio.sleep(0.1)
 
 
 def _on_disconnect() -> None:
