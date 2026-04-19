@@ -1,8 +1,17 @@
-# AYVID — Asymmetric Yield Via Intelligent Decisions
+# AYVID — AI-Native Research + Execution Platform for Funds
 
-An AI-native quantitative hedge fund that trades **two parallel tracks**: index futures & options across 20 global markets, and equity investments across 50+ dynamically-screened stocks. Powered by LangGraph agent swarms, Neo4j supply chain topology, and N-th order causal arbitrage reasoning.
+**Status:** YC S26 candidate · live IB paper trading · post-cost backtests across 2018–2025 · open-source core ([positioning doc](document/yc/COMPANY_POSITIONING.md))
 
-**Core thesis**: Supply chain shocks propagate through hidden dependencies. GPT-4o extracts entities, Neo4j traces N-th order causal paths, and a 4-agent LangGraph pipeline identifies downstream victims before the market prices them in. The system trades the resulting signals across index derivatives and equities simultaneously.
+AYVID is the operating system for AI-native funds. It ingests every shock the market hasn't priced yet, traces it through a Neo4j supply-chain graph, runs a 4-agent LangGraph debate, and emits sized, broker-routable orders into Interactive Brokers. The same stack runs our in-house quantitative book and is sold to PMs / family offices / emerging managers as a turnkey research-and-execution layer — eliminating the regulatory friction of launching another hedge fund while still capturing the alpha.
+
+**Two products, one stack:**
+
+1. **AYVID Platform** — research + execution infrastructure (graph, agents, signal book, IB execution, kill switch, backtester) licensed to funds.
+2. **AYVID Capital** — proprietary book trading two parallel tracks (index F&O across 20 global markets + equities across 50+ dynamically-screened names) — the proof point for the platform.
+
+**Core thesis:** Supply-chain shocks propagate through hidden dependencies. GPT-4o extracts entities, Neo4j traces N-th order causal paths, and a 4-agent LangGraph pipeline identifies downstream victims before the market prices them in. Every PnL number in this repo is **post-cost** (IBKR-Tiered commissions + symbol-aware slippage) and **walk-forward validated** — not cherry-picked.
+
+> See [`document/yc/COMPANY_POSITIONING.md`](document/yc/COMPANY_POSITIONING.md) for the YC S26 pitch, market sizing, defensibility, and live evidence.
 
 ## Architecture
 
@@ -192,12 +201,76 @@ python -m cli.app system serve    # FastAPI on port 8000
 # Or: make serve
 ```
 
+### 9. Walk-forward validation (post-cost, 2018→2025)
+
+```bash
+# Rolling 9-month windows stepped 3 months — out-of-sample only.
+python -m cli.app data walkforward --start 2018-01-01 --end 2025-12-31 \
+    --window-months 9 --step-months 3 --equity 1000000
+
+# Outputs:
+#   document/backtests/walkforward_report.json
+#   document/backtests/walkforward_report.md
+```
+
+### 10. Live paper-trading (the YC artifact)
+
+```bash
+# IB paper account (requires IB Gateway on the configured port):
+python -m cli.app trade paper-start --interval 60
+
+# No IB credentials yet? Run the same loop in shadow mode against local OHLCV:
+python -m cli.app trade paper-start --shadow --equity 1000000 --interval 60
+
+# Daily snapshot of the equity curve:
+python -m cli.app trade paper-status
+python -m cli.app trade paper-render   # writes live/equity_curve.png (or .svg)
+```
+
+Artifacts land in `live/`:
+
+```
+live/equity_curve.jsonl   # one snapshot per cycle
+live/trades.jsonl         # one row per fill (post-cost PnL)
+live/positions.json       # current open positions
+live/equity_curve.png     # rendered curve for the YC video
+```
+
+### 11. Live-shock demo (frontend, Next.js 15)
+
+```bash
+cd frontend
+npm install
+npm run dev   # → http://localhost:3000/live-shock
+```
+
+The `/live-shock` screen plays the full pipeline — shock detected → 3-hop graph propagation → signals generated → orders routed to IB Paper — in a 6-second loop. This is the 60-second YC demo video asset.
+
 ## Docker
 
 ```bash
-docker compose up -d               # Neo4j + QuestDB + AYVID API
-docker compose --profile pipeline up -d  # Include continuous pipeline
+# Bring up the entire stack: Neo4j + QuestDB + Qdrant + API + execution worker + frontend
+docker compose up -d
+
+# View the live-shock screen
+open http://localhost:3000/live-shock
+
+# View the API
+open http://localhost:8000/docs
+
+# Continuous ingestion pipeline (separate profile)
+docker compose --profile pipeline up -d
 ```
+
+Three production-ready images are built:
+
+| Image | Dockerfile | Purpose |
+|-------|------------|---------|
+| `ayvid-api`        | `Dockerfile`             | FastAPI backend (uvicorn, 2 workers, non-root, healthchecked) |
+| `ayvid-execution`  | `Dockerfile.execution`   | Live paper-trading runner (IB or shadow), writes equity curve to a shared volume |
+| `ayvid-frontend`   | `frontend/Dockerfile`    | Next.js 15 standalone build (~150MB, non-root) |
+
+All three use multi-stage builds, run as UID 1001, and ship Docker `HEALTHCHECK` directives so orchestrators (k8s, ECS, Fly, Railway) can route traffic correctly out of the box.
 
 ## Project Structure
 

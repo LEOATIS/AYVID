@@ -53,7 +53,11 @@ override.tf.json
 .cursorignore
 
 # Local documents/artifacts
-document/
+document/*
+!document/yc/
+!document/yc/**
+!document/backtests/
+!document/backtests/**
 *.pdf
 
 # C++ compiled binaries
