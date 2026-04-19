@@ -15,7 +15,7 @@ export function ShockEventCard({ event }: { event: ShockEvent }) {
   const dotText = negative ? "text-rose-300" : "text-emerald-300";
   const magnitudeText = negative ? "text-rose-300" : "text-emerald-300";
   return (
-    <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 shadow-2xl shadow-black/40">
+    <section className="card p-5">
       <div className="flex flex-col items-start justify-between gap-6 lg:flex-row">
         <div>
           <div className="flex items-center gap-2">
@@ -32,14 +32,14 @@ export function ShockEventCard({ event }: { event: ShockEvent }) {
             >
               Live Shock Detected
             </span>
-            <span className="text-[11px] text-white/40">
+            <span className="text-[11px] text-subtle">
               · {CATEGORY_LABEL[event.category]}
             </span>
           </div>
-          <h2 className="mt-2 max-w-3xl text-lg font-semibold leading-snug text-white/95">
+          <h2 className="mt-2 max-w-3xl text-lg font-semibold leading-snug text-fg">
             {event.headline}
           </h2>
-          <p className="mt-2 text-xs text-white/55">{event.source}</p>
+          <p className="mt-2 text-xs text-muted">{event.source}</p>
         </div>
         <div className="grid grid-cols-3 gap-3 text-right">
           <Metric
@@ -59,11 +59,11 @@ export function ShockEventCard({ event }: { event: ShockEvent }) {
           />
         </div>
       </div>
-      <div className="mt-4 rounded-lg border border-white/5 bg-black/40 p-3 text-[12px] leading-relaxed text-white/65">
-        <span className="text-[10px] uppercase tracking-[0.18em] text-white/40">
+      <div className="mt-4 rounded-lg border border-app bg-[hsl(var(--bg-sunken))] p-3 text-[12px] leading-relaxed text-muted">
+        <span className="text-[10px] uppercase tracking-[0.18em] text-subtle">
           Causal Chain (LLM-extracted)
         </span>
-        <p className="mt-1 font-mono text-[11.5px] text-white/85">
+        <p className="num mt-1 text-[11.5px] text-fg">
           {event.causalChain}
         </p>
       </div>
@@ -81,11 +81,11 @@ function Metric({
   valueClass: string;
 }) {
   return (
-    <div className="rounded-lg border border-white/5 bg-black/40 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-white/40">
+    <div className="rounded-lg border border-app bg-[hsl(var(--bg-sunken))] px-3 py-2">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-subtle">
         {label}
       </div>
-      <div className={`mt-0.5 font-mono text-base font-semibold ${valueClass}`}>
+      <div className={`num mt-0.5 text-base font-semibold ${valueClass}`}>
         {value}
       </div>
     </div>

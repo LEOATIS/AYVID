@@ -422,30 +422,83 @@ def render_curve(out_path: Path = Path("live/equity_curve.png")) -> Path:
     if not rows:
         raise ValueError("equity_curve.jsonl is empty")
 
-    timestamps = [r["timestamp"] for r in rows]
-    equity = [float(r["equity"]) for r in rows]
+    import datetime as _dt
+    parsed_ts: list[_dt.datetime] = []
+    equity: list[float] = []
+    for r in rows:
+        try:
+            parsed_ts.append(_dt.datetime.fromisoformat(r["timestamp"]))
+            equity.append(float(r["equity"]))
+        except Exception:
+            continue
+    if not parsed_ts:
+        raise ValueError("no parseable timestamps in equity_curve.jsonl")
+
+    initial_equity = equity[0]
+    final_equity = equity[-1]
+    total_return_pct = (final_equity / initial_equity - 1.0) * 100 if initial_equity else 0.0
+    span = parsed_ts[-1] - parsed_ts[0]
+    max_eq = max(equity)
+    drawdown_pct = (final_equity / max_eq - 1.0) * 100 if max_eq else 0.0
 
     try:
         import matplotlib
 
         matplotlib.use("Agg")
+        import matplotlib.dates as mdates
         import matplotlib.pyplot as plt
 
-        fig, ax = plt.subplots(figsize=(12, 5))
-        ax.plot(timestamps, equity, linewidth=1.6, color="#0a84ff")
-        ax.fill_between(timestamps, equity, min(equity), alpha=0.10, color="#0a84ff")
-        ax.set_title("AYVID — Live Paper Trading Equity Curve", fontsize=13, weight="bold")
+        plt.rcParams.update({"font.family": "DejaVu Sans"})
+        fig, ax = plt.subplots(figsize=(12, 5.5))
+        ax.plot(parsed_ts, equity, linewidth=1.6, color="#0a84ff")
+        ax.fill_between(parsed_ts, equity, min(equity), alpha=0.10, color="#0a84ff")
+        ax.axhline(initial_equity, color="#888", linewidth=0.6, linestyle="--", alpha=0.5)
+
+        ax.set_title(
+            f"AYVID — Live Paper Trading Equity Curve  ·  "
+            f"{parsed_ts[0]:%Y-%m-%d} → {parsed_ts[-1]:%Y-%m-%d}  ·  "
+            f"{len(equity)} snapshots",
+            fontsize=12, weight="bold",
+        )
         ax.set_xlabel("Time (UTC)")
         ax.set_ylabel("Net Liquidation ($)")
         ax.grid(True, alpha=0.25)
-        step = max(len(timestamps) // 12, 1)
-        ax.set_xticks(timestamps[::step])
-        ax.tick_params(axis="x", rotation=30, labelsize=8)
+
+        # Smart axis formatting: by hour if same-day, by day otherwise
+        if span.total_seconds() < 86400:
+            ax.xaxis.set_major_locator(mdates.HourLocator(interval=max(1, int(span.total_seconds() // 3600 // 8))))
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+        elif span.days < 14:
+            ax.xaxis.set_major_locator(mdates.DayLocator(interval=max(1, span.days // 8)))
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
+        else:
+            ax.xaxis.set_major_locator(mdates.DayLocator(interval=max(1, span.days // 8)))
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+        fig.autofmt_xdate(rotation=20, ha="right")
+
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"${v:,.0f}"))
+
+        return_color = "#16a34a" if total_return_pct >= 0 else "#dc2626"
+        stats_text = (
+            f"Initial: ${initial_equity:,.0f}\n"
+            f"Final:   ${final_equity:,.0f}\n"
+            f"Return:  {total_return_pct:+.2f}%\n"
+            f"DD:      {drawdown_pct:.2f}%"
+        )
+        ax.text(
+            0.99, 0.02, stats_text,
+            transform=ax.transAxes, fontsize=9, family="monospace",
+            verticalalignment="bottom", horizontalalignment="right",
+            bbox=dict(boxstyle="round,pad=0.5", facecolor="#f5f5f5",
+                      edgecolor=return_color, linewidth=1.2, alpha=0.9),
+        )
+
         out_path.parent.mkdir(parents=True, exist_ok=True)
         fig.tight_layout()
-        fig.savefig(out_path, dpi=140)
+        fig.savefig(out_path, dpi=140, bbox_inches="tight")
         plt.close(fig)
     except ImportError:
+        timestamps = [r["timestamp"] for r in rows]
         # Fallback: write SVG sparkline
         out_path = out_path.with_suffix(".svg")
         width = 800

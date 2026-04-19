@@ -13,28 +13,34 @@
   :root {
     color-scheme: light;
 
-    /* Surfaces — warm paper / institutional cream */
-    --bg:          40 30% 98%;
-    --bg-elev:     40 20% 96%;
-    --bg-sunken:   38 18% 93%;
-    --panel:       0  0% 100%;
-    --panel-2:     40 20% 97%;
+    /* Surfaces — architectural white / soft pearl */
+    --bg:          0 0% 98%;          /* #FAFAFA */
+    --bg-elev:     0 0% 96%;
+    --bg-sunken:   0 0% 94%;
+    --panel:       0 0% 100%;
+    --panel-2:     0 0% 99%;
 
-    /* Text — near-black ink with a cool cast */
-    --fg:          222 16% 9%;
-    --fg-muted:    220 9%  38%;
-    --fg-subtle:   220 8%  56%;
+    /* Text */
+    --fg:          0 0% 7%;           /* #111111 */
+    --fg-muted:    0 0% 40%;          /* #666666 */
+    --fg-subtle:   0 0% 58%;
 
     /* Hairlines */
-    --border:        38 18% 88%;
-    --border-strong: 38 14% 78%;
+    --border:        0 0% 90%;
+    --border-strong: 0 0% 80%;
+    /* Etched-glass tokens (apply alpha at the call-site) */
+    --glass-line:        0 0% 0%;     /* black tint on light */
+    --glass-line-strong: 0 0% 0%;
 
     /* Brand — deep cobalt; institutional, never bright */
     --brand:    218 78% 28%;
     --brand-2:  218 70% 42%;
     --brand-fg: 0   0%  100%;
 
-    /* Semantic — used only inside the console */
+    /* Ambient glow channel (apply alpha at call-site) */
+    --glow-color: 215 28% 88%;        /* slate-blue #E2E8F0 */
+
+    /* Semantic */
     --pos:  152 64% 32%;
     --neg:  4   72% 44%;
     --warn: 32  92% 42%;
@@ -43,10 +49,31 @@
     --ring:   218 78% 36%;
     --shadow: 220 26% 14%;
 
-    /* Type scale */
-    --display-tracking: -0.024em;
-    --display-leading:  1.05;
-    --heading-tracking: -0.018em;
+    /* ── Fibonacci spacing system (px) — the ONLY spacing values
+       allowed for marketing-shell layouts.  Map any margin / padding
+       / gap to one of these to maintain structural harmony. */
+    --s-1:   4px;
+    --s-2:   8px;
+    --s-3:  13px;
+    --s-4:  21px;
+    --s-5:  34px;
+    --s-6:  55px;
+    --s-7:  89px;
+    --s-8: 144px;
+
+    /* ── Golden-ratio (φ = 1.618) type scale.  Body 16 → H1 110 cap. */
+    --t-body:    16px;
+    --t-eyebrow: 13px;
+    --t-h3:      26px;        /* 16 × φ   */
+    --t-h2:      42px;        /* 26 × φ   */
+    --t-h1:     clamp(68px, 9vw, 110px);  /* 42 × φ → 110 cap */
+    --lh-body:    1.618;
+    --lh-heading: 1.05;
+    --tr-tight:  -0.04em;     /* hero negative tracking */
+    --tr-eyebrow: 0.2em;      /* eyebrow ultra-wide */
+
+    /* ── Motion */
+    --ease-monument: cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   /* The console always paints its own surface using its own --bg/--fg
@@ -59,9 +86,79 @@
     min-height: 100vh;
   }
 
-  /* Extend the console surface all the way out to <html>/<body> so the
-     scrollbar gutter and any over-scroll bounce match the console
-     palette instead of leaking the light marketing background. */
+  /* Marketing shell — like console-shell, paints its own surface so the
+     body bg never bleeds through.  Both themes are supported. */
+  .marketing-shell {
+    background: hsl(var(--bg));
+    color: hsl(var(--fg));
+    position: relative;
+    isolation: isolate;
+  }
+
+  /* ── Cinematic dark-mode atmosphere — ONE continuous warm photo
+     set under the entire marketing site (Polo aesthetic).
+     Two fixed-position pseudo-elements anchored to the viewport so
+     the warm "radiating core" stays in the TOP-RIGHT corner and the
+     grain follows the viewport at every scroll depth.
+     The marketing-shell creates its own stacking context via
+     `isolation: isolate`, so z-index: -1 / -2 here paint behind
+     interactive content but above the page background. */
+  html.dark .marketing-shell::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    background:
+      /* Primary warm core — top-right corner, the "radiating sun" */
+      radial-gradient(
+        720px 600px at 100% 0%,
+        hsl(34 75% 42% / 0.50),
+        hsl(34 70% 38% / 0.16) 30%,
+        transparent 60%
+      ),
+      /* Secondary deep umber anchor — lower-left, asymmetric weight */
+      radial-gradient(
+        520px 420px at 0% 100%,
+        hsl(18 55% 22% / 0.28),
+        hsl(18 55% 22% / 0.05) 42%,
+        transparent 75%
+      ),
+      /* Subtle vertical gradient so corners feel cinematically darker */
+      linear-gradient(
+        180deg,
+        hsl(24 10% 7%) 0%,
+        hsl(24 8% 5%) 45%,
+        hsl(24 9% 4%) 100%
+      );
+    filter: blur(0.4px);
+  }
+  /* Section "elevated" fills drop to transparent in dark mode so the
+     atmospheric ::before shows through every section, top to bottom,
+     without any banding stripes. */
+  html.dark .marketing-shell section[class*="bg-elev"],
+  html.dark .marketing-shell section[class*="bg-sunken"] {
+    background-color: transparent !important;
+  }
+  /* Section dividers go hairline in dark mode so they don't chop the
+     atmosphere into stripes. */
+  html.dark .marketing-shell section[class*="border-"] {
+    border-color: hsl(0 0% 100% / 0.04) !important;
+  }
+  /* Global film-grain pinned to the viewport — analogue, premium,
+     low enough to never compete with text. */
+  html.dark .marketing-shell::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='260' height='260'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.55'/></svg>");
+    opacity: 0.10;
+    mix-blend-mode: overlay;
+  }
+
+  /* Keep <html>/<body> bg matched to whichever shell is active. */
   html:has(.console-shell),
   body:has(.console-shell) {
     background: hsl(40 30% 98%);
@@ -71,11 +168,66 @@
     background: hsl(222 47% 5%);
     color: hsl(210 40% 98%);
   }
+  html:has(.marketing-shell),
+  body:has(.marketing-shell) {
+    background: hsl(0 0% 98%);            /* light-mode #FAFAFA */
+  }
+  html.dark:has(.marketing-shell),
+  html.dark body:has(.marketing-shell) {
+    background: hsl(24 8% 5%);            /* warm charcoal */
+    color: hsl(0 0% 93%);
+  }
 
-  /* Dark surface tokens — only take effect inside the operations console.
-     The user-level dark mode toggle adds .dark to <html>; we scope the
-     dark palette to the .console-shell subtree so the public marketing
-     site is always light, regardless of OS or stored preference. */
+  /* ── Marketing-site palette — STRICT spec.
+     Dark default: #0A0A0B background, #EDEDED text, #8A8A8E muted,
+     gold #D4AF37 ambient glow at 5% opacity behind the hero.
+     Light: #FAFAFA / soft pearl, #111 text, #666 muted, slate-blue
+     #E2E8F0 glow at 40% opacity. */
+  html.dark .marketing-shell,
+  .marketing-shell.dark,
+  .marketing-shell[data-theme="dark"] {
+    color-scheme: dark;
+
+    /* Surfaces — warm charcoal void (Polo-grade premium).
+       Hint of warm umber so the page reads as a high-end photo
+       studio rather than a flat OLED sheet. */
+    --bg:        24 8% 5%;        /* warm near-black ≈ #0E0C0A */
+    --bg-elev:   24 7% 8%;
+    --bg-sunken: 24 9% 3%;
+    --panel:     24 6% 9%;
+    --panel-2:   24 5% 12%;
+
+    /* Text */
+    --fg:        0 0% 93%;        /* #EDEDED */
+    --fg-muted:  240 2% 55%;      /* #8A8A8E */
+    --fg-subtle: 240 2% 38%;
+
+    /* Hairlines — solid form for legacy consumers */
+    --border:        0 0% 14%;
+    --border-strong: 0 0% 22%;
+    /* Etched-glass tokens (apply alpha at the call-site) */
+    --glass-line:        0 0% 100%;   /* use as hsl(var(--glass-line) / 0.05) */
+    --glass-line-strong: 0 0% 100%;   /* use as hsl(var(--glass-line) / 0.10) */
+
+    /* Brand — gold (institutional, never neon) */
+    --brand:    44 65% 52%;       /* #D4AF37 */
+    --brand-2:  44 70% 62%;
+    --brand-fg: 24 8% 5%;
+
+    /* Ambient glow channel (apply alpha at call-site) */
+    --glow-color: 30 65% 38%;     /* warm copper / sepia */
+    --glow-color-2: 18 60% 30%;   /* deeper umber (secondary orb) */
+
+    --pos:  152 76% 50%;
+    --neg:  0   84% 60%;
+    --warn: 38  92% 56%;
+    --info: 199 89% 56%;
+
+    --ring:   44 65% 60%;
+    --shadow: 0  0%  0%;
+  }
+
+  /* Console DARK palette (kept) */
   html.dark .console-shell,
   .console-shell.dark,
   .console-shell[data-theme="dark"] {
@@ -311,6 +463,928 @@
     background-size: 64px 64px;
     background-position: -1px -1px;
   }
+
+  /* ─────────────────────────────────────────────────────────────────
+     Wordmark — the giant AYVID display set in the hero.
+     `wordmark-1` is the main hero wordmark; `wordmark-2` is for footers
+     and section headers.  Both use the display serif and lock to a
+     dense optical-size axis.
+     ───────────────────────────────────────────────────────────────── */
+  .wordmark-1 {
+    font-family: var(--font-display), "Fraunces", serif;
+    font-weight: 400;
+    font-size: clamp(4.5rem, 14vw, 12rem);
+    line-height: 0.85;
+    letter-spacing: -0.045em;
+    font-feature-settings: "ss01", "ss02", "kern";
+    font-optical-sizing: auto;
+  }
+  .wordmark-2 {
+    font-family: var(--font-display), "Fraunces", serif;
+    font-weight: 500;
+    font-size: clamp(1.75rem, 2.6vw, 2.5rem);
+    line-height: 1;
+    letter-spacing: -0.028em;
+  }
+
+  /* Acronym expansion shown beneath the wordmark — the readable
+     equivalent of the brand name. */
+  .acronym-band {
+    font-size: clamp(11px, 1.05vw, 13.5px);
+    text-transform: uppercase;
+    letter-spacing: 0.32em;
+    font-weight: 600;
+    color: hsl(var(--fg-muted));
+  }
+  .acronym-band > b {
+    color: hsl(var(--fg));
+    font-weight: 700;
+  }
+
+  /* Fluid value sizing for KPI tiles — never overflows its container.
+     Combine with `truncate` on the parent to keep the clip clean. */
+  .stat-value {
+    font-size: clamp(1.35rem, 4cqi, 2.05rem);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum", "zero", "ss01";
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  /* When the parent enables container queries, `4cqi` above scales the
+     value with the *card width* not the viewport.  Falls back gracefully
+     on browsers without CQ support. */
+  .stat-card { container-type: inline-size; }
+
+  /* ─────────────────────────────────────────────────────────────────
+     Depth surfaces — the closest thing to "3D" we'll ship without
+     adding three.js.  Three layers stacked with mix-blend-mode +
+     conic gradients give the hero a real sense of light and depth.
+     ───────────────────────────────────────────────────────────────── */
+  .mesh-aurora {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 70% 55% at 18% 30%, hsl(var(--brand) / 0.18), transparent 60%),
+      radial-gradient(ellipse 45% 40% at 82% 22%, hsl(218 90% 56% / 0.12), transparent 60%),
+      radial-gradient(ellipse 60% 50% at 70% 85%, hsl(280 70% 50% / 0.08), transparent 65%);
+    filter: blur(0.3px);
+    pointer-events: none;
+  }
+  .mesh-grain {
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.55'/></svg>");
+    opacity: 0.10;
+    mix-blend-mode: overlay;
+    pointer-events: none;
+  }
+  /* Premium analogue-film grain in dark marketing — sits on top of
+     everything but stays well below text contrast.  `soft-light`
+     keeps it warm rather than washing colours out.
+     Note: the global viewport-pinned grain on .marketing-shell::after
+     handles base atmosphere; we hide section-local grains in dark mode
+     so the texture stays uniform across scroll. */
+  html.dark .marketing-shell .mesh-grain {
+    display: none;
+  }
+
+  /* Glass-like card used for the hero metric strip and a few feature
+     panels — soft tint, hairline border, very subtle inner highlight. */
+  .glass {
+    background:
+      linear-gradient(180deg, hsl(var(--panel) / 0.8), hsl(var(--panel) / 0.6));
+    border: 1px solid hsl(var(--border));
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+    box-shadow:
+      inset 0 1px 0 hsl(0 0% 100% / 0.5),
+      0 24px 60px -32px hsl(var(--shadow) / 0.18);
+  }
+
+  /* Floating "live" dot used in the hero — combines a soft halo with
+     a tighter pulse than the small console dot. */
+  .live-pip {
+    position: relative;
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 9999px;
+    background: hsl(var(--pos));
+  }
+  .live-pip::after {
+    content: "";
+    position: absolute; inset: -6px;
+    border-radius: 9999px;
+    background: hsl(var(--pos) / 0.25);
+    animation: pulse-ring 2s ease-out infinite;
+  }
+
+  /* Animated edge-flow on SVG strokes (causal-graph "data is moving"
+     feel).  Apply by giving the path stroke-dasharray + this class. */
+  .edge-flow {
+    stroke-dashoffset: 0;
+    animation: flow-dash 1.4s linear infinite;
+  }
+
+  /* Soft 3D float for the hero graph cluster — picks up the cursor
+     parallax handler from the React component. */
+  .float-soft {
+    animation: float-soft 9s ease-in-out infinite;
+    transform-origin: center;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────
+     Causal-graph (3D-feel) tokens — used by GraphPropagation.
+     Defined as semantic class names so they automatically pick up the
+     light/dark theme via the CSS custom properties above (no hardcoded
+     white/black anywhere in the SVG).
+     ───────────────────────────────────────────────────────────────── */
+
+  /* Subtle perspective backdrop behind the canvas */
+  .graph-stage {
+    position: relative;
+    border-radius: 16px;
+    background:
+      radial-gradient(120% 80% at 50% 35%, hsl(var(--brand) / 0.07), transparent 65%),
+      radial-gradient(80% 50% at 30% 80%, hsl(280 60% 50% / 0.05), transparent 70%),
+      linear-gradient(180deg, hsl(var(--bg-elev)), hsl(var(--bg-sunken)));
+    border: 1px solid hsl(var(--border));
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .graph-stage::before {
+    /* fine perspective grid */
+    content: "";
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(hsl(var(--border) / 0.5) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--border) / 0.5) 1px, transparent 1px);
+    background-size: 48px 48px;
+    background-position: -1px -1px;
+    mask-image: radial-gradient(ellipse 90% 70% at 50% 50%, black 30%, transparent 80%);
+    opacity: 0.35;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .graph-stage > svg { position: relative; z-index: 1; }
+
+  /* Label "chip" — a translucent pill that sits behind every text label
+     so it stays readable over edges in BOTH themes */
+  .graph-chip-bg {
+    fill: hsl(var(--panel) / 0.86);
+    stroke: hsl(var(--border-strong) / 0.7);
+  }
+  .graph-chip-text-fg     { fill: hsl(var(--fg)); }
+  .graph-chip-text-muted  { fill: hsl(var(--fg-muted)); }
+  .graph-chip-text-subtle { fill: hsl(var(--fg-subtle)); }
+  .graph-chip-text-pos    { fill: hsl(var(--pos)); }
+  .graph-chip-text-neg    { fill: hsl(var(--neg)); }
+
+  /* Concentric perspective rings (use border colour so they're visible
+     in light mode too) */
+  .graph-ring-stroke { stroke: hsl(var(--border-strong) / 0.55); }
+
+  /* Edge defaults — `currentColor` used so we can theme by parent class */
+  .graph-edge {
+    stroke: hsl(var(--info) / 0.9);
+  }
+  .graph-edge-inactive {
+    stroke: hsl(var(--fg-subtle) / 0.35);
+  }
+
+  /* Hop wave animation — used on circles emanating from the shock node */
+  @keyframes hop-wave {
+    0%   { r: 22; opacity: 0.7; }
+    100% { r: 90; opacity: 0; }
+  }
+  .hop-wave {
+    animation: hop-wave 2.6s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+    transform-box: fill-box;
+    transform-origin: center;
+    fill: none;
+  }
+
+  /* Section label (small, all-caps, paired with a hairline) */
+  .section-label {
+    display: inline-flex; align-items: center; gap: .65rem;
+    font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.22em; font-weight: 600;
+    color: hsl(var(--fg-muted));
+  }
+  .section-label::before {
+    content: ""; display: inline-block;
+    width: 24px; height: 1px;
+    background: hsl(var(--fg-muted));
+  }
+
+  /* ─────────────────────────────────────────────────────────────────
+     Polo-style component vocabulary — used by the marketing site.
+     Themeable via the same --bg/--fg/--brand tokens above so both
+     light and dark modes render correctly.
+     ───────────────────────────────────────────────────────────────── */
+
+  /* Pill chip — used for status, tags, eyebrow links, etc. */
+  .pill {
+    display: inline-flex; align-items: center; gap: .5rem;
+    padding: .4rem .85rem;
+    border-radius: 9999px;
+    font-size: 12px; font-weight: 500;
+    color: hsl(var(--fg));
+    background: hsl(var(--panel));
+    border: 1px solid hsl(var(--border));
+    transition: background-color .18s ease, border-color .18s ease;
+  }
+  .pill:hover { border-color: hsl(var(--border-strong)); }
+  .pill-ghost {
+    background: transparent;
+    border-color: hsl(var(--border-strong));
+    color: hsl(var(--fg-muted));
+  }
+  .pill-brand {
+    background: hsl(var(--brand) / 0.12);
+    border-color: hsl(var(--brand) / 0.3);
+    color: hsl(var(--brand));
+  }
+  .pill-status::before {
+    content: ""; display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 9999px;
+    background: hsl(var(--pos));
+    box-shadow: 0 0 0 4px hsl(var(--pos) / 0.18);
+    animation: pulse-live 2s ease-in-out infinite;
+  }
+
+  /* Big rounded tile — the workhorse card of the redesign */
+  .tile {
+    position: relative;
+    background: hsl(var(--panel));
+    border: 1px solid hsl(var(--border));
+    border-radius: 24px;
+    padding: clamp(1.25rem, 2.4vw, 2rem);
+    transition: transform .25s cubic-bezier(0.2, 0.8, 0.2, 1),
+                border-color .25s ease, background-color .25s ease,
+                box-shadow .25s ease;
+  }
+  .tile:hover {
+    border-color: hsl(var(--border-strong));
+    box-shadow: 0 24px 60px -32px hsl(var(--shadow) / 0.25);
+  }
+  .tile-soft {
+    background: hsl(var(--panel-2));
+    border-radius: 24px;
+    border: 1px solid hsl(var(--border));
+    padding: clamp(1.25rem, 2.4vw, 2rem);
+  }
+  .tile-ink {
+    background: hsl(var(--fg));
+    color: hsl(var(--bg));
+    border-radius: 24px;
+    padding: clamp(1.5rem, 3vw, 2.5rem);
+  }
+  /* Body content inherits the inverted colour by default — we don't
+     force it via `*` because that cascade then leaks into actionable
+     elements (pills, chips) that set their own colour, producing the
+     "invisible Speak with the desk" bug.  Standard CSS inheritance
+     does the right thing here. */
+  .tile-brand {
+    background: hsl(var(--brand));
+    color: hsl(var(--brand-fg));
+    border-radius: 24px;
+    padding: clamp(1.5rem, 3vw, 2.5rem);
+  }
+
+  /* Numbered process card — used in the "How it works" section */
+  .process-card {
+    background: hsl(var(--panel));
+    border: 1px solid hsl(var(--border));
+    border-radius: 24px;
+    padding: clamp(1.5rem, 2.6vw, 2rem);
+    transition: transform .3s cubic-bezier(0.2, 0.8, 0.2, 1), background-color .3s ease;
+  }
+  .process-card:hover { background: hsl(var(--panel-2)); }
+  .process-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 2.5rem; height: 2.5rem;
+    border-radius: 9999px;
+    background: hsl(var(--bg-sunken));
+    color: hsl(var(--fg));
+    font-family: var(--font-display), serif;
+    font-size: 1.05rem; font-weight: 500;
+    border: 1px solid hsl(var(--border));
+  }
+
+  /* Comparison row — "AYVID vs traditional" matrix */
+  .compare-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: hsl(var(--border));
+    border: 1px solid hsl(var(--border));
+    border-radius: 20px;
+    overflow: hidden;
+  }
+  .compare-cell {
+    background: hsl(var(--panel));
+    padding: clamp(1.25rem, 2.4vw, 1.75rem);
+  }
+  .compare-cell.is-us  { background: hsl(var(--panel)); }
+  .compare-cell.is-them { background: hsl(var(--bg-sunken)); }
+  .compare-tag {
+    display: inline-flex; align-items: center; gap: .4rem;
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.16em;
+    padding: .3rem .6rem;
+    border-radius: 9999px;
+  }
+  .compare-tag.is-us {
+    background: hsl(var(--brand) / 0.14);
+    color: hsl(var(--brand));
+  }
+  .compare-tag.is-them {
+    background: hsl(var(--fg-subtle) / 0.18);
+    color: hsl(var(--fg-muted));
+  }
+
+  /* Stat block — huge number, label, sub */
+  .stat-block { display: flex; flex-direction: column; gap: .35rem; }
+  .stat-number {
+    font-family: var(--font-display), serif;
+    font-weight: 400;
+    font-size: clamp(3rem, 7vw, 5rem);
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    color: hsl(var(--fg));
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Marquee — continuous horizontal scroll of capability tags */
+  .marquee {
+    display: flex; gap: 1.25rem;
+    overflow: hidden;
+    mask-image: linear-gradient(90deg, transparent, black 8%, black 92%, transparent);
+    -webkit-mask-image: linear-gradient(90deg, transparent, black 8%, black 92%, transparent);
+  }
+  .marquee-track {
+    display: flex; gap: 1.25rem;
+    flex-shrink: 0;
+    animation: marquee 28s linear infinite;
+    will-change: transform;
+  }
+  .marquee:hover .marquee-track { animation-play-state: paused; }
+  .marquee-item {
+    display: inline-flex; align-items: center; gap: .55rem;
+    padding: .65rem 1.1rem;
+    border-radius: 9999px;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--panel));
+    color: hsl(var(--fg-muted));
+    font-size: 13px; font-weight: 500;
+    white-space: nowrap;
+  }
+  .marquee-dot {
+    width: 6px; height: 6px;
+    border-radius: 9999px;
+    background: hsl(var(--brand));
+    flex-shrink: 0;
+  }
+
+  /* FAQ accordion */
+  .faq-item {
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  .faq-trigger {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; gap: 1rem;
+    padding: 1.25rem 0;
+    text-align: left;
+    font-family: var(--font-display), serif;
+    font-size: clamp(1.05rem, 1.4vw, 1.25rem);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: hsl(var(--fg));
+    cursor: pointer;
+    transition: color .2s ease;
+  }
+  .faq-trigger:hover { color: hsl(var(--brand)); }
+  .faq-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 2rem; height: 2rem; flex-shrink: 0;
+    border: 1px solid hsl(var(--border));
+    border-radius: 9999px;
+    transition: transform .25s ease, border-color .2s ease;
+  }
+  .faq-item[data-open="true"] .faq-icon { transform: rotate(45deg); border-color: hsl(var(--brand)); }
+  .faq-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height .35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .faq-item[data-open="true"] .faq-body { max-height: 32rem; }
+  .faq-body-inner { padding: 0 0 1.5rem 0; color: hsl(var(--fg-muted)); line-height: 1.7; }
+
+  /* ─────────────────────────────────────────────────────────────────
+     POLO-STYLE primitives — matches the portfolo.framer.website
+     reference.  Headlines are heavy SANS (not serif) with a two-tone
+     "first word white / second word grey" composition; CTAs are fat
+     pill buttons in two flavours (ink + paper); the nav is a floating
+     glassmorphic pill that hovers above the hero.
+     ───────────────────────────────────────────────────────────────── */
+
+  /* Hero H1 — Golden-ratio scale, extreme negative tracking.
+     Two children: <span class="tone-bright">First</span>
+                   <span class="tone-mute">Second.</span> */
+  .wordmark-polo {
+    font-family: var(--font-sans), "Inter", -apple-system, BlinkMacSystemFont,
+      "Segoe UI", system-ui, sans-serif;
+    font-weight: 700;
+    font-size: var(--t-h1);
+    line-height: var(--lh-heading);
+    letter-spacing: var(--tr-tight);
+    font-feature-settings: "ss01", "cv11";
+    display: block;
+    /* Break only at word boundaries — never split a word like "Deci-sions". */
+    overflow-wrap: normal;
+    word-break: keep-all;
+    hyphens: none;
+  }
+  /* ── Premium "Intelligent Decisions" wordmark ────────────────────
+     The two words are deliberately treated like cast metal: the first
+     reads as MATTE GRAPHITE (deep, slightly cool, micro-bevel from a
+      1px highlight stroke), the second as a brushed metallic SILVER /
+     CHAMPAGNE gradient.  Same recipe in both modes, palette swapped.
+     We use background-clip: text so the gradient lives on the glyph
+     edges, not on a rectangle behind it. */
+  .wordmark-polo .tone-bright {
+    background-image: linear-gradient(
+      180deg,
+      hsl(var(--fg)) 0%,
+      hsl(var(--fg) / 0.94) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    /* Hairline highlight along the very top of each letter — gives
+       the matte ink that "freshly-pressed" tactile feel. */
+    text-shadow: 0 1px 0 hsl(0 0% 100% / 0.06);
+  }
+  .wordmark-polo .tone-mute {
+    /* Brushed silver — three stops so the highlight sits roughly at
+       letter x-height, the body fades to the shadow side, the tail
+       returns to a faint reflection. */
+    background-image: linear-gradient(
+      180deg,
+      hsl(0 0% 62%) 0%,
+      hsl(0 0% 38%) 48%,
+      hsl(0 0% 56%) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  /* Dark mode — same idea, warm palette.
+     Bright word becomes pearl; mute word becomes brushed champagne so
+     it cooperates with the warm orb in the upper-right corner. */
+  html.dark .wordmark-polo .tone-bright {
+    background-image: linear-gradient(
+      180deg,
+      hsl(0 0% 99%) 0%,
+      hsl(0 0% 84%) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow: 0 1px 0 hsl(0 0% 0% / 0.30);
+  }
+  html.dark .wordmark-polo .tone-mute {
+    background-image: linear-gradient(
+      180deg,
+      hsl(40 38% 80%) 0%,    /* champagne highlight */
+      hsl(34 28% 52%) 50%,   /* warm gold mid-tone */
+      hsl(26 22% 36%) 100%   /* deep umber base */
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Eyebrow / acronym — ultra-wide tracking, opposite axis to H1. */
+  .eyebrow-wide {
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tr-eyebrow);
+    text-transform: uppercase;
+    font-weight: 600;
+    color: hsl(var(--fg-muted));
+  }
+  .eyebrow-wide > b {
+    color: hsl(var(--fg));
+    font-weight: 700;
+  }
+
+  /* Eyebrow pill — sparkle-icon chip above the hero headline.
+     Etched-glass border (white/5 dark, black/5 light). Spacing on
+     Fibonacci grid: pad-y 8 (s-2), pad-x 13 (s-3). */
+  .eyebrow-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 13px 8px 8px;
+    border-radius: 9999px;
+    background: hsl(var(--panel) / 0.6);
+    border: 1px solid hsl(var(--glass-line) / 0.08);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    font-size: 13px; font-weight: 500;
+    color: hsl(var(--fg));
+    box-shadow: inset 0 1px 0 hsl(var(--glass-line) / 0.05);
+  }
+  .eyebrow-pill .sparkle {
+    display: inline-grid; place-items: center;
+    width: 21px; height: 21px;            /* Fibonacci 21 */
+    border-radius: 9999px;
+    background: hsl(var(--brand));
+    color: hsl(var(--brand-fg));
+  }
+
+  /* Fat pill CTAs — Fibonacci spacing (pad-y 13, pad-x 21/34).
+     Same height across variants for typographic rhythm. */
+  .btn-polo {
+    position: relative;
+    display: inline-flex; align-items: center; gap: 13px;
+    padding: 13px 21px 13px 34px;
+    border-radius: 9999px;
+    font-size: 15px; font-weight: 600;
+    line-height: 1; letter-spacing: -0.01em;
+    border: 1px solid transparent;
+    transition: transform .35s var(--ease-monument),
+                background-color .35s var(--ease-monument),
+                color .35s var(--ease-monument),
+                border-color .35s var(--ease-monument),
+                box-shadow .35s var(--ease-monument);
+    will-change: transform;
+    isolation: isolate;
+  }
+  .btn-polo:hover { transform: translateY(-1px); }
+  .btn-polo .arrow {
+    display: inline-grid; place-items: center;
+    width: 34px; height: 34px;            /* Fibonacci 34 */
+    border-radius: 9999px;
+    transition: background .35s var(--ease-monument),
+                transform  .35s var(--ease-monument);
+  }
+  .btn-polo:hover .arrow { transform: translateX(3px); }
+  .btn-polo .arrow > svg { width: 13px; height: 13px; stroke-width: 2.4; }
+
+  /* Ink (dark) variant — primary */
+  .btn-polo-ink {
+    background: hsl(var(--fg));
+    color: hsl(var(--bg));
+    box-shadow: 0 18px 40px -22px hsl(var(--shadow) / 0.6),
+                inset 0 1px 0 hsl(var(--glass-line) / 0.08);
+  }
+  .btn-polo-ink .arrow { background: hsl(var(--bg) / 0.18); }
+  .btn-polo-ink .arrow > svg { color: hsl(var(--bg)); }
+
+  /* Paper (light) variant — secondary, inverse pair */
+  .btn-polo-paper {
+    background: hsl(var(--panel));
+    color: hsl(var(--fg));
+    border: 1px solid hsl(var(--glass-line) / 0.08);
+    box-shadow: 0 14px 32px -22px hsl(var(--shadow) / 0.35),
+                inset 0 1px 0 hsl(0 0% 100% / 0.5);
+  }
+  .btn-polo-paper .arrow { background: hsl(var(--fg) / 0.06); }
+  .btn-polo-paper .arrow > svg { color: hsl(var(--fg)); }
+
+  /* Cursor-tracking glow border for the primary CTA.  The conic-style
+     ring is rendered via ::before; --mx / --my are set in JS. */
+  .btn-polo-glow { --mx: 50%; --my: 50%; }
+  .btn-polo-glow::before {
+    content: "";
+    position: absolute; inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: radial-gradient(
+      140px 140px at var(--mx) var(--my),
+      hsl(var(--brand) / 0.95),
+      hsl(var(--brand) / 0) 70%
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+            mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    opacity: 0;
+    transition: opacity .35s var(--ease-monument);
+    pointer-events: none;
+    z-index: 1;
+  }
+  .btn-polo-glow:hover::before { opacity: 1; }
+
+  /* ── Dreelio-style scroll-morphing navigation
+     ───────────────────────────────────────────
+     • At top of page  → COMPLETELY TRANSPARENT (no chrome, full-width
+       layout, just brand + links + theme toggle floating over hero).
+     • On scroll       → CONDENSES into a centered matte pill that
+       picks up a subtle backdrop blur, a hairline border, and a soft
+       contact shadow.  Width shrinks, vertical padding tightens, the
+       specular gloss highlight fades in.  All transitions ride the
+       same monument cubic-bezier so the morph feels architectural,
+       not jumpy.
+     The .nav-floating element controls both layout AND chrome via
+     CSS so the React component never sets padding inline.            */
+  .nav-floating {
+    position: relative;
+    width: 100%;
+    max-width: 1240px;
+    /* Padding lives here so we can transition it on scroll without
+       inline-style override conflicts. */
+    padding: var(--s-2) var(--s-3);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 9999px;
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+    box-shadow: none;
+    transition:
+      background .55s var(--ease-monument),
+      border-color .55s var(--ease-monument),
+      box-shadow .55s var(--ease-monument),
+      backdrop-filter .55s var(--ease-monument),
+      -webkit-backdrop-filter .55s var(--ease-monument),
+      max-width .55s var(--ease-monument),
+      padding .45s var(--ease-monument);
+  }
+  /* Specular highlight along the upper bevel — only visible when the
+     pill is condensed.  We pre-render it transparent and fade it in. */
+  .nav-floating::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background:
+      linear-gradient(
+        180deg,
+        hsl(0 0% 100% / 0.18) 0%,
+        hsl(0 0% 100% / 0.04) 35%,
+        transparent 60%
+      );
+    mix-blend-mode: screen;
+    opacity: 0;
+    transition: opacity .55s var(--ease-monument);
+  }
+  /* CONDENSED state — Polo / Dreelio matte pill, light theme.
+     Matte (not wet-glass): subtle gradient + low-opacity panel base,
+     enough blur to lift it off the page, soft hairline border.
+     Width is sized to comfortably hold brand + 4 links + 3-icon
+     theme toggle + CTA, with the same breathing room as the Polo
+     reference (≈ 70% of a 1440px viewport). */
+  .nav-floating.is-scrolled {
+    max-width: 800px;
+    padding: var(--s-2) var(--s-3);
+    background:
+      linear-gradient(
+        180deg,
+        hsl(var(--glass-line) / 0.10) 0%,
+        hsl(var(--glass-line) / 0.02) 55%,
+        hsl(var(--glass-line) / 0.06) 100%
+      ),
+      hsl(var(--panel) / 0.72);
+    border-color: hsl(var(--glass-line) / 0.10);
+    backdrop-filter: blur(24px) saturate(170%);
+    -webkit-backdrop-filter: blur(24px) saturate(170%);
+    box-shadow:
+      inset 0 1px 0 hsl(var(--glass-line) / 0.20),
+      inset 0 -1px 0 hsl(var(--glass-line) / 0.04),
+      0 16px 38px -18px hsl(var(--shadow) / 0.40),
+      0 32px 70px -40px hsl(var(--shadow) / 0.50);
+  }
+  .nav-floating.is-scrolled::before { opacity: 0.55; }
+
+  /* Dark mode — at top: still fully transparent over the warm
+     atmosphere (the orb shows through cleanly).
+     Condensed: the pill picks up a warm-charcoal matte fill so it
+     reads as part of the dust-room photography, not a foreign UI chip. */
+  html.dark .marketing-shell .nav-floating {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+  html.dark .marketing-shell .nav-floating.is-scrolled {
+    background:
+      linear-gradient(
+        180deg,
+        hsl(0 0% 100% / 0.06) 0%,
+        hsl(0 0% 100% / 0.01) 55%,
+        hsl(0 0% 100% / 0.04) 100%
+      ),
+      hsl(24 6% 7% / 0.78);
+    border-color: hsl(0 0% 100% / 0.08);
+    box-shadow:
+      inset 0 1px 0 hsl(0 0% 100% / 0.12),
+      inset 0 -1px 0 hsl(0 0% 0% / 0.30),
+      0 18px 40px -18px hsl(0 0% 0% / 0.55),
+      0 38px 80px -40px hsl(0 0% 0% / 0.7);
+  }
+  html.dark .marketing-shell .nav-floating.is-scrolled::before { opacity: 0.40; }
+  @media (prefers-reduced-motion: reduce) {
+    .nav-floating, .nav-floating::before { transition: none; }
+  }
+
+  /* ── Monument reveal — slide-up + fade with the cubic-bezier
+     curve from spec.  Pure CSS so it runs before hydration (no FOUC). */
+  @keyframes monument-reveal {
+    from { opacity: 0; transform: translateY(21px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .reveal-up {
+    animation: monument-reveal 0.85s var(--ease-monument) both;
+    /* `both` so the from-state applies on the first paint. */
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal-up { animation: none; }
+  }
+
+  /* Ambient hero atmosphere — Polo-grade premium.
+     Light: soft slate-blue spread under the H1.
+     Dark : a large, diffuse warm-copper orb sits off-centre to the
+     upper-right, like a moon hidden in a dusty room.  A second deep
+     umber orb is lower-left for asymmetric weight.  A subtle radial
+     vignette darkens the corners cinematically. */
+  .hero-glow {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(
+        60ch 50ch at 50% 35%,
+        hsl(var(--glow-color) / 0.40),
+        transparent 70%
+      );
+  }
+  html.dark .hero-glow {
+    /* Stack four layers for depth: warm orb, deep umber orb,
+       vertical sheen, and a dark vignette around the edges. */
+    background:
+      radial-gradient(
+        650px 520px at 78% 28%,
+        hsl(var(--glow-color)   / 0.34),
+        hsl(var(--glow-color)   / 0.08) 38%,
+        transparent 72%
+      ),
+      radial-gradient(
+        520px 420px at 12% 88%,
+        hsl(var(--glow-color-2) / 0.30),
+        hsl(var(--glow-color-2) / 0.06) 40%,
+        transparent 75%
+      ),
+      radial-gradient(
+        1100px 600px at 50% -10%,
+        hsl(40 30% 18% / 0.18),
+        transparent 70%
+      ),
+      radial-gradient(
+        1400px 900px at 50% 50%,
+        transparent 55%,
+        hsl(0 0% 0% / 0.55) 100%
+      );
+    filter: blur(0.25px);
+  }
+
+  /* Secondary "studio dust" — animated very slow drift on the dark
+     glow so the atmosphere never feels like a static image. */
+  @keyframes studio-drift {
+    0%   { transform: translate3d(0, 0, 0) scale(1); }
+    50%  { transform: translate3d(-1.4%, 0.8%, 0) scale(1.02); }
+    100% { transform: translate3d(0, 0, 0) scale(1); }
+  }
+  html.dark .hero-glow {
+    animation: studio-drift 18s var(--ease-monument) infinite;
+    will-change: transform;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html.dark .hero-glow { animation: none; }
+  }
+
+  /* Tasteful single proof bar (replaces the cluttered float-bubbles).
+     Wrapping is allowed so the column never blows out the parent grid. */
+  .proof-bar {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 21px;
+    padding: 13px 21px;
+    border-radius: 9999px;
+    background: hsl(var(--panel) / 0.55);
+    border: 1px solid hsl(var(--glass-line) / 0.06);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    box-shadow: inset 0 1px 0 hsl(var(--glass-line) / 0.05);
+    font-size: 13px;
+    color: hsl(var(--fg-muted));
+    max-width: 100%;
+  }
+  .proof-bar .dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 9999px;
+    background: hsl(var(--pos));
+    box-shadow: 0 0 0 4px hsl(var(--pos) / 0.18);
+  }
+  .proof-bar > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+  }
+  .proof-bar > span > b {
+    color: hsl(var(--fg));
+    font-weight: 600;
+  }
+
+  /* Floating testimonial bubbles, exactly like Polo's
+     "Working with him was a game changer!" badges */
+  .float-bubble {
+    display: inline-flex; align-items: center; gap: .65rem;
+    padding: .7rem 1rem;
+    border-radius: 9999px;
+    background: hsl(var(--panel));
+    border: 1px solid hsl(var(--border));
+    box-shadow:
+      0 1px 0 hsl(0 0% 100% / 0.05) inset,
+      0 30px 50px -28px hsl(var(--shadow) / 0.5);
+    font-size: 13px; color: hsl(var(--fg));
+  }
+  .float-bubble .who {
+    color: hsl(var(--fg-subtle));
+    font-weight: 500;
+  }
+  .float-bubble .avatar {
+    display: inline-grid; place-items: center;
+    width: 26px; height: 26px;
+    border-radius: 9999px;
+    background: hsl(var(--brand));
+    color: hsl(var(--brand-fg));
+    font-size: 11px; font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  /* Hero "showcase" preview card — Polo's "Building brands" project
+     teaser sitting under the hero with an "Edit template (Free)" badge */
+  .hero-showcase {
+    position: relative;
+    border-radius: 28px;
+    background: hsl(var(--panel));
+    border: 1px solid hsl(var(--border));
+    overflow: hidden;
+    box-shadow: 0 60px 120px -50px hsl(var(--shadow) / 0.45);
+  }
+  .hero-showcase .badge-row {
+    position: absolute; right: 14px; top: 14px;
+    display: inline-flex; align-items: center; gap: .5rem;
+  }
+  .hero-showcase .ribbon {
+    display: inline-flex; align-items: center; gap: .45rem;
+    padding: .5rem .8rem;
+    border-radius: 9999px;
+    background: hsl(var(--bg) / 0.82);
+    border: 1px solid hsl(var(--border));
+    font-size: 11.5px; font-weight: 500;
+    color: hsl(var(--fg));
+    backdrop-filter: blur(10px) saturate(140%);
+  }
+
+  /* Theme toggle (segmented control, matches console) */
+  .theme-segment {
+    display: inline-flex; align-items: center;
+    padding: 3px;
+    border-radius: 9999px;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--panel));
+  }
+  .theme-segment button {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px;
+    border-radius: 9999px;
+    color: hsl(var(--fg-subtle));
+    transition: all .2s ease;
+  }
+  .theme-segment button[data-active="true"] {
+    background: hsl(var(--bg-sunken));
+    color: hsl(var(--fg));
+  }
+  .theme-segment button:hover { color: hsl(var(--fg)); }
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-100%); }
 }
 
 @keyframes pulse-live { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
@@ -319,6 +1393,9 @@
 @keyframes shimmer    { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 @keyframes fade-up    { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes fade-in    { from { opacity: 0; } to { opacity: 1; } }
+@keyframes float-soft { 0%, 100% { transform: translate3d(0, 0, 0); } 50% { transform: translate3d(0, -10px, 0); } }
+@keyframes drift      { 0% { transform: translate3d(0, 0, 0); } 50% { transform: translate3d(20px, -12px, 0); } 100% { transform: translate3d(0, 0, 0); } }
+@keyframes node-ping  { 0%, 100% { opacity: 0.5; r: 4; } 50% { opacity: 1; r: 6; } }
 .fade-up { animation: fade-up 480ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .fade-in { animation: fade-in 600ms ease both; }
 

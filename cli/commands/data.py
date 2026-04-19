@@ -958,6 +958,103 @@ def backtest(
     asyncio.run(_run())
 
 
+@data_app.command("bulk-ingest")
+def bulk_ingest(
+    start: str = typer.Option("2018-01-01", help="History start date (ISO)"),
+    end: str = typer.Option(None, help="History end date (ISO, defaults to today)"),
+    equities: bool = typer.Option(True, help="Ingest equity tickers"),
+    indices: bool = typer.Option(True, help="Ingest tradeable indices"),
+    extra: list[str] = typer.Option(None, help="Extra equity tickers to add"),
+):
+    """One-shot historical bulk ingest for walk-forward backtests.
+
+    Pulls daily OHLCV from start → end for every cached equity ticker
+    and every tradeable index, writing them into ``data_store/ohlcv/``
+    and ``data_store/indices/``. Walk-forward then runs purely off cache
+    (no per-window Yahoo fetches) and finishes in minutes instead of
+    hours.
+
+    Example:
+        ayvid data bulk-ingest --start 2018-01-01
+    """
+    async def _run():
+        import datetime as dt
+        from backtesting.engine import (
+            _DATA_DIR, _save_equity_bars, _save_index_bars,
+        )
+        from data_primitives.extractors.openbb_client import (
+            fetch_ohlcv, fetch_index_historical,
+        )
+        from graph_intelligence.agents.strategy_orchestrator import (
+            TRADEABLE_INDEX_SYMBOLS,
+        )
+
+        end_iso = end or dt.date.today().isoformat()
+
+        equity_tickers: list[str] = []
+        if equities:
+            cached = sorted(p.stem for p in _DATA_DIR.glob("*.jsonl"))
+            equity_tickers = sorted(set(cached + list(extra or [])))
+
+        index_tickers: list[str] = list(TRADEABLE_INDEX_SYMBOLS) if indices else []
+
+        console.print(
+            f"\n[bold]Bulk historical ingest[/bold]\n"
+            f"  Span: {start} → {end_iso}\n"
+            f"  Equities: {len(equity_tickers)} tickers\n"
+            f"  Indices:  {len(index_tickers)} symbols\n"
+        )
+
+        eq_ok = eq_skip = 0
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("{task.completed}/{task.total}"),
+            console=console,
+        ) as progress:
+            if equity_tickers:
+                t = progress.add_task("Equities", total=len(equity_tickers))
+                for sym in equity_tickers:
+                    try:
+                        bars = await fetch_ohlcv(sym, start_date=start, end_date=end_iso)
+                        if bars:
+                            _save_equity_bars(sym, bars)
+                            eq_ok += 1
+                        else:
+                            eq_skip += 1
+                    except Exception as exc:
+                        eq_skip += 1
+                        console.print(f"  [dim]skip {sym}: {exc}[/dim]")
+                    progress.advance(t)
+
+            ix_ok = ix_skip = 0
+            if index_tickers:
+                t = progress.add_task("Indices", total=len(index_tickers))
+                for sym in index_tickers:
+                    try:
+                        bars = await fetch_index_historical(
+                            sym, start_date=start, end_date=end_iso,
+                        )
+                        if bars:
+                            _save_index_bars(sym, bars)
+                            ix_ok += 1
+                        else:
+                            ix_skip += 1
+                    except Exception as exc:
+                        ix_skip += 1
+                        console.print(f"  [dim]skip {sym}: {exc}[/dim]")
+                    progress.advance(t)
+
+        console.print(
+            f"\n[bold green]Done.[/bold green] "
+            f"equities {eq_ok} ok / {eq_skip} skipped, "
+            f"indices {ix_ok} ok / {ix_skip} skipped."
+        )
+
+    asyncio.run(_run())
+
+
 @data_app.command("walkforward")
 def walkforward(
     start: str = typer.Option("2018-01-01", help="Walk-forward start date (ISO)"),
@@ -965,14 +1062,29 @@ def walkforward(
     window_months: int = typer.Option(6, help="Length of each rolling window (months)"),
     step_months: int = typer.Option(3, help="Step between windows (months)"),
     equity: float = typer.Option(1_000_000.0, help="Initial equity per window ($)"),
+    output_dir: str = typer.Option(
+        "document/backtests",
+        help="Where to write walkforward_report.{json,md}",
+    ),
+    min_conviction: float = typer.Option(
+        0.55, help="Minimum conviction threshold for accepting signals"
+    ),
+    name: str = typer.Option(
+        "walkforward_report", help="Output filename stem (e.g. 'walkforward_strict')"
+    ),
 ):
     """Out-of-sample walk-forward across the entire historical span.
 
     Sweeps a rolling window across the chosen span and runs a fresh
     backtest on each window. No cherry-picked shocks. Reports the full
     distribution of returns, Sharpes, drawdowns, and a compounded
-    aggregate equity curve. Writes ``walkforward_report.json`` and
-    ``walkforward_report.md``.
+    aggregate equity curve. Writes ``{name}.json`` and ``{name}.md``
+    in the chosen ``--output-dir`` (default ``document/backtests/``).
+
+    Note: this is the "naive" mode — it calls the orchestrator on every
+    cached symbol every trading day with no shock context. For AYVID's
+    actual operating mode (selective, event-driven, graph-aware ticker
+    picking), use ``ayvid data shock-walkforward``.
 
     Example:
         ayvid data walkforward --start 2018-01-01 --window-months 6 --step-months 3
@@ -986,6 +1098,8 @@ def walkforward(
             f"  Span: {start} → {end or 'today'}\n"
             f"  Window: {window_months}m, step: {step_months}m\n"
             f"  Equity per window: ${equity:,.0f}\n"
+            f"  Min conviction: {min_conviction:.2f}\n"
+            f"  Report stem: {name}\n"
         )
         summary = await run_walk_forward(
             start=start,
@@ -993,7 +1107,9 @@ def walkforward(
             window_months=window_months,
             step_months=step_months,
             initial_equity=equity,
-            output_dir=Path("."),
+            output_dir=Path(output_dir),
+            min_conviction=min_conviction,
+            report_filename=name,
         )
 
         table = Table(
@@ -1015,8 +1131,92 @@ def walkforward(
         table.add_row("Compounded return", f"{summary.aggregate_compounded_return_pct:+.2f}%")
         table.add_row("CAGR (chained)", f"{summary.aggregate_cagr_pct:+.2f}%")
         console.print(table)
-        console.print("\n[dim]→ wrote walkforward_report.json[/dim]")
-        console.print("[dim]→ wrote walkforward_report.md[/dim]\n")
+        console.print(f"\n[dim]→ wrote {output_dir}/{name}.json[/dim]")
+        console.print(f"[dim]→ wrote {output_dir}/{name}.md[/dim]\n")
+
+    asyncio.run(_run())
+
+
+@data_app.command("shock-walkforward")
+def shock_walkforward(
+    start: str = typer.Option("2018-01-01", help="Span start date (ISO)"),
+    end: str = typer.Option(None, help="Span end date (ISO, defaults to today)"),
+    equity: float = typer.Option(1_000_000.0, help="Initial equity per scenario ($)"),
+    output_dir: str = typer.Option(
+        "document/backtests", help="Where to write shock_driven_report.{json,md}"
+    ),
+    min_conviction: float = typer.Option(
+        0.55, help="Minimum conviction threshold for accepting signals"
+    ),
+    name: str = typer.Option(
+        "shock_driven_report", help="Output filename stem"
+    ),
+    only: str = typer.Option(
+        None, help="Comma-separated scenario IDs to restrict to (e.g. 'suez_canal_2021,covid_crash_2020')"
+    ),
+):
+    """AYVID's actual operating mode — selective, event-driven backtest.
+
+    Iterates the named historical shock catalog (20 events, 2018-2025)
+    and runs each one through ``run_scenario_backtest`` so the orchestrator
+    receives proper shock context (beneficiary/victim sets, index bias,
+    causal chain). Only causally-linked tickers trade in each window.
+
+    This is the *honest* sibling of ``walkforward``: instead of trading
+    every ticker every day on technicals, it trades only when the graph
+    layer would have detected a real shock, and only on the tickers the
+    graph would have surfaced.
+
+    Example:
+        ayvid data shock-walkforward --start 2018-01-01 --end 2025-12-31
+    """
+    async def _run():
+        from pathlib import Path
+        from backtesting.walkforward import run_shock_driven_walkforward
+
+        only_list = [s.strip() for s in only.split(",")] if only else None
+
+        console.print(
+            f"\n[bold]Shock-driven walk-forward backtest[/bold]\n"
+            f"  Span: {start} → {end or 'today'}\n"
+            f"  Equity per scenario: ${equity:,.0f}\n"
+            f"  Min conviction: {min_conviction:.2f}\n"
+            f"  Report stem: {name}\n"
+            + (f"  Restricting to: {', '.join(only_list)}\n" if only_list else "")
+        )
+        summary = await run_shock_driven_walkforward(
+            start=start,
+            end=end,
+            initial_equity=equity,
+            min_conviction=min_conviction,
+            output_dir=Path(output_dir),
+            report_filename=name,
+            only=only_list,
+        )
+
+        table = Table(
+            title=f"Shock-Driven Results ({summary.n_valid}/{summary.n_run} valid scenarios)",
+            border_style="green",
+        )
+        table.add_column("Metric", style="bold")
+        table.add_column("Value", justify="right", style="bold cyan")
+        table.add_row("Span", f"{summary.span_start} → {summary.span_end}")
+        table.add_row("Catalog size", f"{summary.catalog_size}")
+        table.add_row("Avg trades / scenario", f"{summary.avg_trades_per_scenario:.1f}")
+        table.add_row("Pooled trades", f"{summary.pooled_total_trades:,}")
+        table.add_row("Avg return / scenario", f"{summary.avg_return_pct:+.2f}%")
+        table.add_row("Median return / scenario", f"{summary.median_return_pct:+.2f}%")
+        table.add_row("% positive scenarios", f"{summary.pct_positive_scenarios:.1f}%")
+        table.add_row("Avg Sharpe", f"{summary.avg_sharpe:.2f}")
+        table.add_row("Median Sharpe", f"{summary.median_sharpe:.2f}")
+        table.add_row("% Sharpe > 1.0", f"{summary.sharpe_above_one_pct:.1f}%")
+        table.add_row("Worst scenario DD", f"{summary.worst_drawdown_pct:.2f}%")
+        table.add_row("Pooled win rate", f"{summary.pooled_win_rate:.1f}%")
+        table.add_row("Compounded return", f"{summary.aggregate_compounded_return_pct:+.2f}%")
+        table.add_row("CAGR (chained)", f"{summary.aggregate_cagr_pct:+.2f}%")
+        console.print(table)
+        console.print(f"\n[dim]→ wrote {output_dir}/{name}.json[/dim]")
+        console.print(f"[dim]→ wrote {output_dir}/{name}.md[/dim]\n")
 
     asyncio.run(_run())
 

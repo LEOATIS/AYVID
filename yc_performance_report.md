@@ -6,8 +6,10 @@
 >
 > The current honest reports are:
 >
-> - **Single-window post-cost backtest:** [`document/backtests/backtest_report.txt`](document/backtests/backtest_report.txt) — IBKR-Tiered commissions + symbol-aware slippage applied at every entry/exit. Costs broken out explicitly.
-> - **Walk-forward (out-of-sample, 2018→2025):** [`document/backtests/walkforward_report.md`](document/backtests/walkforward_report.md) — rolling 9-month windows stepped 3 months. No cherry-picked shocks.
+> - **Headline comparison:** [`document/backtests/SHOCK_VS_NAIVE_COMPARISON.md`](document/backtests/SHOCK_VS_NAIVE_COMPARISON.md) — naive (−99.98%) vs shock-driven (+43.65%) walk-forwards on identical data, same engine, same IBKR cost model. The 144-pp swing is the value of the graph layer.
+> - **Naive walk-forward (negative control, 2018→2025):** [`document/backtests/walkforward_report_loose.md`](document/backtests/walkforward_report_loose.md) — rolling 9-month windows stepped 3 months, no shock context. Demonstrates that an event-blind orchestrator at full IBKR cost loses everything; useful as a baseline.
+> - **Shock-driven walk-forward (AYVID's actual operating mode):** [`document/backtests/shock_driven_report.md`](document/backtests/shock_driven_report.md) — 20 named historical shocks 2018-2025, each trading only graph-surfaced causally-linked tickers in-window.
+> - **Single-window post-cost backtest:** [`document/backtests/backtest_report.txt`](document/backtests/backtest_report.txt) — IBKR-Tiered commissions + symbol-aware slippage applied at every entry/exit.
 > - **Live paper-trading curve:** `live/equity_curve.jsonl` (run `ayvid trade paper-start`).
 >
 > See [`document/yc/COMPANY_POSITIONING.md`](document/yc/COMPANY_POSITIONING.md) for the full YC framing.

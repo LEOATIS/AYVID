@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     IB_PORT: int = 7497
     IB_CLIENT_ID: int = 1
     IB_ACCOUNT: str | None = None
+    # Set true ONLY when monitoring a non-primary sub-account. The primary
+    # account is auto-subscribed on connect; calling reqAccountUpdates again
+    # for the same account hangs forever (IB never resends accountDownloadEnd).
+    IB_SUBSCRIBE_ACCOUNT_UPDATES: bool = False
 
     # --- Risk Limits ---
     MAX_DRAWDOWN_PCT: float = 3.0

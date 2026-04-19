@@ -18,62 +18,136 @@ log = get_logger("broker.conn")
 
 _ib = None
 _connected = False
+_last_client_id_collision = False
 
 
-async def connect() -> Any:
+async def connect(connect_timeout: float = 8.0, max_client_id_retries: int = 10) -> Any:
     """Establish connection to IB Gateway / TWS.
 
-    Returns the IB client instance.
+    Adds two pieces of operational hardening on top of ib_async.connectAsync:
+
+    1. ``connect_timeout`` — bound the whole handshake so we surface a
+       clear error instead of silently hanging when Gateway is in a
+       degraded state.
+    2. Auto-bump the clientId on collision (IB Error 326). After a hard
+       crash IB Gateway can take 30–60s to release the previous clientId,
+       and a stuck reconnect loop is the #1 paper-trading footgun. We
+       retry up to ``max_client_id_retries`` times with clientId+1 each
+       round, so the runner just keeps moving.
     """
-    global _ib, _connected
+    global _ib, _connected, _last_client_id_collision
 
-    try:
-        from ib_async import IB
-        _ib = IB()
-        await _ib.connectAsync(
-            host=settings.IB_HOST,
-            port=settings.IB_PORT,
-            clientId=settings.IB_CLIENT_ID,
-            readonly=False,
-        )
-        _connected = True
+    from ib_async import IB
 
-        _ib.disconnectedEvent += _on_disconnect
-        _ib.errorEvent += _on_error
+    base_client_id = settings.IB_CLIENT_ID
+    last_exc: Exception | None = None
 
-        account = settings.IB_ACCOUNT or ""
-        if account:
-            # MUST use the *Async variant — the sync reqAccountUpdates
-            # internally calls loop.run_until_complete and would raise
-            # "This event loop is already running" from inside our async
-            # caller. Same applies to every other ib_async RPC we call.
-            await _ib.reqAccountUpdatesAsync(True, account)
-
-        log.info(
-            f"Connected to IB Gateway at {settings.IB_HOST}:{settings.IB_PORT} "
-            f"(client={settings.IB_CLIENT_ID}, account={account or 'default'})"
-        )
-
-        # Give IB Gateway a brief moment to push the first account
-        # snapshot into the local cache so the very first poll cycle
-        # has data instead of zeros.
+    for attempt in range(max_client_id_retries):
+        client_id = base_client_id + attempt
+        _last_client_id_collision = False
         try:
-            await asyncio.wait_for(_wait_for_first_account_value(_ib), timeout=3.0)
-        except asyncio.TimeoutError:
-            log.warning("IB account values not populated within 3s — first cycle may report 0")
+            _ib = IB()
+            _ib.errorEvent += _on_error  # attach early so we capture err 326
+            await asyncio.wait_for(
+                _ib.connectAsync(
+                    host=settings.IB_HOST,
+                    port=settings.IB_PORT,
+                    clientId=client_id,
+                    readonly=False,
+                    timeout=connect_timeout,
+                ),
+                timeout=connect_timeout + 2.0,
+            )
+            _connected = True
+            _ib.disconnectedEvent += _on_disconnect
 
-        return _ib
+            account = (settings.IB_ACCOUNT or "").strip()
+            # IB auto-subscribes account updates for the primary account on
+            # connect. Calling reqAccountUpdatesAsync(account) again for
+            # the *same* primary account hangs forever — IB never sends
+            # the second accountDownloadEnd callback. Only call it if the
+            # caller has explicitly opted into a non-primary sub-account.
+            if account and settings.IB_SUBSCRIBE_ACCOUNT_UPDATES:
+                try:
+                    await asyncio.wait_for(
+                        _ib.reqAccountUpdatesAsync(account), timeout=3.0
+                    )
+                except asyncio.TimeoutError:
+                    log.warning(
+                        f"reqAccountUpdatesAsync({account}) timed out — "
+                        f"continuing with auto-subscribed primary account"
+                    )
 
-    except Exception as exc:
-        _connected = False
-        log.error(f"IB connection failed: {exc}")
-        raise IBKRDisconnectError(f"Cannot connect: {exc}") from exc
+            log.info(
+                f"Connected to IB Gateway at {settings.IB_HOST}:{settings.IB_PORT} "
+                f"(clientId={client_id}, account={account or 'default'})"
+            )
+
+            # Wait briefly for ib_async to populate the local account-values
+            # cache so the first poll cycle has real data, not zeros.
+            try:
+                await asyncio.wait_for(_wait_for_first_account_value(_ib), timeout=5.0)
+            except asyncio.TimeoutError:
+                log.warning(
+                    "IB account values not populated within 5s — first cycle "
+                    "may report 0. Check that the account is funded and "
+                    "data subscriptions are active."
+                )
+            return _ib
+
+        except (asyncio.TimeoutError, Exception) as exc:
+            last_exc = exc
+            _safe_disconnect()
+            msg = str(exc).lower()
+            collision = (
+                _last_client_id_collision
+                or "326" in msg
+                or "client id is already in use" in msg
+            )
+            if collision:
+                log.warning(
+                    f"clientId={client_id} already in use; retrying with "
+                    f"clientId={client_id + 1}"
+                )
+                await asyncio.sleep(1.0)
+                continue
+            if isinstance(exc, asyncio.TimeoutError):
+                log.error(
+                    f"IB connectAsync timed out after {connect_timeout}s "
+                    f"(clientId={client_id}). Gateway may be unresponsive — "
+                    f"try `lsof -nP -iTCP:{settings.IB_PORT}` and kill orphans."
+                )
+            else:
+                log.error(f"IB connection failed (clientId={client_id}): {exc}")
+            break
+
+    _connected = False
+    raise IBKRDisconnectError(f"Cannot connect to IB: {last_exc}") from last_exc
+
+
+def _safe_disconnect() -> None:
+    """Best-effort disconnect that never raises."""
+    global _ib
+    try:
+        if _ib is not None and _ib.isConnected():
+            _ib.disconnect()
+    except Exception:
+        pass
 
 
 async def disconnect() -> None:
-    """Cleanly disconnect from IB."""
+    """Cleanly disconnect from IB.
+
+    Detaches the disconnectedEvent handler first so we don't trigger the
+    auto-recovery loop when the disconnect was intentional (Ctrl-C, end
+    of a script, etc.).
+    """
     global _ib, _connected
     if _ib:
+        try:
+            _ib.disconnectedEvent -= _on_disconnect
+        except Exception:
+            pass
         _ib.disconnect()
         _connected = False
         log.info("Disconnected from IB Gateway")
@@ -132,8 +206,12 @@ def _on_disconnect() -> None:
 
 def _on_error(reqId: int, errorCode: int, errorString: str, contract: Any) -> None:
     """Handle IB error events."""
-    if errorCode == 1100:
-        log.error(f"Error 1100: Connectivity lost")
+    global _last_client_id_collision
+    if errorCode == 326:
+        _last_client_id_collision = True
+        log.warning(f"IB Error 326: {errorString}")
+    elif errorCode == 1100:
+        log.error("Error 1100: Connectivity lost")
         _on_disconnect()
     elif errorCode == 1102:
         log.info("Error 1102: Connectivity restored")

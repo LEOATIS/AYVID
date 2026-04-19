@@ -1,17 +1,26 @@
-# AYVID — AI-Native Research + Execution Platform for Funds
+# AYVID — AI-Native Hedge Fund
 
-**Status:** YC S26 candidate · live IB paper trading · post-cost backtests across 2018–2025 · open-source core ([positioning doc](document/yc/COMPANY_POSITIONING.md))
+**Status:** YC S26 candidate · AI-Native Hedge Funds RFS (Charlie Holtz) · live IB paper trading · two backtests published (naive + shock-driven, 2018→2025, post-cost) ([positioning doc](document/yc/COMPANY_POSITIONING.md))
 
-AYVID is the operating system for AI-native funds. It ingests every shock the market hasn't priced yet, traces it through a Neo4j supply-chain graph, runs a 4-agent LangGraph debate, and emits sized, broker-routable orders into Interactive Brokers. The same stack runs our in-house quantitative book and is sold to PMs / family offices / emerging managers as a turnkey research-and-execution layer — eliminating the regulatory friction of launching another hedge fund while still capturing the alpha.
+AYVID is an AI-native hedge fund. Swarms of LLM agents read 10-Ks, earnings calls, SEC filings, and global news in real time, trace the causal consequences through a live Neo4j supply-chain graph, and route sized, risk-limited orders into Interactive Brokers — end-to-end, no humans in the loop on the trade path. The stack runs two tracks in parallel: **index F&O across 20 global markets** and **equities across 50+ dynamically-screened names**.
 
-**Two products, one stack:**
+This is the fund Charlie Holtz described in the RFS. The repo maps 1:1 to his prose.
 
-1. **AYVID Platform** — research + execution infrastructure (graph, agents, signal book, IB execution, kill switch, backtester) licensed to funds.
-2. **AYVID Capital** — proprietary book trading two parallel tracks (index F&O across 20 global markets + equities across 50+ dynamically-screened names) — the proof point for the platform.
+### Headline backtest
 
-**Core thesis:** Supply-chain shocks propagate through hidden dependencies. GPT-4o extracts entities, Neo4j traces N-th order causal paths, and a 4-agent LangGraph pipeline identifies downstream victims before the market prices them in. Every PnL number in this repo is **post-cost** (IBKR-Tiered commissions + symbol-aware slippage) and **walk-forward validated** — not cherry-picked.
+|                                              | Naive (trade everything every day) | **Shock-driven (AYVID's actual operating mode)** |
+|----------------------------------------------|---------------------:|------------------------------:|
+| Compounded return 2018→2025 (post-cost)      | **−99.98%**          | **+43.65%**                   |
+| Trades                                       | 16,168               | 1,343                         |
+| Avg cost drag                                | 7.40%                | 1.93%                         |
+| % Sharpe > 1.0                               | 0.0%                 | 30.0%                         |
+| Best individual outcome                      | −5.78% (90th pct)    | **+98.86% (COVID-19)**        |
 
-> See [`document/yc/COMPANY_POSITIONING.md`](document/yc/COMPANY_POSITIONING.md) for the YC S26 pitch, market sizing, defensibility, and live evidence.
+Same engine, same data, same IBKR-Tiered cost model. The 144-percentage-point swing is the value of the graph layer — when the graph surfaces which tickers are causally linked to a detected shock, the orchestrator wins; when it trades everything blindly on technicals, it pays 7.4% annualized cost drag and loses everything. Full comparison: [`document/backtests/SHOCK_VS_NAIVE_COMPARISON.md`](document/backtests/SHOCK_VS_NAIVE_COMPARISON.md).
+
+**Core thesis:** Supply-chain shocks propagate through hidden N-th order dependencies that the market systematically misprices in the first 30–300 seconds. GPT-4o extracts the event entities, Neo4j traces the causal paths, a 4-agent LangGraph debate adjudicates the direction, and the execution engine routes bracket orders before the consensus catches up. Every PnL number in this repo is **post-cost** (IBKR-Tiered commissions + symbol-aware slippage) and **walk-forward validated** — not cherry-picked.
+
+> See [`document/yc/COMPANY_POSITIONING.md`](document/yc/COMPANY_POSITIONING.md) for the full YC S26 pitch — fund structure (3(c)(1) → RIA at $100M), regulatory path, demo video, and asks.
 
 ## Architecture
 
@@ -203,14 +212,29 @@ python -m cli.app system serve    # FastAPI on port 8000
 
 ### 9. Walk-forward validation (post-cost, 2018→2025)
 
-```bash
-# Rolling 9-month windows stepped 3 months — out-of-sample only.
-python -m cli.app data walkforward --start 2018-01-01 --end 2025-12-31 \
-    --window-months 9 --step-months 3 --equity 1000000
+Two complementary backtests are published, both post-cost on the same cached data:
 
-# Outputs:
-#   document/backtests/walkforward_report.json
-#   document/backtests/walkforward_report.md
+```bash
+# (a) Naive walk-forward — trade everything every day on technicals.
+#     This is the "negative control": shows what the orchestrator does
+#     without graph context. Compounded result: -99.98%. Expected.
+python -m cli.app data walkforward --start 2018-01-01 --end 2025-12-31 \
+    --window-months 9 --step-months 3 --equity 1000000 \
+    --name walkforward_report_loose
+
+# (b) Shock-driven walk-forward — AYVID's actual operating mode.
+#     Iterates the named historical shock catalog (20 events), runs each
+#     one with proper shock context so only causally-linked tickers
+#     trade. Compounded result: +43.65%. Same engine, same data.
+python -m cli.app data shock-walkforward --start 2018-01-01 --end 2025-12-31 \
+    --equity 1000000 --name shock_driven_report
+
+# Outputs (for both):
+#   document/backtests/{name}.json
+#   document/backtests/{name}.md
+#
+# Side-by-side analysis:
+#   document/backtests/SHOCK_VS_NAIVE_COMPARISON.md
 ```
 
 ### 10. Live paper-trading (the YC artifact)

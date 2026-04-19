@@ -47,6 +47,12 @@ def dashboard():
     run_dashboard()
 
 
+# Module-level guard: prevents the no-arg callback from re-entering the
+# REPL when the user types a bare `ayvid` (or empty line) *inside* the
+# shell. Without this we'd recurse infinitely.
+_IN_REPL = False
+
+
 @app.callback()
 def main(ctx: typer.Context):
     """AYVID — AI-Native Quantitative Hedge Fund.
@@ -54,9 +60,22 @@ def main(ctx: typer.Context):
     Two-track institutional trading engine with LangGraph agent swarms,
     Neo4j supply chain topology, and N-th order causal arbitrage.
     """
-    if ctx.invoked_subcommand is None:
+    global _IN_REPL
+    if ctx.invoked_subcommand is not None:
+        return
+    if _IN_REPL:
+        # User typed bare `ayvid` from inside the shell — just reprint the
+        # splash without spawning a nested REPL.
         from cli.widgets.banner import print_banner
         print_banner()
+        return
+
+    _IN_REPL = True
+    try:
+        from cli.repl import run_shell
+        run_shell(app)
+    finally:
+        _IN_REPL = False
 
 
 if __name__ == "__main__":

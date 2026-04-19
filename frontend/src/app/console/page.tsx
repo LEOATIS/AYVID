@@ -1,0 +1,494 @@
+"use client";
+import Link from "next/link";
+import {
+  Activity,
+  ArrowUpRight,
+  BarChart3,
+  Briefcase,
+  CircleDollarSign,
+  ExternalLink,
+  Gauge,
+  LineChart,
+  Network,
+  Radio,
+  Server,
+  Zap,
+} from "lucide-react";
+import { Card } from "@/components/ui/Card";
+import { StatTile } from "@/components/ui/StatTile";
+import { Badge } from "@/components/ui/Badge";
+import { Empty } from "@/components/ui/Empty";
+import { EquityChart } from "@/components/charts/EquityChart";
+import {
+  useBacktests,
+  useEquity,
+  useRunner,
+  useScenarios,
+  useSignals,
+  useSystemStatus,
+} from "@/lib/hooks";
+import {
+  fmtAge,
+  fmtDate,
+  fmtMoneyAdaptive,
+  fmtNumber,
+  fmtPct,
+  fmtTime,
+  fmtUptime,
+} from "@/lib/format";
+import type { BacktestSummary, EquityResponse, ShockScenario, Signal } from "@/lib/api";
+
+export default function Dashboard() {
+  const { data: equity } = useEquity(500) as { data?: EquityResponse };
+  const { data: runner } = useRunner();
+  const { data: signals } = useSignals();
+  const { data: backtests } = useBacktests();
+  const { data: scenarios } = useScenarios();
+  const { data: system } = useSystemStatus();
+
+  const summary = equity?.summary;
+  const meta = equity?.meta;
+  const initial = summary?.initial_equity ?? meta?.initial_equity ?? 0;
+  const final = summary?.final_equity ?? initial;
+  const ret = summary?.total_return_pct ?? 0;
+  const dd = summary?.drawdown_from_peak_pct ?? 0;
+  const positive = ret >= 0;
+
+  const headlineBacktest = (backtests?.reports as BacktestSummary[] | undefined)?.find(
+    (r) => r.kind === "shock_driven",
+  );
+
+  return (
+    <div className="flex flex-col gap-8 fade-up">
+      {/* ── Hero ─────────────────────────────────────────────── */}
+      <section className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={runner?.is_alive ? "pos" : "neutral"}>
+            <span className={`dot ${runner?.is_alive ? "dot-live pulse-live" : "dot-idle"}`} />
+            {runner?.is_alive ? "Paper runner live" : "Paper runner idle"}
+          </Badge>
+          <Badge variant="info">{runner?.mode === "ib_paper" ? "IB Paper · 127.0.0.1:7497" : runner?.mode ?? "—"}</Badge>
+          {meta?.auto_execute === false && <Badge variant="warn">Manual exec</Badge>}
+        </div>
+        <h1
+          className="font-display font-medium leading-[1.05] tracking-tight text-fg"
+          style={{ fontSize: "clamp(1.6rem, 3.4vw, 2.25rem)" }}
+        >
+          Live operations console
+        </h1>
+        <p className="max-w-3xl text-[13.5px] leading-relaxed text-muted sm:text-[14px]">
+          AYVID — <span className="text-fg">Asymmetric Yield Via Intelligent Decisions</span>.
+          Swarms of LLM agents read 10-Ks, earnings calls, and global news in
+          real time, trace causal consequences through Neo4j supply-chain graphs,
+          and route sized, risk-limited orders into Interactive Brokers. This is
+          the live control surface.
+        </p>
+      </section>
+
+      {/* ── KPIs ─────────────────────────────────────────────── */}
+      <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <StatTile
+          label="Equity"
+          value={fmtMoneyAdaptive(final)}
+          delta={fmtPct(ret)}
+          trend={positive ? "up" : "down"}
+          hint={`vs ${fmtMoneyAdaptive(initial)} start`}
+          icon={<CircleDollarSign className="h-4 w-4" />}
+          loading={!summary}
+        />
+        <StatTile
+          label="Drawdown from peak"
+          value={fmtPct(dd)}
+          trend={dd < -0.5 ? "down" : "neutral"}
+          hint={`peak ${fmtMoneyAdaptive(summary?.peak_equity)}`}
+          icon={<Gauge className="h-4 w-4" />}
+          loading={!summary}
+        />
+        <StatTile
+          label="Open positions"
+          value={fmtNumber(summary?.open_positions ?? 0)}
+          hint={`cycle #${summary?.cycle ?? "—"}`}
+          icon={<Briefcase className="h-4 w-4" />}
+          loading={!summary}
+        />
+        <StatTile
+          label="Snapshots collected"
+          value={fmtNumber(runner?.snapshots_total)}
+          hint={runner?.uptime_seconds != null ? `up ${fmtUptime(runner.uptime_seconds)}` : ""}
+          icon={<Activity className="h-4 w-4" />}
+          loading={!runner}
+        />
+      </section>
+
+      {/* ── Main grid ────────────────────────────────────────── */}
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+        <Card
+          className="xl:col-span-2"
+          title="Live equity curve"
+          subtitle={
+            summary
+              ? `${summary.snapshots_count} snapshots · last update ${fmtTime(summary.last_timestamp)}`
+              : "Awaiting first snapshot from paper runner"
+          }
+          right={
+            <span className="inline-flex items-center gap-1.5">
+              <Radio className="h-3.5 w-3.5" />
+              {fmtAge(runner?.last_snapshot_age_seconds)}
+            </span>
+          }
+        >
+          <EquityChart
+            snapshots={equity?.snapshots ?? []}
+            initial={initial || 1_000_000}
+            height={300}
+          />
+        </Card>
+
+        <Card title="System health" subtitle="API · runner · graph">
+          <SystemPanel system={system} runner={runner} />
+        </Card>
+      </section>
+
+      <section className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <Card
+          className="lg:col-span-2"
+          title="Headline backtest"
+          subtitle="Naive vs. shock-driven — same data, same costs"
+          right={
+            <Link
+              href="/console/backtests"
+              className="inline-flex items-center gap-1 text-brand hover:underline"
+            >
+              All reports <ArrowUpRight className="h-3 w-3" />
+            </Link>
+          }
+        >
+          <BacktestSpotlight reports={backtests?.reports} />
+        </Card>
+
+        <Card
+          title="Recent signals"
+          subtitle="From the active signal book"
+          right={
+            <Link
+              href="/console/signals"
+              className="inline-flex items-center gap-1 text-brand hover:underline"
+            >
+              All <ArrowUpRight className="h-3 w-3" />
+            </Link>
+          }
+        >
+          <SignalsList signals={(signals?.signals as Signal[] | undefined)?.slice(0, 5) ?? []} />
+        </Card>
+      </section>
+
+      <section className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <Card
+          className="lg:col-span-2"
+          title="Shock catalog"
+          subtitle="Named historical events the engine trades against"
+          right={
+            <Link
+              href="/console/scenarios"
+              className="inline-flex items-center gap-1 text-brand hover:underline"
+            >
+              All scenarios <ArrowUpRight className="h-3 w-3" />
+            </Link>
+          }
+        >
+          <ScenariosPreview scenarios={scenarios?.scenarios ?? []} />
+        </Card>
+
+        <Card title="Quick links" subtitle="Jump to common workflows">
+          <QuickLinks headline={headlineBacktest} />
+        </Card>
+      </section>
+    </div>
+  );
+}
+
+/* ─── Sub-components ──────────────────────────────────────────────── */
+
+function SystemPanel({
+  system,
+  runner,
+}: {
+  system: ReturnType<typeof useSystemStatus>["data"] | undefined;
+  runner: ReturnType<typeof useRunner>["data"] | undefined;
+}) {
+  const neo4jOk = system?.neo4j?.ok === true;
+  const neo4jStats = system?.neo4j?.stats;
+  const neo4jLine = neo4jOk
+    ? neo4jStats && Object.keys(neo4jStats).length
+      ? Object.entries(neo4jStats)
+          .slice(0, 2)
+          .map(([k, v]) => `${fmtNumber(v as number)} ${k}`)
+          .join(" · ")
+      : "online"
+    : system?.neo4j?.error
+    ? `down · ${system.neo4j.error.slice(0, 40)}`
+    : "—";
+
+  const llmOk = system?.llm?.ok === true;
+  const llmLine = system?.llm?.provider
+    ? `${system.llm.provider}${system.llm.model ? ` · ${system.llm.model}` : ""}`
+    : "—";
+
+  const rows: {
+    label: string;
+    value: React.ReactNode;
+    hint?: string;
+    status?: "ok" | "warn" | "down";
+  }[] = [
+    {
+      label: "API",
+      value: <span className="num text-fg">FastAPI · :8000</span>,
+      status: system?.api === "ok" ? "ok" : "down",
+    },
+    {
+      label: "Paper runner",
+      value: (
+        <span className="num text-fg">
+          {runner?.is_alive ? "live" : "idle"}
+          <span className="text-muted"> · {runner?.mode ?? "—"}</span>
+        </span>
+      ),
+      hint:
+        runner?.last_snapshot_age_seconds != null
+          ? `last tick ${fmtAge(runner.last_snapshot_age_seconds)}`
+          : undefined,
+      status: runner?.is_alive ? "ok" : "warn",
+    },
+    {
+      label: "Neo4j graph",
+      value: <span className="num text-fg">{neo4jLine}</span>,
+      hint: system?.neo4j?.uri ? "Aura · neo4j+s://" : undefined,
+      status: neo4jOk ? "ok" : "down",
+    },
+    {
+      label: "LLM provider",
+      value: <span className="num text-fg">{llmLine}</span>,
+      hint: system?.llm?.has_key ? "key wired" : "no key",
+      status: llmOk ? "ok" : "warn",
+    },
+    {
+      label: "Auto-execute",
+      value: (
+        <span className="num text-fg">
+          {system?.config?.auto_execute ? "ON" : "off"}
+        </span>
+      ),
+      hint: system?.config?.auto_execute ? "live orders" : "human in loop",
+      status: system?.config?.auto_execute ? "warn" : "ok",
+    },
+  ];
+
+  const dotCls = (s?: "ok" | "warn" | "down") =>
+    s === "ok" ? "dot-live" : s === "warn" ? "dot-warn" : "dot-down";
+
+  return (
+    <ul className="space-y-3">
+      {rows.map((r) => (
+        <li key={r.label} className="flex items-center justify-between gap-3">
+          <span className="flex items-center gap-2 text-[13px] text-muted">
+            <span className={`dot ${dotCls(r.status)}`} />
+            {r.label}
+          </span>
+          <span className="text-right text-[13px] leading-tight">
+            {r.value}
+            {r.hint && (
+              <span className="block text-[10px] text-subtle">{r.hint}</span>
+            )}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function BacktestSpotlight({ reports }: { reports?: BacktestSummary[] }) {
+  if (!reports?.length) {
+    return <Empty icon={<BarChart3 className="h-8 w-8" />} title="No backtests yet" />;
+  }
+  const naive = reports.find((r) => r.name === "walkforward_report_loose");
+  const shock = reports.find((r) => r.name === "shock_driven_report");
+  const headline = shock ?? reports[0];
+
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <BacktestCard
+        title="Shock-driven (AYVID's mode)"
+        subtitle="Trade only inside graph-surfaced shock windows"
+        report={shock ?? headline}
+        accent="pos"
+      />
+      <BacktestCard
+        title="Naive walk-forward (control)"
+        subtitle="Trade everything every day on technicals"
+        report={naive}
+        accent="neg"
+      />
+    </div>
+  );
+}
+
+function BacktestCard({
+  title,
+  subtitle,
+  report,
+  accent,
+}: {
+  title: string;
+  subtitle: string;
+  report?: BacktestSummary;
+  accent: "pos" | "neg";
+}) {
+  if (!report) {
+    return (
+      <div className="card-soft p-4">
+        <div className="text-[12px] font-medium text-fg">{title}</div>
+        <div className="mt-1 text-[11px] text-muted">{subtitle}</div>
+        <div className="mt-3 text-[12px] text-subtle">No data</div>
+      </div>
+    );
+  }
+  const ret = report.compounded_return_pct ?? report.total_return_pct ?? 0;
+  const cagr = report.cagr_pct;
+  const cls = ret >= 0 ? "text-pos" : "text-neg";
+  return (
+    <Link
+      href={`/console/backtests/${report.name}`}
+      className="card-soft block p-4 transition hover:border-strong hover:bg-[hsl(var(--bg-sunken))]"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="text-[12px] font-medium text-fg">{title}</div>
+          <div className="mt-0.5 text-[11px] text-muted">{subtitle}</div>
+        </div>
+        <Badge variant={accent}>{report.kind}</Badge>
+      </div>
+      <div className="mt-3 flex items-end gap-3">
+        <div className={`num text-3xl font-semibold tracking-tight ${cls}`}>
+          {fmtPct(ret)}
+        </div>
+        {cagr != null && (
+          <div className="text-[11px] text-muted">
+            <span className="num text-fg">{fmtPct(cagr)}</span> CAGR
+          </div>
+        )}
+      </div>
+      <div className="mt-2 text-[11px] text-muted">
+        {report.span} · {fmtNumber(report.pooled_trades ?? null)} trades
+      </div>
+    </Link>
+  );
+}
+
+function SignalsList({ signals }: { signals: Signal[] }) {
+  if (!signals.length) {
+    return (
+      <Empty
+        icon={<LineChart className="h-8 w-8" />}
+        title="No active signals"
+        hint="The signal book is empty or waiting on the next pipeline cycle."
+      />
+    );
+  }
+  return (
+    <ul className="divide-y divide-[hsl(var(--border))]">
+      {signals.map((s, idx) => {
+        const long = s.direction === "LONG";
+        return (
+          <li key={`${s.ticker}-${idx}`} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="num text-[13px] font-semibold tracking-tight text-fg">
+                  {s.ticker}
+                </span>
+                <Badge variant={long ? "pos" : "neg"}>{s.direction}</Badge>
+                <span className="text-[10px] uppercase tracking-wider text-subtle">
+                  {s.instrument_type}
+                </span>
+              </div>
+              {s.rationale && (
+                <p className="mt-0.5 truncate text-[11px] text-muted">{s.rationale}</p>
+              )}
+            </div>
+            <div className="text-right">
+              <div className="num text-[12px] font-medium text-fg">
+                {(s.conviction * 100).toFixed(0)}%
+              </div>
+              <div className="text-[10px] text-subtle">conviction</div>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function ScenariosPreview({ scenarios }: { scenarios: ShockScenario[] }) {
+  if (!scenarios.length) {
+    return <Empty icon={<Network className="h-8 w-8" />} title="Catalog empty" />;
+  }
+  const top = scenarios.slice(-6).reverse();
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {top.map((s) => (
+        <Link
+          key={s.id}
+          href={`/console/scenarios#${s.id}`}
+          className="card-soft block p-3 transition hover:border-strong hover:bg-[hsl(var(--bg-sunken))]"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-medium text-fg">{s.name}</div>
+              <div className="text-[11px] text-muted">
+                {fmtDate(s.start_date)} · {s.tickers.length} tickers
+              </div>
+            </div>
+            <Badge variant={s.expected_direction === "BEARISH" ? "neg" : s.expected_direction === "BULLISH" ? "pos" : "info"}>
+              {s.expected_direction ?? s.shock_type ?? "shock"}
+            </Badge>
+          </div>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function QuickLinks({ headline }: { headline?: BacktestSummary }) {
+  const links: { href: string; label: string; icon: React.ReactNode; hint?: string }[] = [
+    { href: "/console/live-shock", label: "Live shock demo", icon: <Zap className="h-4 w-4" />, hint: "60-sec demo screen" },
+    { href: "/console/portfolio", label: "Portfolio & positions", icon: <Briefcase className="h-4 w-4" /> },
+    { href: "/console/signals", label: "Signal book", icon: <LineChart className="h-4 w-4" /> },
+    { href: "/console/backtests", label: "Backtest reports", icon: <BarChart3 className="h-4 w-4" />, hint: headline ? `latest: ${fmtPct(headline.compounded_return_pct ?? headline.total_return_pct ?? 0)}` : undefined },
+    { href: "/console/scenarios", label: "Shock catalog", icon: <Network className="h-4 w-4" /> },
+  ];
+  return (
+    <ul className="space-y-1">
+      {links.map((l) => (
+        <li key={l.href}>
+          <Link
+            href={l.href}
+            className="flex items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-[13px] text-fg hover:bg-[hsl(var(--bg-sunken))]"
+          >
+            <span className="inline-flex items-center gap-2">
+              <span className="text-muted">{l.icon}</span>
+              {l.label}
+            </span>
+            <span className="text-[11px] text-muted">
+              {l.hint ?? <ExternalLink className="h-3.5 w-3.5" />}
+            </span>
+          </Link>
+        </li>
+      ))}
+      <li className="px-2.5 pt-2 text-[11px] text-subtle">
+        <span className="inline-flex items-center gap-1.5">
+          <Server className="h-3 w-3" />
+          API · /api/v1/live/*
+        </span>
+      </li>
+    </ul>
+  );
+}
