@@ -958,6 +958,69 @@ def backtest(
     asyncio.run(_run())
 
 
+@data_app.command("walkforward")
+def walkforward(
+    start: str = typer.Option("2018-01-01", help="Walk-forward start date (ISO)"),
+    end: str = typer.Option(None, help="Walk-forward end date (ISO, defaults to today)"),
+    window_months: int = typer.Option(6, help="Length of each rolling window (months)"),
+    step_months: int = typer.Option(3, help="Step between windows (months)"),
+    equity: float = typer.Option(1_000_000.0, help="Initial equity per window ($)"),
+):
+    """Out-of-sample walk-forward across the entire historical span.
+
+    Sweeps a rolling window across the chosen span and runs a fresh
+    backtest on each window. No cherry-picked shocks. Reports the full
+    distribution of returns, Sharpes, drawdowns, and a compounded
+    aggregate equity curve. Writes ``walkforward_report.json`` and
+    ``walkforward_report.md``.
+
+    Example:
+        ayvid data walkforward --start 2018-01-01 --window-months 6 --step-months 3
+    """
+    async def _run():
+        from pathlib import Path
+        from backtesting.walkforward import run_walk_forward
+
+        console.print(
+            f"\n[bold]Walk-forward backtest[/bold]\n"
+            f"  Span: {start} → {end or 'today'}\n"
+            f"  Window: {window_months}m, step: {step_months}m\n"
+            f"  Equity per window: ${equity:,.0f}\n"
+        )
+        summary = await run_walk_forward(
+            start=start,
+            end=end,
+            window_months=window_months,
+            step_months=step_months,
+            initial_equity=equity,
+            output_dir=Path("."),
+        )
+
+        table = Table(
+            title=f"Walk-Forward Results ({summary.n_valid_windows} valid windows)",
+            border_style="green",
+        )
+        table.add_column("Metric", style="bold")
+        table.add_column("Value", justify="right", style="bold cyan")
+        table.add_row("Span", f"{summary.start_date} → {summary.end_date}")
+        table.add_row("Avg return / window", f"{summary.avg_return_pct:+.2f}%")
+        table.add_row("Median return / window", f"{summary.median_return_pct:+.2f}%")
+        table.add_row("% positive windows", f"{summary.pct_positive_windows:.1f}%")
+        table.add_row("Avg Sharpe", f"{summary.avg_sharpe:.2f}")
+        table.add_row("Median Sharpe", f"{summary.median_sharpe:.2f}")
+        table.add_row("% Sharpe > 1.0", f"{summary.sharpe_above_one_pct:.1f}%")
+        table.add_row("Worst window drawdown", f"{summary.worst_drawdown_pct:.2f}%")
+        table.add_row("Pooled trades", f"{summary.pooled_total_trades:,}")
+        table.add_row("Pooled win rate", f"{summary.pooled_win_rate:.1f}%")
+        table.add_row("Compounded return", f"{summary.aggregate_compounded_return_pct:+.2f}%")
+        table.add_row("CAGR (chained)", f"{summary.aggregate_cagr_pct:+.2f}%")
+        console.print(table)
+        console.print("\n[dim]→ wrote walkforward_report.json[/dim]")
+        console.print("[dim]→ wrote walkforward_report.md[/dim]\n")
+
+    asyncio.run(_run())
+
+
 @data_app.command("backtest-fno", deprecated=True)
 def backtest_fno(
     days: int = typer.Option(60, help="Number of days to backtest"),
