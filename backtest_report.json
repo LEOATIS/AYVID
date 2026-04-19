@@ -1,88 +1,88 @@
 {
-  "generated_at": "2026-04-16 20:20 UTC",
+  "generated_at": "2026-04-19 13:38 UTC",
   "engine": "AYVID AI-Native Quantitative Hedge Fund",
   "executive_summary": {
     "period": "2026-01-23 \u2192 2026-04-16",
     "initial_equity": 1000000.0,
-    "final_equity": 1049268.38,
-    "total_return_pct": 4.93,
-    "annualized_return_pct": 34.01,
-    "sharpe_ratio": 1.47,
-    "max_drawdown_pct": 4.13,
-    "win_rate": 54.01,
-    "profit_factor": 1.33,
+    "final_equity": 1039869.35,
+    "total_return_pct": 3.99,
+    "annualized_return_pct": 26.87,
+    "sharpe_ratio": 1.23,
+    "max_drawdown_pct": 4.22,
+    "win_rate": 52.94,
+    "profit_factor": 1.24,
     "total_trades": 187,
     "fno_trades": 37,
     "equity_trades": 150,
     "avg_hold_days": 10.4
   },
   "risk_metrics": {
-    "sortino_ratio": 2.84,
-    "calmar_ratio": 8.24,
+    "sortino_ratio": 2.31,
+    "calmar_ratio": 6.37,
     "max_consecutive_losses": 8,
     "max_consecutive_wins": 14,
     "var_5pct_daily": -1.219,
-    "best_day_pct": 3.33,
-    "worst_day_pct": -1.83
+    "best_day_pct": 3.14,
+    "worst_day_pct": -1.86
   },
   "alpha_decomposition": {
-    "equity_pnl": 38767.12,
-    "equity_return_pct": 3.88,
-    "fno_pnl": 10501.26,
-    "fno_return_pct": 1.05,
-    "total_pnl": 49268.38,
+    "equity_pnl": 34880.68,
+    "equity_return_pct": 3.49,
+    "fno_pnl": 1476.08,
+    "fno_return_pct": 0.15,
+    "total_pnl": 36356.76,
     "graph_intelligence_pnl": 0.0,
     "graph_intelligence_pct": 0.0,
     "graph_intelligence_trades": 0,
-    "equity_contribution_pct": 78.7,
-    "fno_contribution_pct": 21.3
+    "equity_contribution_pct": 95.9,
+    "fno_contribution_pct": 4.1
   },
   "r_distribution": {
     "count": 37,
-    "mean": -0.13,
-    "median": -0.89,
+    "mean": -0.17,
+    "median": -0.93,
     "p25": -1.0,
-    "p75": 0.35,
-    "p90": 1.83,
-    "max": 2.46,
+    "p75": 0.24,
+    "p90": 1.75,
+    "max": 2.33,
     "min": -1.0,
     "pct_positive": 29.7
   },
   "strategy_attribution": [
     {
       "strategy": "deep_value_investment",
-      "pnl": 38767.12,
+      "pnl": 34880.68,
       "trades": 150,
-      "win_rate": 60.0,
+      "win_rate": 58.7,
       "avg_r": null
     },
     {
-      "strategy": "idx_decline_put_sxf",
-      "pnl": 16307.04,
-      "trades": 1,
-      "win_rate": 100.0,
-      "avg_r": 0.25
-    },
-    {
       "strategy": "idx_decline_put_nifty",
-      "pnl": 14597.84,
+      "pnl": 13345.16,
       "trades": 7,
       "win_rate": 57.1,
-      "avg_r": 0.49
+      "avg_r": 0.44
+    },
+    {
+      "strategy": "idx_decline_put_sxf",
+      "pnl": 12749.05,
+      "trades": 1,
+      "win_rate": 100.0,
+      "avg_r": 0.19
     },
     {
       "strategy": "idx_bear_spread_z",
-      "pnl": 9763.39,
+      "pnl": 8715.33,
       "trades": 4,
       "win_rate": 50.0,
-      "avg_r": 0.36
+      "avg_r": 0.31
     },
     {
       "strategy": "idx_bear_spread_smi",
-      "pnl": 6236.93,
+      "pnl": 5356.52,
       "trades": 3,
       "win_rate": 33.3,
-      "avg_r": 0.12
+      "avg_r": 0.07
     },
     {
       "strategy": "idx_decline_put_smi",
@@ -93,10 +93,10 @@
     },
     {
       "strategy": "idx_decline_put_z",
-      "pnl": -1810.48,
+      "pnl": -1885.91,
       "trades": 1,
       "win_rate": 0.0,
-      "avg_r": -0.89
+      "avg_r": -0.93
     },
     {
       "strategy": "idx_decline_put_hsi",
@@ -107,94 +107,94 @@
     },
     {
       "strategy": "idx_decline_put_sensex",
-      "pnl": -2873.5,
+      "pnl": -3230.08,
       "trades": 5,
       "win_rate": 20.0,
-      "avg_r": -0.37
+      "avg_r": -0.4
     },
     {
       "strategy": "idx_decline_put_nq",
-      "pnl": -4110.38,
+      "pnl": -4334.15,
       "trades": 2,
       "win_rate": 0.0,
-      "avg_r": -0.54
+      "avg_r": -0.56
     },
     {
       "strategy": "idx_decline_put_ym",
-      "pnl": -4913.79,
+      "pnl": -5101.85,
       "trades": 2,
       "win_rate": 0.0,
-      "avg_r": -0.58
+      "avg_r": -0.6
     },
     {
       "strategy": "idx_decline_put_es",
-      "pnl": -5502.85,
+      "pnl": -5642.12,
       "trades": 3,
       "win_rate": 0.0,
-      "avg_r": -0.7
+      "avg_r": -0.72
     },
     {
       "strategy": "idx_decline_put_if",
-      "pnl": -6214.79,
+      "pnl": -6738.78,
       "trades": 4,
       "win_rate": 50.0,
-      "avg_r": 0.14
+      "avg_r": 0.07
     },
     {
       "strategy": "idx_bear_spread_fce",
-      "pnl": -7137.98,
+      "pnl": -7916.92,
       "trades": 3,
       "win_rate": 0.0,
-      "avg_r": -0.57
+      "avg_r": -0.62
     }
   ],
   "per_index_fno": [
     {
-      "index": "^GSPTSE",
-      "name": "S&P/TSX 60 Future",
-      "country": "CA",
-      "pnl": 16307.04,
-      "trades": 1,
-      "wins": 1,
-      "losses": 0,
-      "win_rate": 100.0,
-      "roi_pct": 14.8,
-      "cost": 110403.1
-    },
-    {
       "index": "^NSEI",
       "name": "NIFTY 50 Future",
       "country": "IN",
-      "pnl": 14597.84,
+      "pnl": 13345.16,
       "trades": 7,
       "wins": 4,
       "losses": 3,
       "win_rate": 57.1,
-      "roi_pct": 40.7,
+      "roi_pct": 37.2,
       "cost": 35849.69
+    },
+    {
+      "index": "^GSPTSE",
+      "name": "S&P/TSX 60 Future",
+      "country": "CA",
+      "pnl": 12749.05,
+      "trades": 1,
+      "wins": 1,
+      "losses": 0,
+      "win_rate": 100.0,
+      "roi_pct": 11.5,
+      "cost": 110403.1
     },
     {
       "index": "^FTSE",
       "name": "FTSE 100 Future",
       "country": "GB",
-      "pnl": 7952.91,
+      "pnl": 6829.42,
       "trades": 5,
       "wins": 2,
       "losses": 3,
       "win_rate": 40.0,
-      "roi_pct": 26.3,
+      "roi_pct": 22.5,
       "cost": 30287.57
     },
     {
       "index": "^SSMI",
       "name": "Swiss Market Future",
       "country": "CH",
-      "pnl": 4708.96,
+      "pnl": 3828.55,
       "trades": 4,
       "wins": 1,
       "losses": 3,
       "win_rate": 25.0,
-      "roi_pct": 16.3,
+      "roi_pct": 13.3,
       "cost": 28875.04
     },
     {
@@ -213,75 +213,85 @@
       "index": "^BSESN",
       "name": "SENSEX Future",
       "country": "IN",
-      "pnl": -2873.5,
+      "pnl": -3230.08,
       "trades": 5,
       "wins": 1,
       "losses": 4,
       "win_rate": 20.0,
-      "roi_pct": -11.2,
-      "cost": 25611.64
+      "roi_pct": -12.8,
+      "cost": 25221.41
     },
     {
       "index": "^IXIC",
       "name": "E-mini NASDAQ 100",
       "country": "US",
-      "pnl": -4110.38,
+      "pnl": -4334.15,
       "trades": 2,
       "wins": 0,
       "losses": 2,
       "win_rate": 0.0,
-      "roi_pct": -29.5,
+      "roi_pct": -31.2,
       "cost": 13912.32
     },
     {
       "index": "^DJI",
       "name": "E-mini Dow",
       "country": "US",
-      "pnl": -4913.79,
+      "pnl": -5101.85,
       "trades": 2,
       "wins": 0,
       "losses": 2,
       "win_rate": 0.0,
-      "roi_pct": -36.1,
+      "roi_pct": -37.4,
       "cost": 13623.73
     },
     {
       "index": "^GSPC",
       "name": "E-mini S&P 500",
       "country": "US",
-      "pnl": -5502.85,
+      "pnl": -5642.12,
       "trades": 3,
       "wins": 0,
       "losses": 3,
       "win_rate": 0.0,
-      "roi_pct": -41.1,
+      "roi_pct": -42.1,
       "cost": 13401.69
     },
     {
       "index": "000001.SS",
       "name": "CSI 300 Future",
       "country": "CN",
-      "pnl": -6214.79,
+      "pnl": -6738.78,
       "trades": 4,
       "wins": 2,
       "losses": 2,
       "win_rate": 50.0,
-      "roi_pct": -25.2,
+      "roi_pct": -27.3,
       "cost": 24694.89
     },
     {
       "index": "^FCHI",
       "name": "CAC 40 Future",
       "country": "FR",
-      "pnl": -7137.98,
+      "pnl": -7916.92,
       "trades": 3,
       "wins": 0,
       "losses": 3,
       "win_rate": 0.0,
-      "roi_pct": -30.1,
+      "roi_pct": -33.4,
       "cost": 23680.52
     }
   ],
+  "transaction_costs": {
+    "fno_commission_usd": 647.4,
+    "fno_slippage_usd": 11140.65,
+    "fno_costs_usd": 11788.05,
+    "equity_costs_usd": 3512.59,
+    "total_costs_usd": 15300.64,
+    "cost_drag_pct": 1.53,
+    "round_trip_count": 187,
+    "model": "IBKR Tiered (post-cost)"
+  },
   "top_equity_trades": [
     {
       "ticker": "COIN",
@@ -289,8 +299,8 @@
       "entry_price": 141.09,
       "exit_price": 208.93,
       "shares": 199,
-      "pnl": 13500.16,
-      "pnl_pct": 48.1,
+      "pnl": 13463.94,
+      "pnl_pct": 48.0,
       "hold_days": 20,
       "strategy": "[deep_value_investment] Deep value: RSI=18, z=-1.7, 20d=-44.9%, R=2.0"
     },
@@ -300,8 +310,8 @@
       "entry_price": 187.86,
       "exit_price": 146.12,
       "shares": 252,
-      "pnl": -10518.48,
-      "pnl_pct": -22.2,
+      "pnl": -10562.33,
+      "pnl_pct": -22.3,
       "hold_days": 3,
       "strategy": "[deep_value_investment] Deep value: RSI=17, z=-1.9, 20d=-20.6%, R=2.3"
     },
@@ -311,8 +321,8 @@
       "entry_price": 297.6,
       "exit_price": 394.95,
       "shares": 99,
-      "pnl": 9637.65,
-      "pnl_pct": 32.7,
+      "pnl": 9602.67,
+      "pnl_pct": 32.6,
       "hold_days": 21,
       "strategy": "[deep_value_investment] Deep value: RSI=11, z=-1.9, 20d=-10.6%, R=2.3"
     },
@@ -321,9 +331,9 @@
       "direction": "LONG",
       "entry_price": 64.63,
       "exit_price": 77.47,
-      "shares": 415,
-      "pnl": 5328.6,
-      "pnl_pct": 19.9,
+      "shares": 411,
+      "pnl": 5245.16,
+      "pnl_pct": 19.7,
       "hold_days": 19,
       "strategy": "[deep_value_investment] Deep value: RSI=27, z=-2.7, 20d=-11.4%, R=3.2"
     },
@@ -333,10 +343,21 @@
       "entry_price": 130.0,
       "exit_price": 152.64,
       "shares": 216,
-      "pnl": 4890.24,
-      "pnl_pct": 17.4,
+      "pnl": 4858.2,
+      "pnl_pct": 17.3,
       "hold_days": 21,
       "strategy": "[deep_value_investment] Deep value: RSI=12, z=-1.7, 20d=-21.8%, R=2.0"
+    },
+    {
+      "ticker": "AAL",
+      "direction": "LONG",
+      "entry_price": 12.46,
+      "exit_price": 10.71,
+      "shares": 2697,
+      "pnl": -4769.87,
+      "pnl_pct": -14.2,
+      "hold_days": 21,
+      "strategy": "[deep_value_investment] Deep value: RSI=29, z=-1.7, 20d=-9.0%, R=2.1"
     },
     {
       "ticker": "CRWD",
@@ -344,30 +365,19 @@
       "entry_price": 350.33,
       "exit_price": 423.84,
       "shares": 65,
-      "pnl": 4778.15,
-      "pnl_pct": 21.0,
+      "pnl": 4752.29,
+      "pnl_pct": 20.9,
       "hold_days": 21,
       "strategy": "[deep_value_investment] Deep value: RSI=30, z=-2.3, 20d=-22.6%, R=2.7"
-    },
-    {
-      "ticker": "AAL",
-      "direction": "LONG",
-      "entry_price": 12.46,
-      "exit_price": 10.71,
-      "shares": 2708,
-      "pnl": -4739.0,
-      "pnl_pct": -14.0,
-      "hold_days": 21,
-      "strategy": "[deep_value_investment] Deep value: RSI=29, z=-1.7, 20d=-9.0%, R=2.1"
     },
     {
       "ticker": "DDOG",
       "direction": "LONG",
       "entry_price": 108.98,
       "exit_price": 123.32,
-      "shares": 328,
-      "pnl": 4703.52,
-      "pnl_pct": 13.2,
+      "shares": 325,
+      "pnl": 4620.48,
+      "pnl_pct": 13.0,
       "hold_days": 7,
       "strategy": "[deep_value_investment] Deep value: RSI=26, z=-2.1, 20d=-14.5%, R=2.6"
     },
@@ -376,9 +386,9 @@
       "direction": "LONG",
       "entry_price": 190.52,
       "exit_price": 222.14,
-      "shares": 133,
-      "pnl": 4205.46,
-      "pnl_pct": 16.6,
+      "shares": 132,
+      "pnl": 4145.68,
+      "pnl_pct": 16.5,
       "hold_days": 17,
       "strategy": "[deep_value_investment] Deep value: RSI=23, z=-1.6, 20d=-16.3%, R=1.9"
     },
@@ -388,8 +398,8 @@
       "entry_price": 148.0,
       "exit_price": 129.9,
       "shares": 205,
-      "pnl": -3710.5,
-      "pnl_pct": -12.2,
+      "pnl": -3740.42,
+      "pnl_pct": -12.3,
       "hold_days": 8,
       "strategy": "[deep_value_investment] Deep value: RSI=25, z=-1.7, 20d=-10.2%, R=2.0"
     }
@@ -406,10 +416,10 @@
       "exit_date": "2026-03-02",
       "lots": 15,
       "multiplier": 10,
-      "pnl": 16781.47,
-      "pnl_pct": 147.8,
+      "pnl": 15853.8,
+      "pnl_pct": 139.6,
       "risk_1R_usd": 6814.37,
-      "realized_r": 2.46,
+      "realized_r": 2.33,
       "hold_days": 1,
       "exit_reason": "eod_close",
       "conviction": 0.791,
@@ -426,33 +436,6 @@
       "dte_at_entry": 21
     },
     {
-      "underlying": "^GSPTSE",
-      "instrument": "INDEX_PUT",
-      "direction": "LONG",
-      "trade_mode": "INTRADAY",
-      "spot_entry": 31855.0,
-      "spot_exit": 31317.4,
-      "entry_date": "2026-03-19",
-      "exit_date": "2026-03-20",
-      "lots": 1,
-      "multiplier": 200,
-      "pnl": 16307.04,
-      "pnl_pct": 14.8,
-      "risk_1R_usd": 66241.86,
-      "realized_r": 0.25,
-      "hold_days": 1,
-      "exit_reason": "eod_close",
-      "conviction": 0.722,
-      "strategy": "idx_decline_put_sxf",
-      "opt_type": "PUT",
-      "strike": 32173.55,
-      "entry_premium": 745.97,
-      "exit_premium": 856.15,
-      "iv": 0.1567,
-      "expiry_date": "2026-04-17",
-      "dte_at_entry": 29
-    },
-    {
       "underlying": "^SSMI",
       "instrument": "INDEX_SPREAD",
       "direction": "LONG",
@@ -463,10 +446,10 @@
       "exit_date": "2026-03-02",
       "lots": 15,
       "multiplier": 10,
-      "pnl": 15450.29,
-      "pnl_pct": 140.8,
+      "pnl": 14569.88,
+      "pnl_pct": 132.8,
       "risk_1R_usd": 6583.69,
-      "realized_r": 2.35,
+      "realized_r": 2.21,
       "hold_days": 1,
       "exit_reason": "eod_close",
       "conviction": 0.775,
@@ -481,6 +464,33 @@
       "exit_spread_val": 160.14,
       "expiry_date": "2026-03-20",
       "dte_at_entry": 21
+    },
+    {
+      "underlying": "^GSPTSE",
+      "instrument": "INDEX_PUT",
+      "direction": "LONG",
+      "trade_mode": "INTRADAY",
+      "spot_entry": 31855.0,
+      "spot_exit": 31317.4,
+      "entry_date": "2026-03-19",
+      "exit_date": "2026-03-20",
+      "lots": 1,
+      "multiplier": 200,
+      "pnl": 12749.05,
+      "pnl_pct": 11.6,
+      "risk_1R_usd": 66241.86,
+      "realized_r": 0.19,
+      "hold_days": 1,
+      "exit_reason": "eod_close",
+      "conviction": 0.722,
+      "strategy": "idx_decline_put_sxf",
+      "opt_type": "PUT",
+      "strike": 32173.55,
+      "entry_premium": 745.97,
+      "exit_premium": 856.15,
+      "iv": 0.1567,
+      "expiry_date": "2026-04-17",
+      "dte_at_entry": 29
     },
     {
       "underlying": "000001.SS",
@@ -520,10 +530,10 @@
       "exit_date": "2026-03-09",
       "lots": 25,
       "multiplier": 75,
-      "pnl": 7809.32,
-      "pnl_pct": 102.7,
+      "pnl": 7431.51,
+      "pnl_pct": 97.7,
       "risk_1R_usd": 4563.45,
-      "realized_r": 1.71,
+      "realized_r": 1.63,
       "hold_days": 3,
       "exit_reason": "profit_target",
       "conviction": 0.819,
@@ -547,10 +557,10 @@
       "exit_date": "2026-03-13",
       "lots": 21,
       "multiplier": 75,
-      "pnl": 6881.06,
-      "pnl_pct": 100.5,
+      "pnl": 6545.12,
+      "pnl_pct": 95.6,
       "risk_1R_usd": 4108.35,
-      "realized_r": 1.67,
+      "realized_r": 1.59,
       "hold_days": 1,
       "exit_reason": "profit_target",
       "conviction": 0.737,
@@ -574,10 +584,10 @@
       "exit_date": "2026-03-04",
       "lots": 35,
       "multiplier": 15,
-      "pnl": 5792.11,
-      "pnl_pct": 92.8,
+      "pnl": 5472.48,
+      "pnl_pct": 87.7,
       "risk_1R_usd": 3744.96,
-      "realized_r": 1.55,
+      "realized_r": 1.46,
       "hold_days": 1,
       "exit_reason": "profit_target",
       "conviction": 0.737,
@@ -631,10 +641,10 @@
       "exit_date": "2026-03-04",
       "lots": 16,
       "multiplier": 75,
-      "pnl": 4948.92,
-      "pnl_pct": 120.4,
+      "pnl": 4730.56,
+      "pnl_pct": 115.1,
       "risk_1R_usd": 2466.47,
-      "realized_r": 2.01,
+      "realized_r": 1.92,
       "hold_days": 1,
       "exit_reason": "profit_target",
       "conviction": 0.777,
@@ -682,15 +692,15 @@
     },
     {
       "month": "2026-02",
-      "equity": 960466.16
+      "equity": 959566.63
     },
     {
       "month": "2026-03",
-      "equity": 1006492.16
+      "equity": 997422.47
     },
     {
       "month": "2026-04",
-      "equity": 1049268.38
+      "equity": 1039869.35
     }
   ]
 }

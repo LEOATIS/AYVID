@@ -1,0 +1,186 @@
+======================================================================
+  AYVID — AI-Native Quantitative Hedge Fund
+  Institutional Backtest Report
+  Generated: 2026-04-19 13:38 UTC
+======================================================================
+
+──────────────────────────────────────────────────────────────────────
+  EXECUTIVE SUMMARY
+──────────────────────────────────────────────────────────────────────
+  Period:              2026-01-23 → 2026-04-16
+  Initial Equity:      $1,000,000
+  Final Equity:        $1,039,869.35
+  Total Return:        +3.99%
+  Annualized Return:   +26.87%
+  Sharpe Ratio:        1.23
+  Max Drawdown:        4.2%
+  Win Rate:            52.9%
+  Profit Factor:       1.24
+  Total Trades:        187 (F&O: 37, Equity: 150)
+  Avg Hold Days:       10.4
+
+──────────────────────────────────────────────────────────────────────
+  RISK METRICS
+──────────────────────────────────────────────────────────────────────
+  Sortino Ratio:       2.31
+  Calmar Ratio:        6.37
+  Max Consec. Losses:  8
+  Max Consec. Wins:    14
+  VaR (5% daily):      -1.219%
+  Best Day:            +3.14%
+  Worst Day:           -1.86%
+
+──────────────────────────────────────────────────────────────────────
+  TRANSACTION COSTS (post-cost PnL)
+──────────────────────────────────────────────────────────────────────
+  Model:               IBKR Tiered (post-cost)
+  F&O Commission:      $647
+  F&O Slippage:        $11,141
+  F&O Total:           $11,788
+  Equity Total:        $3,513
+  All-In Costs:        $15,301
+  Cost Drag:           1.530% of initial equity
+  Round-trips:         187
+
+──────────────────────────────────────────────────────────────────────
+  ALPHA DECOMPOSITION
+──────────────────────────────────────────────────────────────────────
+  Equity PnL:          $+34,881  (+3.49%)
+  F&O PnL:             $+1,476  (+0.15%)
+  Total PnL:           $+36,357
+  Contribution:        Equity 96% / F&O 4%
+  Graph Intelligence:  $+0  (+0.00%)
+
+──────────────────────────────────────────────────────────────────────
+  R-MULTIPLE DISTRIBUTION
+──────────────────────────────────────────────────────────────────────
+  Trades:              37
+  Mean R:              -0.17
+  Median R:            -0.93
+  25th / 75th:         -1.00 / 0.24
+  % Positive R:        29.7%
+
+──────────────────────────────────────────────────────────────────────
+  STRATEGY ATTRIBUTION
+──────────────────────────────────────────────────────────────────────
+  Strategy                                     PnL  Trades    WR%
+  ─────────────────────────────────── ──────────── ─────── ──────
+  deep_value_investment               $   +34,881     150    59%
+  idx_decline_put_nifty               $   +13,345       7    57%
+  idx_decline_put_sxf                 $   +12,749       1   100%
+  idx_bear_spread_z                   $    +8,715       4    50%
+  idx_bear_spread_smi                 $    +5,357       3    33%
+  idx_decline_put_smi                 $    -1,528       1     0%
+  idx_decline_put_z                   $    -1,886       1     0%
+  idx_decline_put_hsi                 $    -2,312       1     0%
+  idx_decline_put_sensex              $    -3,230       5    20%
+  idx_decline_put_nq                  $    -4,334       2     0%
+  idx_decline_put_ym                  $    -5,102       2     0%
+  idx_decline_put_es                  $    -5,642       3     0%
+  idx_decline_put_if                  $    -6,739       4    50%
+  idx_bear_spread_fce                 $    -7,917       3     0%
+
+──────────────────────────────────────────────────────────────────────
+  PER-INDEX F&O SUMMARY
+──────────────────────────────────────────────────────────────────────
+  Index        Name                            PnL     W/L    WR%
+  ──────────── ────────────────────── ──────────── ─────── ──────
+  ^NSEI        NIFTY 50 Future        $   +13,345     4/3    57%
+  ^GSPTSE      S&P/TSX 60 Future      $   +12,749     1/0   100%
+  ^FTSE        FTSE 100 Future        $    +6,829     2/3    40%
+  ^SSMI        Swiss Market Future    $    +3,829     1/3    25%
+  ^HSI         Hang Seng Future       $    -2,312     0/1     0%
+  ^BSESN       SENSEX Future          $    -3,230     1/4    20%
+  ^IXIC        E-mini NASDAQ 100      $    -4,334     0/2     0%
+  ^DJI         E-mini Dow             $    -5,102     0/2     0%
+  ^GSPC        E-mini S&P 500         $    -5,642     0/3     0%
+  000001.SS    CSI 300 Future         $    -6,739     2/2    50%
+  ^FCHI        CAC 40 Future          $    -7,917     0/3     0%
+
+──────────────────────────────────────────────────────────────────────
+  TOP F&O TRADES (by |PnL|)
+──────────────────────────────────────────────────────────────────────
+  ^FTSE      INDEX_SPREAD   LONG   [INTRADAY]
+    Spot: 10,910.60 → 10,780.10 | 10,932/10,785 PE Spread | Width: 148
+    Debit: 59.62 (Long: 139.09, Short: 79.47) → Exit: 147.71 | Lots: 15
+    PnL: $+15,854 (+139.6%) | R=+2.33 | 1R=$6,814 | eod_close | conv=0.79
+
+  ^SSMI      INDEX_SPREAD   LONG   [INTRADAY]
+    Spot: 14,014.30 → 13,834.10 | 14,042/13,882 PE Spread | Width: 160
+    Debit: 66.50 (Long: 178.65, Short: 112.15) → Exit: 160.14 | Lots: 15
+    PnL: $+14,570 (+132.8%) | R=+2.21 | 1R=$6,584 | eod_close | conv=0.78
+
+  ^GSPTSE    INDEX_PUT      LONG   [INTRADAY]
+    Spot: 31,855.00 → 31,317.40 | Strike: 32,174 PE | IV: 15.7% | DTE: 29
+    Premium: 745.97 → 856.15 | Lots: 1 | Expiry: 2026-04-17
+    PnL: $+12,749 (+11.6%) | R=+0.19 | 1R=$66,242 | eod_close | conv=0.72
+
+  000001.SS  INDEX_PUT      LONG   [INTRADAY]
+    Spot: 4,015.75 → 4,067.74 | Strike: 4,056 PE | IV: 12.9% | DTE: 18
+    Premium: 69.12 → 0.00 | Lots: 5 | Expiry: 2026-02-20
+    PnL: $-8,709 (-60.0%) | R=-1.00 | 1R=$8,709 | eod_close | conv=0.73
+
+  ^NSEI      INDEX_PUT      LONG   [BTST]
+    Spot: 24,480.50 → 24,028.05 | Strike: 24,725 PE | IV: 12.6% | DTE: 8
+    Premium: 338.03 → 685.11 | Lots: 25 | Expiry: 2026-03-12
+    PnL: $+7,432 (+97.7%) | R=+1.63 | 1R=$4,563 | profit_target | conv=0.82
+
+  ^NSEI      INDEX_PUT      LONG   [INTRADAY]
+    Spot: 23,639.15 → 23,151.10 | Strike: 23,876 PE | IV: 15.7% | DTE: 7
+    Premium: 362.29 → 726.36 | Lots: 21 | Expiry: 2026-03-19
+    PnL: $+6,545 (+95.6%) | R=+1.59 | 1R=$4,108 | profit_target | conv=0.74
+
+  ^BSESN     INDEX_PUT      LONG   [INTRADAY]
+    Spot: 80,238.85 → 79,116.19 | Strike: 81,041 PE | IV: 15.1% | DTE: 3
+    Premium: 990.73 → 1,910.11 | Lots: 35 | Expiry: 2026-03-06
+    PnL: $+5,472 (+87.7%) | R=+1.46 | 1R=$3,745 | profit_target | conv=0.74
+
+  ^SSMI      INDEX_SPREAD   LONG   [INTRADAY]
+    Spot: 13,600.67 → 13,656.00 | 13,628/13,405 PE Spread | Width: 223
+    Debit: 80.00 (Long: 112.74, Short: 32.74) → Exit: 0.00 | Lots: 10
+    PnL: $-5,280 (-60.0%) | R=-1.00 | 1R=$5,280 | eod_close | conv=0.70
+
+  ^NSEI      INDEX_PUT      LONG   [INTRADAY]
+    Spot: 24,865.70 → 24,480.50 | Strike: 25,114 PE | IV: 15.0% | DTE: 2
+    Premium: 285.47 → 629.15 | Lots: 16 | Expiry: 2026-03-05
+    PnL: $+4,731 (+115.1%) | R=+1.92 | 1R=$2,466 | profit_target | conv=0.78
+
+  ^DJI       INDEX_PUT      LONG   [INTRADAY]
+    Spot: 47,501.55 → 47,740.80 | Strike: 47,977 PE | IV: 15.2% | DTE: 7
+    Premium: 712.08 → 235.77 | Lots: 2 | Expiry: 2026-03-13
+    PnL: $-4,272 (-60.0%) | R=-1.00 | 1R=$4,272 | eod_close | conv=0.70
+
+──────────────────────────────────────────────────────────────────────
+  TOP EQUITY TRADES (by |PnL|)
+──────────────────────────────────────────────────────────────────────
+  COIN       LONG   | Entry: $141.09 → $208.93 | Shares: 199
+    PnL: $+13,464 (+48.0%) | 20d | [deep_value_investment] Deep value: RSI=18, z=-1.7
+
+  COIN       LONG   | Entry: $187.86 → $146.12 | Shares: 252
+    PnL: $-10,562 (-22.3%) | 3d | [deep_value_investment] Deep value: RSI=17, z=-1.9
+
+  AMAT       LONG   | Entry: $297.60 → $394.95 | Shares: 99
+    PnL: $+9,603 (+32.6%) | 21d | [deep_value_investment] Deep value: RSI=11, z=-1.9
+
+  ARKK       LONG   | Entry: $64.63 → $77.47 | Shares: 411
+    PnL: $+5,245 (+19.7%) | 19d | [deep_value_investment] Deep value: RSI=27, z=-2.7
+
+  APH        LONG   | Entry: $130.00 → $152.64 | Shares: 216
+    PnL: $+4,858 (+17.3%) | 21d | [deep_value_investment] Deep value: RSI=12, z=-1.7
+
+  AAL        LONG   | Entry: $12.46 → $10.71 | Shares: 2697
+    PnL: $-4,770 (-14.2%) | 21d | [deep_value_investment] Deep value: RSI=29, z=-1.7
+
+  CRWD       LONG   | Entry: $350.33 → $423.84 | Shares: 65
+    PnL: $+4,752 (+20.9%) | 21d | [deep_value_investment] Deep value: RSI=30, z=-2.3
+
+  DDOG       LONG   | Entry: $108.98 → $123.32 | Shares: 325
+    PnL: $+4,620 (+13.0%) | 7d | [deep_value_investment] Deep value: RSI=26, z=-2.1
+
+  BA         LONG   | Entry: $190.52 → $222.14 | Shares: 132
+    PnL: $+4,146 (+16.5%) | 17d | [deep_value_investment] Deep value: RSI=23, z=-1.6
+
+  9988.HK    LONG   | Entry: $148.00 → $129.90 | Shares: 205
+    PnL: $-3,740 (-12.3%) | 8d | [deep_value_investment] Deep value: RSI=25, z=-1.7
+
+======================================================================

@@ -1,5 +1,17 @@
 # AYVID Performance Report
 
+> ⚠️ **DEPRECATED — kept for diff/honesty trail.**
+> This report is the v0 cherry-picked-shock backtest with no transaction costs.
+> A YC partner with a quant background would (correctly) discount these numbers.
+>
+> The current honest reports are:
+>
+> - **Single-window post-cost backtest:** [`document/backtests/backtest_report.txt`](document/backtests/backtest_report.txt) — IBKR-Tiered commissions + symbol-aware slippage applied at every entry/exit. Costs broken out explicitly.
+> - **Walk-forward (out-of-sample, 2018→2025):** [`document/backtests/walkforward_report.md`](document/backtests/walkforward_report.md) — rolling 9-month windows stepped 3 months. No cherry-picked shocks.
+> - **Live paper-trading curve:** `live/equity_curve.jsonl` (run `ayvid trade paper-start`).
+>
+> See [`document/yc/COMPANY_POSITIONING.md`](document/yc/COMPANY_POSITIONING.md) for the full YC framing.
+
 *Generated: 2026-04-16 20:14 UTC*
 
 ## Executive Summary
