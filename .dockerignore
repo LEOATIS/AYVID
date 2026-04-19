@@ -1,4 +1,3 @@
-# .dockerignore
 __pycache__/
 *.pyc
 *.pyo
@@ -10,5 +9,26 @@ venv/
 node_modules/
 .next/
 .git/
+.gitignore
 .env
+.env.*
 .cursorrules
+.cursor/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Heavy local artifacts that shouldn't ship in the image
+document/backtests/
+document/data_cache/
+live/
+*.log
+*.png
+*.svg
+
+# Frontend (built separately by frontend/Dockerfile)
+frontend/
+
+# Local infra notes
+infra/
+LEOATIS_PROFILE_README.md
