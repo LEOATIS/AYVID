@@ -1,53 +1,331 @@
 @import "tailwindcss";
 
+/* ─────────────────────────────────────────────────────────────────
+   AYVID design system
+   Two surfaces:
+     · public marketing site → warm paper, deep cobalt, editorial serif
+     · operations console     → denser, neutral, mono-friendly
+   Shared tokens via CSS custom properties so Tailwind v4 utilities
+   stay portable across both contexts.
+   ───────────────────────────────────────────────────────────────── */
+
 @layer base {
   :root {
+    color-scheme: light;
+
+    /* Surfaces — warm paper / institutional cream */
+    --bg:          40 30% 98%;
+    --bg-elev:     40 20% 96%;
+    --bg-sunken:   38 18% 93%;
+    --panel:       0  0% 100%;
+    --panel-2:     40 20% 97%;
+
+    /* Text — near-black ink with a cool cast */
+    --fg:          222 16% 9%;
+    --fg-muted:    220 9%  38%;
+    --fg-subtle:   220 8%  56%;
+
+    /* Hairlines */
+    --border:        38 18% 88%;
+    --border-strong: 38 14% 78%;
+
+    /* Brand — deep cobalt; institutional, never bright */
+    --brand:    218 78% 28%;
+    --brand-2:  218 70% 42%;
+    --brand-fg: 0   0%  100%;
+
+    /* Semantic — used only inside the console */
+    --pos:  152 64% 32%;
+    --neg:  4   72% 44%;
+    --warn: 32  92% 42%;
+    --info: 199 70% 38%;
+
+    --ring:   218 78% 36%;
+    --shadow: 220 26% 14%;
+
+    /* Type scale */
+    --display-tracking: -0.024em;
+    --display-leading:  1.05;
+    --heading-tracking: -0.018em;
+  }
+
+  /* The console always paints its own surface using its own --bg/--fg
+     tokens.  This is critical: without this, the body's light cream
+     background bleeds through the (transparent) .console-shell wrapper
+     in dark mode, leaving white text floating on a cream page. */
+  .console-shell {
+    background: hsl(var(--bg));
+    color: hsl(var(--fg));
+    min-height: 100vh;
+  }
+
+  /* Extend the console surface all the way out to <html>/<body> so the
+     scrollbar gutter and any over-scroll bounce match the console
+     palette instead of leaking the light marketing background. */
+  html:has(.console-shell),
+  body:has(.console-shell) {
+    background: hsl(40 30% 98%);
+  }
+  html.dark:has(.console-shell),
+  html.dark body:has(.console-shell) {
+    background: hsl(222 47% 5%);
+    color: hsl(210 40% 98%);
+  }
+
+  /* Dark surface tokens — only take effect inside the operations console.
+     The user-level dark mode toggle adds .dark to <html>; we scope the
+     dark palette to the .console-shell subtree so the public marketing
+     site is always light, regardless of OS or stored preference. */
+  html.dark .console-shell,
+  .console-shell.dark,
+  .console-shell[data-theme="dark"] {
     color-scheme: dark;
+
+    --bg:        222 47% 5%;
+    --bg-elev:   222 33% 8%;
+    --bg-sunken: 222 47% 4%;
+    --panel:     222 30% 9%;
+    --panel-2:   222 28% 11%;
+
+    --fg:        210 40% 98%;
+    --fg-muted:  215 18% 65%;
+    --fg-subtle: 215 14% 47%;
+
+    --border:        217 19% 18%;
+    --border-strong: 217 19% 24%;
+
+    --brand:   217 91% 62%;
+    --brand-2: 217 91% 70%;
+    --brand-fg: 217 91% 12%;
+
+    --pos:  152 76% 50%;
+    --neg:  0   84% 60%;
+    --warn: 38  92% 56%;
+    --info: 199 89% 56%;
+
+    --ring:   217 91% 65%;
+    --shadow: 0   0%  0%;
   }
 
-  html,
-  body {
-    background: #050507;
-    color: #e8e8ee;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Display",
+  html, body {
+    background: hsl(var(--bg));
+    color: hsl(var(--fg));
+    font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI",
       "Inter", system-ui, sans-serif;
-    font-feature-settings: "ss01", "cv11";
+    font-feature-settings: "ss01", "cv11", "calt";
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+
+  ::selection { background: hsl(var(--brand) / 0.18); color: hsl(var(--fg)); }
+
+  /* Subtle scrollbars */
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-thumb {
+    background: hsl(var(--border-strong));
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover { background-color: hsl(var(--fg-subtle)); }
+  *::-webkit-scrollbar-track { background: transparent; }
 }
 
+/* ─────────────────────────────────────────────────────────────────
+   Typography utilities — editorial moments
+   ───────────────────────────────────────────────────────────────── */
 @layer utilities {
-  .grid-bg {
+  .font-display {
+    font-family: var(--font-display), "Fraunces", "Source Serif 4",
+      Georgia, "Times New Roman", serif;
+    font-feature-settings: "ss01", "ss02", "ss03", "ss04", "kern";
+    font-optical-sizing: auto;
+    letter-spacing: var(--display-tracking);
+    line-height: var(--display-leading);
+  }
+  .font-mono { font-family: var(--font-mono), ui-monospace, "SF Mono", Menlo, monospace; }
+
+  .display-1 { font-size: clamp(2.5rem, 5.6vw, 5rem);   font-weight: 400; }
+  .display-2 { font-size: clamp(2rem,   3.6vw, 3.25rem); font-weight: 400; letter-spacing: var(--heading-tracking); }
+  .display-3 { font-size: clamp(1.5rem, 2.4vw, 2.125rem); font-weight: 500; letter-spacing: var(--heading-tracking); }
+
+  .eyebrow {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-weight: 600;
+    color: hsl(var(--fg-muted));
+  }
+
+  .lede {
+    font-size: clamp(1.05rem, 1.25vw, 1.225rem);
+    line-height: 1.65;
+    color: hsl(var(--fg-muted));
+    max-width: 64ch;
+  }
+
+  .prose-body {
+    font-size: 16.5px;
+    line-height: 1.72;
+    color: hsl(var(--fg-muted));
+  }
+  .prose-body p + p { margin-top: 1.05em; }
+  .prose-body strong { color: hsl(var(--fg)); font-weight: 600; }
+
+  .pull-quote {
+    font-family: var(--font-display), serif;
+    font-size: clamp(1.5rem, 2.4vw, 2.125rem);
+    line-height: 1.3;
+    letter-spacing: -0.012em;
+    color: hsl(var(--fg));
+    font-weight: 400;
+  }
+
+  /* Color */
+  .text-fg       { color: hsl(var(--fg)); }
+  .text-muted    { color: hsl(var(--fg-muted)); }
+  .text-subtle   { color: hsl(var(--fg-subtle)); }
+  .text-brand    { color: hsl(var(--brand)); }
+  .text-pos      { color: hsl(var(--pos)); }
+  .text-neg      { color: hsl(var(--neg)); }
+  .text-warn     { color: hsl(var(--warn)); }
+  .text-info     { color: hsl(var(--info)); }
+
+  .bg-app        { background: hsl(var(--bg)); }
+  .bg-elev       { background: hsl(var(--bg-elev)); }
+  .bg-panel      { background: hsl(var(--panel)); }
+  .bg-panel-2    { background: hsl(var(--panel-2)); }
+  .bg-sunken     { background: hsl(var(--bg-sunken)); }
+  .bg-brand      { background: hsl(var(--brand)); color: hsl(var(--brand-fg)); }
+  .bg-ink        { background: hsl(var(--fg)); color: hsl(var(--bg)); }
+
+  .border-app    { border-color: hsl(var(--border)); }
+  .border-strong { border-color: hsl(var(--border-strong)); }
+
+  /* Hairline rules used through the marketing site */
+  .rule-h { height: 1px; background: hsl(var(--border)); }
+  .rule-v { width: 1px;  background: hsl(var(--border)); }
+
+  /* Tabular numerals */
+  .num {
+    font-family: var(--font-mono), ui-monospace, "SF Mono", Menlo, monospace;
+    font-feature-settings: "tnum", "zero", "ss01";
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Console card surfaces (kept) */
+  .card {
+    background: hsl(var(--panel));
+    border: 1px solid hsl(var(--border));
+    border-radius: 14px;
+    box-shadow: 0 1px 0 hsl(var(--border) / 0.4),
+                0 12px 24px -16px hsl(var(--shadow) / 0.18);
+  }
+  .card-soft {
+    background: hsl(var(--panel-2));
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+  }
+
+  /* Marketing surfaces — flat, almost no shadow */
+  .surface {
+    background: hsl(var(--panel));
+    border: 1px solid hsl(var(--border));
+    border-radius: 0;
+  }
+  .surface-soft {
+    background: hsl(var(--panel-2));
+    border: 1px solid hsl(var(--border));
+  }
+
+  /* Buttons (institutional) */
+  .btn-ghost {
+    display: inline-flex; align-items: center; gap: .5rem;
+    border: 1px solid hsl(var(--border-strong));
+    color: hsl(var(--fg));
+    padding: .55rem 1rem;
+    font-size: 13px; font-weight: 500;
+    letter-spacing: .005em;
+    transition: all .18s ease;
+  }
+  .btn-ghost:hover { border-color: hsl(var(--fg)); }
+
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: .55rem;
+    background: hsl(var(--fg));
+    color: hsl(var(--bg));
+    padding: .65rem 1.1rem;
+    font-size: 13px; font-weight: 500;
+    letter-spacing: .005em;
+    transition: all .18s ease;
+  }
+  .btn-primary:hover { background: hsl(var(--brand)); }
+
+  .link-arrow {
+    display: inline-flex; align-items: baseline; gap: .35rem;
+    color: hsl(var(--fg));
+    border-bottom: 1px solid hsl(var(--border-strong));
+    padding-bottom: 1px;
+    font-size: 13px; font-weight: 500;
+    transition: all .18s ease;
+  }
+  .link-arrow:hover { border-color: hsl(var(--fg)); color: hsl(var(--brand)); }
+
+  /* Page rhythm */
+  .container-page  { max-width: 1240px; margin-inline: auto; padding-inline: clamp(1.25rem, 4vw, 2.5rem); }
+  .container-prose { max-width: 760px;  margin-inline: auto; padding-inline: clamp(1.25rem, 4vw, 2.5rem); }
+  .section-y       { padding-block: clamp(4.5rem, 9vw, 8rem); }
+  .section-y-sm    { padding-block: clamp(3rem, 6vw, 5rem); }
+
+  /* Status dots (console) */
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 9999px; }
+  .dot-live { background: hsl(var(--pos)); box-shadow: 0 0 0 4px hsl(var(--pos) / 0.18); }
+  .dot-warn { background: hsl(var(--warn)); box-shadow: 0 0 0 4px hsl(var(--warn) / 0.18); }
+  .dot-down { background: hsl(var(--neg)); box-shadow: 0 0 0 4px hsl(var(--neg) / 0.18); }
+  .dot-idle { background: hsl(var(--fg-subtle)); box-shadow: 0 0 0 4px hsl(var(--fg-subtle) / 0.15); }
+
+  .pulse-live { animation: pulse-live 1.6s ease-in-out infinite; }
+  .glow-cyan  { box-shadow: 0 0 18px hsl(var(--info) / 0.45); }
+  .glow-amber { box-shadow: 0 0 18px hsl(var(--warn) / 0.55); }
+  .glow-red   { box-shadow: 0 0 18px hsl(var(--neg) / 0.55); }
+  .pulse-ring { animation: pulse-ring 2s ease-out infinite; }
+  .ink-divider { background: linear-gradient(90deg, transparent, hsl(var(--border-strong)), transparent); height: 1px; }
+
+  .skeleton {
+    background: linear-gradient(90deg,
+      hsl(var(--border) / 0.4) 0%,
+      hsl(var(--border) / 0.8) 50%,
+      hsl(var(--border) / 0.4) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+    border-radius: 6px;
+  }
+
+  /* Subtle grid overlay (used very sparingly on hero) */
+  .marketing-grid {
     background-image:
-      radial-gradient(ellipse at top, rgba(10, 132, 255, 0.10), transparent 60%),
-      linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-    background-size: auto, 32px 32px, 32px 32px;
-  }
-
-  .glow-cyan {
-    box-shadow: 0 0 18px rgba(10, 132, 255, 0.45);
-  }
-
-  .glow-amber {
-    box-shadow: 0 0 18px rgba(255, 159, 10, 0.55);
-  }
-
-  .glow-red {
-    box-shadow: 0 0 18px rgba(255, 69, 58, 0.55);
-  }
-
-  .pulse-ring {
-    animation: pulse-ring 2s ease-out infinite;
+      linear-gradient(hsl(var(--border) / 0.55) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--border) / 0.55) 1px, transparent 1px);
+    background-size: 64px 64px;
+    background-position: -1px -1px;
   }
 }
 
-@keyframes pulse-ring {
-  0% { transform: scale(0.85); opacity: 0.85; }
-  80% { transform: scale(2.2); opacity: 0; }
-  100% { transform: scale(2.2); opacity: 0; }
-}
+@keyframes pulse-live { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+@keyframes pulse-ring { 0% { transform: scale(0.85); opacity: 0.85; } 80% { transform: scale(2.2); opacity: 0; } 100% { transform: scale(2.2); opacity: 0; } }
+@keyframes flow-dash  { to { stroke-dashoffset: -24; } }
+@keyframes shimmer    { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@keyframes fade-up    { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fade-in    { from { opacity: 0; } to { opacity: 1; } }
+.fade-up { animation: fade-up 480ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.fade-in { animation: fade-in 600ms ease both; }
 
-@keyframes flow-dash {
-  to { stroke-dashoffset: -24; }
-}
+/* Slow editorial reveal stagger */
+.reveal > * { opacity: 0; animation: fade-up 700ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+.reveal > *:nth-child(1) { animation-delay: .05s; }
+.reveal > *:nth-child(2) { animation-delay: .18s; }
+.reveal > *:nth-child(3) { animation-delay: .30s; }
+.reveal > *:nth-child(4) { animation-delay: .42s; }
+.reveal > *:nth-child(5) { animation-delay: .54s; }
