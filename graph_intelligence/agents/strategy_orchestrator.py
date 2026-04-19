@@ -61,6 +61,26 @@ INDEX_FUTURES_SPECS: dict[str, dict] = {
 TRADEABLE_INDEX_SYMBOLS = list(INDEX_FUTURES_SPECS.keys())
 
 
+# Indices with wider bid/ask spreads, fewer market-makers, or restricted
+# routing. We require materially higher conviction to enter on these venues
+# because the realized fill quality cannot match the simulated mid-price.
+ILLIQUID_INDEX_SYMBOLS: set[str] = {
+    "^HSI",
+    "000001.SS",
+    "^TWII",
+    "^STI",
+    "^AXJO",
+    "^BVSP",
+}
+
+
+def _illiquid_factor_floor(symbol: str, base_floor: float) -> float:
+    """Bump the factor-score floor for known-illiquid index venues."""
+    if symbol in ILLIQUID_INDEX_SYMBOLS:
+        return max(base_floor + 0.20, 0.50)
+    return base_floor
+
+
 @dataclass
 class MarketContext:
     """All market data the orchestrator needs to make decisions.
@@ -467,7 +487,12 @@ def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
         if ctx.shock_bias == "NEUTRAL":
             return _skip(ctx, f"Shock active but {future_name} NEUTRAL — no edge")
 
-        if ctx.shock_bias == "BEARISH" and factor_score >= 0.30:
+        # Higher factor floor for illiquid venues (HSI, CSI, TAIEX, STI, ASX, Bovespa).
+        # Empirical: pre-fix HSI shock-directed puts had 16% win rate over 32 trades —
+        # the simulated edge did not survive realised slippage on Hang Seng options.
+        shock_factor_floor = _illiquid_factor_floor(ctx.ticker, 0.30)
+
+        if ctx.shock_bias == "BEARISH" and factor_score >= shock_factor_floor:
             spread_pts = max(atr * 1.5, price * 0.008)
             rv_pct = max(ctx.realized_vol, 0.05)
             debit_ratio = min(0.55, 0.20 + rv_pct * 1.5)
@@ -490,7 +515,7 @@ def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
                 graph_intel=True,
             )
 
-        if ctx.shock_bias == "BULLISH" and factor_score >= 0.30:
+        if ctx.shock_bias == "BULLISH" and factor_score >= shock_factor_floor:
             spread_pts = max(atr * 1.5, price * 0.008)
             rv_pct = max(ctx.realized_vol, 0.05)
             debit_ratio = min(0.55, 0.20 + rv_pct * 1.5)
@@ -758,8 +783,16 @@ def _equity_orchestrate_core(ctx: MarketContext) -> TradeDecision:
         return _skip(ctx, "Crisis regime — no new equity positions")
 
     # Supply chain shock → equity position (AYVID's edge)
-    if ctx.supply_chain_shock and abs(ctx.shock_magnitude) > 0.01 and factor_score >= 0.30:
-        if ctx.is_beneficiary and ctx.shock_magnitude > 0.01:
+    # Tightened thresholds (post-YC review):
+    #   Was: trigger on >1% magnitude, factor >= 0.30, RSI < 40 — produced
+    #        44-49% win rates and ~$229k cumulative loss across 220 trades
+    #        because the system fired on every micro-shock with weak factors.
+    #   Now: require >2% magnitude (real shock), factor >= 0.50 (genuine
+    #        multi-factor confirmation), RSI < 32 for victim dips (true
+    #        oversold), and demand a positive volume signal so we're
+    #        catching capitulation, not slow bleeds.
+    if ctx.supply_chain_shock and abs(ctx.shock_magnitude) > 0.02 and factor_score >= 0.50:
+        if ctx.is_beneficiary and ctx.shock_magnitude > 0.02 and ctx.volume_ratio >= 1.1:
             exp_r = max(abs(ctx.shock_magnitude) / 0.02 * 2.0, 1.8)
             return TradeDecision(
                 action="EXECUTE", instrument_type="EQUITY", direction="LONG",
@@ -769,11 +802,16 @@ def _equity_orchestrate_core(ctx: MarketContext) -> TradeDecision:
                 sizing_method="KELLY_EQUITY",
                 max_risk_pct=2.0, stop_loss_method="ATR",
                 take_profit_method="ATR",
-                rationale=f"Supply chain beneficiary of {ctx.shock_source} ({ctx.shock_magnitude:+.1%})",
-                expected_r=exp_r, min_r=1.2,
+                rationale=f"Supply chain beneficiary of {ctx.shock_source} ({ctx.shock_magnitude:+.1%}), vol_r={ctx.volume_ratio:.1f}",
+                expected_r=exp_r, min_r=1.5,
                 graph_intel=True,
             )
-        if ctx.is_victim and ctx.shock_magnitude < -0.01 and ctx.rsi < 40:
+        if (
+            ctx.is_victim
+            and ctx.shock_magnitude < -0.02
+            and ctx.rsi < 32
+            and ctx.volume_ratio >= 1.3
+        ):
             exp_r = max(abs(ctx.shock_magnitude) / 0.02 * 2.5, 1.8)
             return TradeDecision(
                 action="EXECUTE", instrument_type="EQUITY", direction="LONG",
@@ -783,22 +821,8 @@ def _equity_orchestrate_core(ctx: MarketContext) -> TradeDecision:
                 sizing_method="KELLY_EQUITY",
                 max_risk_pct=1.5, stop_loss_method="ATR",
                 take_profit_method="ATR",
-                rationale=f"Supply chain dip buy after {ctx.shock_source} shock ({ctx.shock_magnitude:+.1%}), RSI={ctx.rsi:.0f}",
-                expected_r=exp_r, min_r=1.2,
-                graph_intel=True,
-            )
-        if ctx.shock_magnitude > 0.01 and not ctx.is_victim:
-            exp_r = max(abs(ctx.shock_magnitude) / 0.03 * 2.0, 1.5)
-            return TradeDecision(
-                action="EXECUTE", instrument_type="EQUITY", direction="LONG",
-                ticker=ctx.ticker, strategy_name="supply_chain_beneficiary",
-                analysis_timeframe="D1", entry_timeframe="D1",
-                conviction=_dynamic_conviction(ctx, factor_score),
-                sizing_method="KELLY_EQUITY",
-                max_risk_pct=2.0, stop_loss_method="ATR",
-                take_profit_method="ATR",
-                rationale=f"Supply chain beneficiary of {ctx.shock_source} ({ctx.shock_magnitude:+.1%})",
-                expected_r=exp_r, min_r=1.2,
+                rationale=f"Supply chain capitulation dip after {ctx.shock_source} ({ctx.shock_magnitude:+.1%}), RSI={ctx.rsi:.0f}, vol_r={ctx.volume_ratio:.1f}",
+                expected_r=exp_r, min_r=1.5,
                 graph_intel=True,
             )
 
