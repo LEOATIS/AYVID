@@ -317,3 +317,146 @@ def compute_centrality():
             console.print(f"[red]Centrality computation failed:[/red] {e}")
 
     asyncio.run(_run())
+
+
+@graph_app.command("refine")
+def refine_causal_graph(
+    iterations: int = typer.Option(
+        5, help="Max LLM↔falsification iterations (α)",
+    ),
+    gamma: float = typer.Option(
+        0.80, help="Minimum LLM self-confidence to apply refinement (γ)",
+    ),
+    returns_days: int = typer.Option(
+        252, help="Days of return history used for CI tests",
+    ),
+    dry_run: bool = typer.Option(
+        False, help="Compute + report, but do NOT write confidence to Neo4j",
+    ),
+    edge_limit: int = typer.Option(
+        200, help="Maximum edges pulled from Neo4j for this sweep",
+    ),
+):
+    """Phase-2 CausalFusion refinery — validate supply-chain DAG against returns.
+
+    Pulls the current SUPPLIES_TO edges from Neo4j, runs them through
+    an α-iteration LLM↔graph-falsification loop (CI tests, causal
+    minimality, random-graph MEC benchmark), and writes the resulting
+    per-edge statistical ``confidence`` back to Neo4j for downstream
+    ``find_hidden_victims`` filtering.
+
+    Cadence: weekly cron is the expected deployment. This is NEVER in
+    the hot decision path.
+
+    Example:
+        ayvid graph refine --iterations 5 --gamma 0.80
+        ayvid graph refine --dry-run    # report without mutating Neo4j
+    """
+    import numpy as np
+    from pathlib import Path
+
+    async def _run():
+        from neo4j.exceptions import Neo4jError
+        from graph_intelligence.tools.neo4j_tools import (
+            get_driver, _session_kwargs, bulk_update_edge_confidences,
+        )
+        from graph_intelligence.causal_falsification import (
+            EdgeProposal, refine_dag,
+        )
+        from backtesting.engine import _load_local_bars
+
+        # 1. Pull edges from Neo4j.
+        try:
+            driver = await get_driver()
+        except Exception as exc:
+            console.print(f"[red]Neo4j unavailable:[/red] {exc}")
+            return
+        try:
+            async with driver.session(**_session_kwargs()) as session:
+                result = await session.run(
+                    """
+                    MATCH (a:Company)-[r:SUPPLIES_TO]->(b:Company)
+                    RETURN a.ticker AS src, b.ticker AS dst,
+                           COALESCE(r.confidence, 0.5) AS conf
+                    LIMIT $n
+                    """,
+                    n=edge_limit,
+                )
+                edges: list[EdgeProposal] = []
+                tickers: set[str] = set()
+                async for record in result:
+                    s = record["src"]; d = record["dst"]; c = record["conf"]
+                    edges.append(EdgeProposal(src=s, dst=d, confidence=float(c)))
+                    tickers.add(s); tickers.add(d)
+        except Exception as exc:
+            console.print(f"[red]Edge fetch failed:[/red] {exc}")
+            return
+
+        if not edges:
+            console.print("[yellow]No SUPPLIES_TO edges found in Neo4j[/yellow]")
+            return
+        console.print(f"Loaded [bold]{len(edges)}[/bold] edges over "
+                      f"{len(tickers)} tickers")
+
+        # 2. Load return data from data_store/.
+        returns: dict[str, np.ndarray] = {}
+        for t in tickers:
+            bars = _load_local_bars(t)
+            if len(bars) < 60:
+                continue
+            closes = np.array([b.close for b in bars[-returns_days:]])
+            log_ret = np.diff(np.log(closes))
+            returns[t] = log_ret
+
+        console.print(f"Return data available for [bold]{len(returns)}[/bold]"
+                      f"/{len(tickers)} tickers")
+        if len(returns) < 3:
+            console.print("[red]Insufficient return data (< 3 tickers)[/red]")
+            return
+
+        # 3. Run refinery.
+        console.print(f"\n[bold]Running refinery[/bold] — α={iterations}, γ={gamma}")
+        refined = await refine_dag(
+            edges, returns, alpha=iterations, gamma=gamma,
+        )
+
+        console.print(
+            f"\n[bold]Refinery complete[/bold]: "
+            f"converged={refined.converged}, "
+            f"iterations={refined.iterations_run}, "
+            f"edges_out={len(refined.edges)}"
+        )
+        if refined.last_report is not None:
+            r = refined.last_report
+            console.print(
+                f"  CI violations: {len(r.ci_violations)} "
+                f"({r.ci_fraction_violated:.1%})\n"
+                f"  Unnecessary edges: {len(r.unnecessary_edges)}\n"
+                f"  Random-benchmark p: {r.random_benchmark_p:.3f}\n"
+                f"  Falsifiable: {r.falsifiable}  "
+                f"Falsified: {r.falsified_by_benchmark}"
+            )
+        for line in refined.rationale_trail:
+            console.print(f"  • {line}")
+
+        # 4. Persist.
+        if dry_run:
+            console.print("[dim]--dry-run: skipping Neo4j write[/dim]")
+            return
+
+        updates = [(e.src, e.dst, e.confidence) for e in refined.edges]
+        written = await bulk_update_edge_confidences(updates)
+        console.print(f"[green]✓ Wrote {written} edge confidences to Neo4j[/green]")
+
+        # 5. Snapshot the refined DAG to disk for audit.
+        out = Path("calibration/refined_dag.json")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(__import__("json").dumps({
+            "iterations_run": refined.iterations_run,
+            "converged": refined.converged,
+            "edges": [e.model_dump() for e in refined.edges],
+            "rationale_trail": refined.rationale_trail,
+        }, indent=2))
+        console.print(f"  → snapshot: {out}")
+
+    asyncio.run(_run())

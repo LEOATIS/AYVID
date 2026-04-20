@@ -317,19 +317,30 @@ async def find_hidden_victims(
     pagerank_percentile: float = 0.85,
     min_compound_risk: float = 0.005,
     max_depth: int = 4,
+    min_edge_confidence: float = 0.0,
 ) -> list[CausalPath]:
     """Execute Systemic Importance Masking to find N-th order trade targets.
 
     Filters out ubiquitous high-PageRank nodes (above the given percentile)
     and isolates hidden victims with high compound revenue dependency.
+
+    Phase-2 integration: ``min_edge_confidence`` additionally filters
+    paths so that every edge in the traversal has a statistical
+    ``confidence`` score above the supplied threshold. Confidence is
+    populated by ``update_edge_confidence`` after the CausalFusion
+    refinery run. Default 0.0 → no filtering (backwards compatible).
     """
     if not isinstance(max_depth, int) or max_depth < 1:
         max_depth = 4
     driver = await get_driver()
+    # ALL() requires a confidence floor when min_edge_confidence > 0.
+    # When == 0.0 the predicate degenerates to "True" and no edges are filtered.
     query = f"""
         MATCH path = (shocked:Company {{ticker: $shock_ticker}})-[:SUPPLIES_TO*1..{max_depth}]->(target:Company)
         WHERE target.ticker <> $shock_ticker
           AND (target.pagerank_score IS NULL OR target.pagerank_score < $pr_threshold)
+          AND ALL(rel IN relationships(path) WHERE
+              COALESCE(rel.confidence, 1.0) >= $min_edge_confidence)
         WITH target, path,
              length(path) AS depth,
              reduce(risk = 1.0, rel IN relationships(path) |
@@ -352,6 +363,7 @@ async def find_hidden_victims(
             shock_ticker=shock_ticker,
             pr_threshold=pr_cutoff,
             min_risk=min_compound_risk,
+            min_edge_confidence=float(min_edge_confidence),
         )
 
         paths: list[CausalPath] = []
@@ -374,6 +386,78 @@ async def find_hidden_victims(
             f"Found {len(paths)} hidden victims from [bold]{shock_ticker}[/bold] shock"
         )
         return paths
+
+
+async def update_edge_confidence(
+    src_ticker: str,
+    dst_ticker: str,
+    confidence: float,
+    *,
+    p_value: float | None = None,
+    method: str = "causal_fusion",
+) -> bool:
+    """Stamp a ``SUPPLIES_TO`` edge with a statistical confidence score.
+
+    Written by the Phase-2 CausalFusion refinery after every iteration.
+    The per-edge ``confidence`` property is read back by
+    ``find_hidden_victims`` when ``min_edge_confidence > 0``.
+
+    Returns True when a single edge was updated, False otherwise.
+    """
+    driver = await get_driver()
+    confidence = float(max(0.0, min(confidence, 1.0)))
+    async with driver.session(**_session_kwargs()) as session:
+        result = await session.run(
+            """
+            MATCH (a:Company {ticker: $src})-[r:SUPPLIES_TO]->(b:Company {ticker: $dst})
+            SET r.confidence = $confidence,
+                r.confidence_method = $method,
+                r.confidence_p_value = $p_value,
+                r.confidence_updated_at = datetime()
+            RETURN count(r) AS updated
+            """,
+            src=src_ticker,
+            dst=dst_ticker,
+            confidence=confidence,
+            method=method,
+            p_value=float(p_value) if p_value is not None else None,
+        )
+        record = await result.single()
+        updated = int(record["updated"]) if record else 0
+        return updated == 1
+
+
+async def bulk_update_edge_confidences(
+    edge_updates: list[tuple[str, str, float]],
+    *,
+    method: str = "causal_fusion",
+) -> int:
+    """Batch version of `update_edge_confidence`. Returns # edges updated.
+
+    Useful when the refinery finishes and needs to persist N refined
+    edges in one round-trip.
+    """
+    if not edge_updates:
+        return 0
+    driver = await get_driver()
+    async with driver.session(**_session_kwargs()) as session:
+        result = await session.run(
+            """
+            UNWIND $rows AS row
+            MATCH (a:Company {ticker: row.src})-[r:SUPPLIES_TO]->(b:Company {ticker: row.dst})
+            SET r.confidence = row.confidence,
+                r.confidence_method = $method,
+                r.confidence_updated_at = datetime()
+            RETURN count(r) AS updated
+            """,
+            rows=[
+                {"src": s, "dst": d, "confidence": float(c)}
+                for s, d, c in edge_updates
+            ],
+            method=method,
+        )
+        record = await result.single()
+        return int(record["updated"]) if record else 0
 
 
 async def get_graph_stats() -> dict[str, int]:

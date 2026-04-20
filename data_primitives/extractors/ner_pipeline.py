@@ -19,6 +19,12 @@ from shared.config import settings
 from shared.exceptions import LLMProviderError
 from shared.logger import get_logger
 from shared.types import CausalEvent, EventType, NewsItem
+from data_primitives.security import (
+    SanitizedText,
+    sanitize_news_text,
+    is_safe,
+    safe_for_ticker_extraction,
+)
 
 log = get_logger("data.ner")
 
@@ -120,11 +126,31 @@ Rules:
 
 
 async def extract_entities(text: str) -> list[dict[str, Any]]:
-    """Extract structured entities from text using the configured LLM provider."""
+    """Extract structured entities from text using the configured LLM provider.
+
+    Hostile input defence: the Adversarial-News sanitiser (Phase 1) runs
+    as a mandatory pre-LLM pass. Homoglyph-poisoned ticker tokens and
+    hidden-HTML sentiment-flip injections are stripped before the
+    entity-extraction model ever sees them. If the sanitiser flags the
+    input as unsafe for ticker extraction, we refuse to call the LLM
+    and return an empty entity list — the caller's downstream gates
+    treat this as a no-signal observation rather than trust a
+    redacted payload.
+    """
+    sanitised = sanitize_news_text(text)
+    if not safe_for_ticker_extraction(sanitised):
+        log.warning(
+            f"[SEC] Ticker-extraction refused: "
+            f"rejected_tokens={sanitised.rejected_tokens}, "
+            f"dropped_html_blocks={sanitised.dropped_html_blocks}, "
+            f"raw_sha={sanitised.raw_sha256}"
+        )
+        return []
+
     try:
         raw = await _llm_json_call(
             _NER_SYSTEM_PROMPT,
-            _NER_USER_TEMPLATE.format(text=text),
+            _NER_USER_TEMPLATE.format(text=sanitised.clean),
         )
         parsed = _parse_llm_json(raw)
         if parsed is None:
@@ -170,12 +196,40 @@ _VALID_EVENT_TYPES = {e.value for e in EventType}
 
 
 async def classify_event_with_llm(title: str, text: str) -> tuple[EventType, float]:
-    """Classify event type using the configured LLM provider."""
-    combined_text = text or title
+    """Classify event type using the configured LLM provider.
+
+    Both title and body are sanitised before the LLM sees them.
+    Hidden-HTML sentiment-flip is the canonical attack here: attacker
+    writes a bullish visible headline and appends a hidden bearish
+    clause. Without sanitisation the classifier flips the sign of the
+    entire event signal. With it, the hidden subtree is dropped before
+    the first token reaches the model.
+
+    When sanitisation flags mixed-script contamination we still
+    proceed (classification is more robust to stripped content than
+    ticker extraction), but we cap the downstream confidence at 0.3
+    so the event cannot drive a high-conviction trade.
+    """
+    title_clean = sanitize_news_text(title)
+    body_clean = sanitize_news_text(text or "")
+
+    hostile = (not is_safe(title_clean)) or (not is_safe(body_clean))
+    combined_text = body_clean.clean or title_clean.clean
+
+    if hostile:
+        log.warning(
+            f"[SEC] Event classification with hostile input: "
+            f"title_rejected={title_clean.rejected_tokens}, "
+            f"body_rejected={body_clean.rejected_tokens}"
+        )
+
     try:
         raw = await _llm_json_call(
             _CLASSIFY_SYSTEM_PROMPT,
-            _CLASSIFY_USER_TEMPLATE.format(title=title, text=combined_text[:2000]),
+            _CLASSIFY_USER_TEMPLATE.format(
+                title=title_clean.clean,
+                text=combined_text[:2000],
+            ),
         )
         parsed = _parse_llm_json(raw)
         if parsed is None:
@@ -187,6 +241,13 @@ async def classify_event_with_llm(title: str, text: str) -> tuple[EventType, flo
 
         confidence = float(parsed.get("confidence", 0.5))
         confidence = max(0.0, min(1.0, confidence))
+
+        # Hostile-input confidence cap: we still emit the classifier's
+        # best guess (the visible text may still be informative) but
+        # bound the confidence hard so the event cannot drive a
+        # high-conviction Tier-1 trade.
+        if hostile:
+            confidence = min(confidence, 0.3)
 
         return EventType(event_type_str), confidence
     except Exception as exc:
@@ -396,17 +457,31 @@ _SHOCK_DETECTION_THRESHOLD = 3.0
 
 def _score_news_for_shock(
     news_items: list[NewsItem],
-) -> tuple[float, dict[str, int], str]:
+) -> tuple[float, dict[str, int], str, int]:
     """Heuristic scoring pass over a news window.
 
+    Every item's text is sanitised before keyword-matching so a
+    hidden-HTML-injected ``war``, ``sanctions`` or ``strike`` clause
+    cannot inflate the shock score and trigger a false Tier-3
+    signal. The fourth return value is the count of items that the
+    sanitiser flagged as hostile — the caller uses this to enforce
+    the Tier-3 hard-fail policy.
+
     Returns:
-        (total_score, per_family_hits, dominant_bias)
+        (total_score, per_family_hits, dominant_bias, hostile_item_count)
     """
     per_family: dict[str, int] = {}
     bias_tally: dict[str, int] = {"BULLISH": 0, "BEARISH": 0, "NEUTRAL": 0}
+    hostile_items: int = 0
 
     for item in news_items:
-        text_lower = f"{item.title or ''} {item.text or ''}".lower()
+        title_s = sanitize_news_text(item.title or "")
+        body_s = sanitize_news_text(item.text or "")
+        if not is_safe(title_s) or not is_safe(body_s):
+            hostile_items += 1
+        # Score only on sanitised content — hidden HTML injection cannot
+        # boost shock keywords, and homoglyph tokens have been redacted.
+        text_lower = f"{title_s.clean} {body_s.clean}".lower()
         if not text_lower.strip():
             continue
         for family, keywords, default_bias in _SHOCK_KEYWORD_FAMILIES:
@@ -420,7 +495,7 @@ def _score_news_for_shock(
     dominant_bias = max(bias_tally, key=bias_tally.get) if bias_tally else "NEUTRAL"
     if bias_tally["BULLISH"] == 0 and bias_tally["BEARISH"] == 0:
         dominant_bias = "NEUTRAL"
-    return total_score, per_family, dominant_bias
+    return total_score, per_family, dominant_bias, hostile_items
 
 
 # Index symbols we attach directional biases to. These match the keys
@@ -478,8 +553,23 @@ def detect_live_shock(
     if not news_items:
         return None
 
-    score, families, dominant_bias = _score_news_for_shock(news_items)
+    score, families, dominant_bias, hostile_items = _score_news_for_shock(news_items)
     if score < min_score:
+        return None
+
+    # ── Hard-fail policy (Phase 1 Adversarial defence) ──
+    # A shock context is DIRECTIONAL — wrong direction is worse than
+    # no signal. When the news window contains hostile content (mixed-
+    # script tokens, hidden sentiment-flip HTML), refuse to emit a
+    # Tier-3 shock at all. Let the quant path + regime gates decide.
+    hostile_ratio = hostile_items / max(len(news_items), 1)
+    if hostile_items > 0 and hostile_ratio >= 0.15:
+        log.warning(
+            f"[SEC] Shock detection REFUSED: "
+            f"{hostile_items}/{len(news_items)} items hostile "
+            f"(ratio={hostile_ratio:.0%} >= 15 % threshold). "
+            f"Downgrading to NO-SHOCK; keyword score was {score:.1f}."
+        )
         return None
 
     # Pick the top-mentioned family for typing.
@@ -537,6 +627,11 @@ def detect_live_shock(
         "headline_sample": sample,
         "causal_chain": causal_chain,
         "auto_detected": True,
+        "sanitisation": {
+            "hostile_items_in_window": hostile_items,
+            "hostile_ratio": round(hostile_ratio, 3),
+            "window_size": len(news_items),
+        },
     }
 
 

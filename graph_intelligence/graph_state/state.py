@@ -65,6 +65,12 @@ class CausalArbitrageState(TypedDict):
     # scenarios. Populated by the NER shock detector or passed in by the
     # backtester when news flux is high.
     causal_intel: dict
+    # Phase 3: Bull/Bear researcher debate outputs. `researcher_consensus`
+    # is a serialised ResearcherConsensus (dominant_side, direction,
+    # conviction, margin, executive_summary, takeaways). `researcher_rounds`
+    # preserves every round for the auditor to inspect.
+    researcher_consensus: dict
+    researcher_rounds: list[dict]
 
 
 def create_initial_state(
@@ -98,4 +104,6 @@ def create_initial_state(
         gating_rationale="",
         strategy_parameters={},
         causal_intel={},
+        researcher_consensus={},
+        researcher_rounds=[],
     )

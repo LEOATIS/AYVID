@@ -31,6 +31,7 @@ from graph_intelligence.graph_state.state import (
 from graph_intelligence.agents.strategist.node import strategist_node
 from graph_intelligence.agents.mapper.node import mapper_node
 from graph_intelligence.agents.auditor.node import auditor_node
+from graph_intelligence.agents.researchers import researcher_debate_node
 from graph_intelligence.agents.supervisor.consensus import (
     emit_trade_signal,
     should_continue,
@@ -297,9 +298,15 @@ async def _analyst_swarm_node(state: CausalArbitrageState) -> dict:
 def build_causal_graph() -> StateGraph:
     """Construct the LangGraph DAG for N-th Order Causal Arbitrage.
 
-    Flow:
+    Flow (Phase-3 augmented):
         prepare_topology → compress_timeline → strategist → mapper →
-        enrich_quant_data → analyst_swarm → auditor → [execute|retry|end]
+        researcher_debate → enrich_quant_data → analyst_swarm →
+        auditor → [execute|retry|end]
+
+    The ``researcher_debate`` node runs the 2-round bull-vs-bear debate
+    and injects a ``ResearcherConsensus`` into state BEFORE the analyst
+    swarm fires, so the analysts evaluate a thesis that has already
+    been adversarially stress-tested.
 
     Every node is wrapped with latency instrumentation.
     """
@@ -309,6 +316,7 @@ def build_causal_graph() -> StateGraph:
     graph.add_node("compress_timeline", _timed_node("compress_timeline", _compress_timeline_node))
     graph.add_node("strategist", _timed_node("strategist", strategist_node))
     graph.add_node("mapper", _timed_node("mapper", mapper_node))
+    graph.add_node("researcher_debate", _timed_node("researcher_debate", researcher_debate_node))
     graph.add_node("enrich_quant_data", _timed_node("enrich_quant_data", _enrich_quant_data_node))
     graph.add_node("analyst_swarm", _timed_node("analyst_swarm", _analyst_swarm_node))
     graph.add_node("auditor", _timed_node("auditor", auditor_node))
@@ -317,7 +325,8 @@ def build_causal_graph() -> StateGraph:
     graph.add_edge("prepare_topology", "compress_timeline")
     graph.add_edge("compress_timeline", "strategist")
     graph.add_edge("strategist", "mapper")
-    graph.add_edge("mapper", "enrich_quant_data")
+    graph.add_edge("mapper", "researcher_debate")
+    graph.add_edge("researcher_debate", "enrich_quant_data")
     graph.add_edge("enrich_quant_data", "analyst_swarm")
     graph.add_edge("analyst_swarm", "auditor")
 

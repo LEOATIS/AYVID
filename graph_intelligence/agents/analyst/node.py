@@ -233,10 +233,16 @@ async def run_analyst_swarm(
         (SUPPLY_CHAIN_SYSTEM, "Supply Chain"),
     ]
 
+    # Phase 5: the PatternAgent fires as a 5th specialist, in parallel
+    # with the 4 text-based analysts. It reads chart geometry via a
+    # vision LLM and contributes a direction/confidence opinion the
+    # debate aggregator treats as orthogonal evidence.
+    from graph_intelligence.agents.pattern import pattern_analyst_opinion
+
     tasks = [
         _run_specialist(sys_prompt, state, quant_data, name)
         for sys_prompt, name in analysts
-    ]
+    ] + [pattern_analyst_opinion(state, quant_data)]
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 

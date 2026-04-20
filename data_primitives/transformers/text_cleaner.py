@@ -15,6 +15,7 @@ from anthropic import AsyncAnthropic
 from shared.config import settings
 from shared.logger import get_logger
 from shared.types import CompressedDaySummary, NewsItem
+from data_primitives.security import sanitize_news_text, is_safe
 
 log = get_logger("data.text")
 
@@ -69,21 +70,58 @@ async def compress_daily_news(
     date: dt.date,
     texts: list[str],
 ) -> CompressedDaySummary:
-    """Compress a single day's news into a dense chronological summary."""
+    """Compress a single day's news into a dense chronological summary.
+
+    Phase-1 adversarial defence: every article in ``texts`` is fed
+    through the :mod:`data_primitives.security.text_sanitizer` before
+    the LLM sees it. Hidden-HTML sentiment-flip injection and Unicode
+    homoglyph attacks are stripped; articles that fail the hostile-
+    input check have their ``sentiment_shift`` contribution capped by
+    the downstream sanitisation counter.
+    """
     if not texts:
+        return CompressedDaySummary(date=date, ticker=ticker)
+
+    # ── Sanitise before the LLM sees the corpus ──
+    sanitised_texts: list[str] = []
+    hostile_count = 0
+    for t in texts:
+        result = sanitize_news_text(t or "")
+        if not result.clean:
+            continue
+        if not is_safe(result):
+            hostile_count += 1
+        sanitised_texts.append(result.clean)
+
+    if hostile_count > 0:
+        log.warning(
+            f"[SEC] compress_daily_news for {ticker}/{date}: "
+            f"{hostile_count}/{len(texts)} articles contained hostile "
+            f"content (homoglyphs or hidden HTML); redacted before LLM."
+        )
+
+    if not sanitised_texts:
         return CompressedDaySummary(date=date, ticker=ticker)
 
     try:
         if settings.LLM_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
-            data = await _compress_with_anthropic(ticker, date, texts)
+            data = await _compress_with_anthropic(ticker, date, sanitised_texts)
         else:
-            data = await _compress_with_openai(ticker, date, texts)
+            data = await _compress_with_openai(ticker, date, sanitised_texts)
+
+        sentiment_shift = float(data.get("sentiment_shift", 0.0))
+        # Cap the sentiment magnitude when input corpus had hostile
+        # items — the LLM's shift estimate is untrustworthy exactly
+        # in proportion to how much adversarial content leaked through.
+        hostile_ratio = hostile_count / max(len(texts), 1)
+        if hostile_ratio > 0:
+            sentiment_shift *= max(0.0, 1.0 - hostile_ratio)
 
         return CompressedDaySummary(
             date=date,
             ticker=ticker,
             facts=data.get("facts", []),
-            sentiment_shift=float(data.get("sentiment_shift", 0.0)),
+            sentiment_shift=sentiment_shift,
             key_entities=data.get("key_entities", []),
             raw_event_count=len(texts),
         )
@@ -92,7 +130,7 @@ async def compress_daily_news(
         return CompressedDaySummary(
             date=date,
             ticker=ticker,
-            facts=[t[:200] for t in texts[:3]],
+            facts=[t[:200] for t in sanitised_texts[:3]],
             raw_event_count=len(texts),
         )
 
