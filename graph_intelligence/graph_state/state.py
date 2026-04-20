@@ -49,6 +49,22 @@ class CausalArbitrageState(TypedDict):
     analyst_opinions: list[dict]
     debate_result: dict
     quant_data: str
+    # Strategist regime-gated outputs — surfaced here so every downstream
+    # node (mapper, analyst swarm, auditor, supervisor, orchestrator) can
+    # read the Tier-1 strategy blocklist. Populated by strategist_node.
+    forbidden_strategies: list[str]
+    preferred_strategies: list[str]
+    risk_multiplier: float
+    macro_regime: str
+    gating_rationale: str
+    # Supervisor emits per-trade dynamic parameters that replace the old
+    # hardcoded thresholds (RSI<30, z<-1.5). Each strategy reads its
+    # relevant fields from this dict.
+    strategy_parameters: dict
+    # Autonomous causal intel — the live replacement for hardcoded shock
+    # scenarios. Populated by the NER shock detector or passed in by the
+    # backtester when news flux is high.
+    causal_intel: dict
 
 
 def create_initial_state(
@@ -75,4 +91,11 @@ def create_initial_state(
         analyst_opinions=[],
         debate_result={},
         quant_data="",
+        forbidden_strategies=[],
+        preferred_strategies=[],
+        risk_multiplier=1.0,
+        macro_regime="TRANSITIONAL",
+        gating_rationale="",
+        strategy_parameters={},
+        causal_intel={},
     )

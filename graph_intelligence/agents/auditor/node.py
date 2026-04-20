@@ -20,6 +20,45 @@ from graph_intelligence.agents.auditor.prompts import AUDITOR_SYSTEM, AUDITOR_RE
 log = get_logger("agent.auditor")
 
 
+# ── Deterministic Tier-1 kill-switches (run before the LLM) ──────────
+# The LLM is expensive and sometimes optimistic. The institutional
+# pattern is: hard quantitative gates first, then LLM judgement on
+# what survives. These thresholds mirror the orchestrator / debate
+# constants so the whole pipeline speaks the same risk language.
+AUDITOR_MIN_CONFIDENCE = 0.72          # aligns with debate _MIN_CONVICTION_TO_TRADE
+AUDITOR_MIN_CONFIDENCE_CAUSAL = 0.90   # aligns with grind-up causal override
+
+_LONG_VOL_ALPHA_HORIZONS = {"1st_order", "first_order", "crisis"}
+
+
+def _deterministic_auditor_kill(state: CausalArbitrageState) -> tuple[bool, str]:
+    """Cheap pre-LLM kill checks. Returns (should_kill, reason)."""
+    confidence = float(state.get("confidence", 0.0) or 0.0)
+    rationale = (state.get("rationale") or "").lower()
+    alpha_horizon = (state.get("alpha_horizon") or "").lower()
+
+    # Hard floor: sub-threshold conviction cannot be saved by debate
+    if confidence < AUDITOR_MIN_CONFIDENCE:
+        return True, (
+            f"confidence {confidence:.2f} < {AUDITOR_MIN_CONFIDENCE:.2f} — "
+            f"sub-threshold for Tier-1 execution"
+        )
+
+    # Long-vol / crisis-alpha trades must clear the causal-override bar
+    is_long_vol = any(
+        kw in rationale
+        for kw in ("long put", "naked put", "crisis put", "buying vol",
+                   "shock put", "decline put", "short equity")
+    )
+    if is_long_vol and confidence < AUDITOR_MIN_CONFIDENCE_CAUSAL:
+        return True, (
+            f"long-vol thesis requires causal conviction ≥ "
+            f"{AUDITOR_MIN_CONFIDENCE_CAUSAL:.2f}, got {confidence:.2f}"
+        )
+
+    return False, ""
+
+
 def _extract_json(text: str) -> str:
     """Strip markdown code fences and extract raw JSON from LLM output."""
     m = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
@@ -56,10 +95,26 @@ def _get_llm():
 
 
 async def auditor_node(state: CausalArbitrageState) -> dict:
-    """LangGraph node: Review and stress-test the proposed trade signal."""
+    """LangGraph node: Review and stress-test the proposed trade signal.
+
+    Deterministic Tier-1 gates run *before* the LLM so obviously
+    sub-noise trades are killed without burning tokens or risking the
+    LLM being talked into a bad trade.
+    """
     log.info(
         f"Auditor reviewing [bold]{state.get('target_ticker', '?')}[/bold] signal"
     )
+
+    should_kill, kill_reason = _deterministic_auditor_kill(state)
+    if should_kill:
+        log.warning(f"Auditor DETERMINISTIC KILL: {kill_reason}")
+        return {
+            "messages": [],
+            "proposed_action": "HOLD",
+            "confidence": 0.0,
+            "risk_assessment": f"Deterministic kill: {kill_reason}",
+            "iteration": state["iteration"] + 1,
+        }
 
     prompt = AUDITOR_REVIEW.format(
         shock_ticker=state["shock_ticker"],

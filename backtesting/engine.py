@@ -48,11 +48,20 @@ RISK_PER_TRADE_PCT = 0.02
 MAX_PORTFOLIO_RISK_PCT = 0.30
 
 # ── Named Historical Shock Scenarios ──────────────────────────
-# 20 named macro/supply-chain shocks 2018-2025, each scoped to tickers
-# we have cached in data_store/ohlcv/. AYVID's differentiation is
-# trading ONLY when the graph identifies a real causal event; the
-# walk-forward shock-driven aggregator iterates through this catalog
-# rather than blindly trading every (ticker × day) on technicals.
+# DEPRECATED: This static dictionary is retained only for the YC
+# benchmark report (`cli.app data report --scenarios all`) and for
+# regression-testing the backtester against known historical periods.
+#
+# The production / live path now uses `detect_live_shock()` in
+# `data_primitives.extractors.ner_pipeline` which autonomously
+# synthesises a `causal_intel` block from the live news stream. New
+# shocks should NOT be added to this dictionary — they're discovered
+# at runtime.
+#
+# During a walk-forward run, if `news_feed` is supplied to
+# `run_backtest`, the engine will call the autonomous detector on
+# every date window and override the static shock_context when a
+# real-time signal is present.
 SHOCK_SCENARIOS: dict[str, dict] = {
     "us_china_tariff_2018": {
         "name": "US-China Trade War Escalation",
@@ -1114,6 +1123,10 @@ async def run_backtest(
     end_date: str | None = None,
     shock_context: dict[str, Any] | None = None,
     use_baseline: bool = False,
+    news_feed: list[Any] | None = None,
+    forbidden_strategies: list[str] | None = None,
+    strategy_parameters: dict[str, float] | None = None,
+    risk_multiplier: float = 1.0,
 ) -> BacktestResult:
     """Two-track institutional backtest engine.
 
@@ -1128,13 +1141,25 @@ async def run_backtest(
 
     When ``start_date`` / ``end_date`` (ISO strings) are provided the backtest
     targets that explicit window instead of the trailing ``days`` lookback.
-    Data is fetched for the explicit range when needed.
+
+    **Autonomous shock detection** — when ``news_feed`` is provided, the
+    engine calls `ner_pipeline.shock_context_from_news()` and, if the
+    detector fires, that dynamically-generated `causal_intel` dict
+    overrides any static `shock_context` passed in. This is the live
+    replacement for the hardcoded SHOCK_SCENARIOS catalog.
+
+    **LLM gating** — ``forbidden_strategies`` and ``strategy_parameters``
+    are passed through into every MarketContext so the orchestrator's
+    Tier-1 gates operate exactly as they would in live trading.
     """
     from execution_engine.math.kelly import (
         kelly_fraction_single, compute_position_size, kelly_options, compute_contracts_size,
     )
     from execution_engine.math.options_pricing import black_scholes, straddle_price, iron_condor_price
-    from execution_engine.math.regime import classify_volatility, classify_trend
+    from execution_engine.math.regime import (
+        classify_volatility, classify_trend,
+        compute_vol_windows, compute_vrp, is_grind_up_regime,
+    )
     from execution_engine.math.signals import (
         compute_hurst_exponent, compute_rsi, compute_atr, compute_trend_strength,
         compute_volume_profile,
@@ -1298,7 +1323,7 @@ async def run_backtest(
     signals_filtered = 0
     shocks_analyzed = 0
     fno_capital_at_risk = 0.0
-    FNO_CAPITAL_CAP = 0.50
+    FNO_CAPITAL_CAP = 0.30
     _settled_fno: set[str] = set()
     r_distribution: dict[str, list[float]] = {"accepted": [], "rejected": [], "realized": []}
     cost_breakdown: dict[str, float] = {
@@ -1313,6 +1338,25 @@ async def run_backtest(
     def _get_bars_up_to(data: dict[str, list[OHLCVBar]], ticker: str, date: dt.date) -> list[OHLCVBar]:
         return [b for b in data.get(ticker, []) if b.timestamp.date() <= date]
 
+    # ── Autonomous shock detection: if a news feed is supplied, run the
+    # NER-based detector and let any dynamic signal override the static
+    # `shock_context` argument. This is the live replacement for the
+    # hardcoded SHOCK_SCENARIOS catalog (Step 4 + Step 5).
+    if news_feed:
+        try:
+            from data_primitives.extractors.ner_pipeline import shock_context_from_news
+            auto_ctx = shock_context_from_news(news_feed)
+            if auto_ctx:
+                log.info(
+                    f"[AUTO-SHOCK] detector fired — overriding shock_context "
+                    f"(type={auto_ctx['causal_intel'].get('shock_type')}, "
+                    f"score={auto_ctx['causal_intel'].get('shock_score'):.1f}, "
+                    f"bias={auto_ctx['causal_intel'].get('expected_direction')})"
+                )
+                shock_context = auto_ctx
+        except Exception as exc:
+            log.warning(f"Autonomous shock detection failed, using static context: {exc}")
+
     _shock_tickers: set[str] = set()
     _shock_active = False
     _shock_source = ""
@@ -1320,6 +1364,9 @@ async def run_backtest(
     _index_bias: dict[str, str] = {}
     _beneficiary_tickers: set[str] = set()
     _victim_tickers: set[str] = set()
+    _forbidden_strategies: list[str] = list(forbidden_strategies or [])
+    _strategy_parameters: dict[str, float] = dict(strategy_parameters or {})
+    _risk_multiplier: float = float(risk_multiplier or 1.0)
     if shock_context:
         _shock_active = shock_context.get("supply_chain_shock", False)
         _shock_source = shock_context.get("shock_source", "")
@@ -1347,8 +1394,8 @@ async def run_backtest(
         trend = compute_trend_strength(closes, short=10, long=30)
         vol_ratio = compute_volume_profile(volumes, 20)
 
-        vol_regime, rv, _ = classify_volatility(log_returns)
-        trend_regime, _ = classify_trend(highs, lows, closes, hurst)
+        vol_regime, rv, vol_pct = classify_volatility(log_returns)
+        trend_regime, adx = classify_trend(highs, lows, closes, hurst)
 
         z_score = 0.0
         if len(closes) >= 20:
@@ -1362,6 +1409,20 @@ async def run_backtest(
 
         iv_proxy = rv + abs(ret_5d) * 2.0 + 0.02
         iv_rv_spread = iv_proxy - rv if rv > 0 else None
+
+        # ── Tier-1 regime gating inputs: VRP + grind-up filter ──
+        rv_short, rv_long, vol_compression = compute_vol_windows(
+            log_returns, short=20, long=60,
+        )
+        vrp_val = compute_vrp(iv_proxy, rv_short) if iv_rv_spread is not None else 0.0
+        grind_up = is_grind_up_regime(
+            vol_percentile=vol_pct,
+            vol_compression=vol_compression,
+            ret_20d=ret_20d,
+            adx=adx,
+            hurst=hurst,
+            vrp=vrp_val,
+        )
 
         is_shock_ticker = _shock_active and ticker in _shock_tickers
         shock_mag = _shock_magnitude if is_shock_ticker else 0.0
@@ -1400,6 +1461,18 @@ async def run_backtest(
             shock_bias=idx_bias,
             is_beneficiary=is_benef,
             is_victim=is_vict,
+            vrp=vrp_val,
+            vol_compression=vol_compression,
+            grind_up_flag=grind_up,
+            # Causal conviction only arrives via the live LangGraph path;
+            # in backtest we default to 0 so the grind-up gate holds.
+            causal_conviction=0.0,
+            # Strategist-emitted blocklist + Supervisor-emitted dynamic
+            # thresholds. In offline walk-forwards these are typically
+            # empty / default; live and scenario runs populate them.
+            forbidden_strategies=_forbidden_strategies,
+            strategy_parameters=_strategy_parameters,
+            risk_multiplier=_risk_multiplier,
         )
 
     for date in sorted_dates:
@@ -1478,7 +1551,8 @@ async def run_backtest(
             if decision.action == "SKIP":
                 signals_filtered += 1
                 continue
-            if decision.conviction < min_conviction:
+            fno_min_conviction = max(min_conviction, 0.70)
+            if decision.conviction < fno_min_conviction:
                 signals_filtered += 1
                 continue
             if decision.expected_r < decision.min_r:
@@ -2151,8 +2225,10 @@ async def run_backtest(
             idx = ft.underlying
             if ft.pnl < 0:
                 _idx_consec_losses[idx] = _idx_consec_losses.get(idx, 0) + 1
-                if _idx_consec_losses[idx] >= 2:
-                    _idx_cooldown_until[idx] = date + dt.timedelta(days=3)
+                if _idx_consec_losses[idx] >= 3:
+                    _idx_cooldown_until[idx] = date + dt.timedelta(days=14)
+                elif _idx_consec_losses[idx] >= 2:
+                    _idx_cooldown_until[idx] = date + dt.timedelta(days=7)
             else:
                 _idx_consec_losses[idx] = 0
 

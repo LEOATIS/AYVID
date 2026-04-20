@@ -1062,6 +1062,84 @@ def bulk_ingest(
     asyncio.run(_run())
 
 
+@data_app.command("calibrate")
+def calibrate(
+    mode: str = typer.Option(
+        "quick", help="Grid size: quick | medium | full",
+    ),
+    concurrency: int = typer.Option(4, help="Parallel backtests (3-8 typical)"),
+    scenarios: str = typer.Option(
+        None, help="Comma-separated scenario keys; defaults depend on --mode"
+    ),
+    output: str = typer.Option(
+        "calibration/priors.json",
+        help="Path to write the empirical priors JSON",
+    ),
+    equity: float = typer.Option(
+        1_000_000.0, help="Initial equity per sweep run ($)",
+    ),
+):
+    """Run the empirical calibration harness → write `priors.json`.
+
+    Runs a parameter grid-sweep across the historical shock catalog,
+    tags every executed trade with its `(strategy, regime)` cell, and
+    picks the parameter set that maximises per-trade Sharpe with an
+    n≥5 sample floor.
+
+    The output is read at decision time by `get_param()` in the
+    orchestrator — the LLM Supervisor then deviates from the prior
+    only with a cited regime-feature justification.
+
+    Grid sizes:
+        quick   — 16 configs × 3 scenarios   (~2-3 min, validates pipeline)
+        medium  — 36 configs × 8 scenarios   (~25-40 min, weekly refresh)
+        full    — 400 configs × 20 scenarios (~overnight, canonical priors)
+
+    Examples:
+        ayvid data calibrate --mode quick
+        ayvid data calibrate --mode full --concurrency 6
+        ayvid data calibrate --mode medium --scenarios svb_collapse_2023,covid_crash_2020
+    """
+    async def _run():
+        import asyncio
+        from pathlib import Path
+        from backtesting.calibrate import calibrate as run_calibration
+
+        scen_list = (
+            [s.strip() for s in scenarios.split(",") if s.strip()]
+            if scenarios else None
+        )
+        console.print(
+            f"\n[bold]AYVID calibration[/bold] — mode={mode}, "
+            f"concurrency={concurrency}\n"
+        )
+        priors = await run_calibration(
+            mode=mode,
+            scenarios=scen_list,
+            concurrency=concurrency,
+            output=Path(output),
+            initial_equity=equity,
+        )
+
+        populated = {
+            s: {r: v for r, v in regimes.items() if not v.get("blocked_by_regime")}
+            for s, regimes in priors.items()
+        }
+        total_cells = sum(len(r) for r in priors.values())
+        live_cells = sum(len(r) for r in populated.values())
+        blocked_cells = total_cells - live_cells
+
+        console.print(
+            f"\n[green]✓ Priors written to {output}[/green]\n"
+            f"  Strategies: {len(priors)}\n"
+            f"  Cells: {total_cells} total ([green]{live_cells} active[/green], "
+            f"[yellow]{blocked_cells} regime-blocked[/yellow])"
+        )
+
+    import asyncio
+    asyncio.run(_run())
+
+
 @data_app.command("walkforward")
 def walkforward(
     start: str = typer.Option("2018-01-01", help="Walk-forward start date (ISO)"),

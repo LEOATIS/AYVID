@@ -102,8 +102,15 @@ def optimal_allocation_for_signal(
     expected_return: float,
     volatility: float,
     current_price: float,
+    enforce_ev_hurdle: bool = True,
 ) -> tuple[float, int]:
     """Convenience: compute Kelly fraction and share count for a single signal.
+
+    When `enforce_ev_hurdle` is True (default), the resulting share count
+    is zeroed out if the expected PnL does not clear 4× the modeled
+    round-trip execution cost (commission + bid/ask slippage). This is
+    the Tier-1 institutional filter that kills sub-noise trades before
+    they reach the execution tier.
 
     Returns (allocation_fraction, share_count).
     """
@@ -113,6 +120,22 @@ def optimal_allocation_for_signal(
     win_loss_ratio = max(abs(expected_return / volatility), 0.1)
     frac = kelly_fraction_single(win_probability, win_loss_ratio)
     shares = compute_position_size(portfolio_equity, frac, current_price)
+
+    if enforce_ev_hurdle and shares > 0:
+        from execution_engine.math.costs import evaluate_trade_ev
+        report = evaluate_trade_ev(
+            asset_class="EQUITY",
+            expected_return_pct=abs(expected_return),
+            price=current_price,
+            notional_shares=shares,
+            label="kelly_equity",
+        )
+        if not report.passes:
+            log.info(
+                f"[EV-GATE] killed equity sizing: {report.reason} "
+                f"(shares={shares}, price=${current_price:.2f})"
+            )
+            return frac, 0
 
     log.info(
         f"Signal sizing: frac={frac:.4f}, shares={shares}, "

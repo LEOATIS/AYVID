@@ -1,14 +1,30 @@
 """Order routing engine — multi-horizon execution logic.
 
-Routes orders based on alpha horizon:
-- 1st order: Aggressive limit orders (cross the spread)
-- 2nd order: Standard limit orders
-- 3rd/4th order: Passive TWAP/VWAP algorithmic execution
+Routing policy (Tier-1 institutional microstructure):
+
+    Tier-3 news shock               → LIMIT / cross-spread (take liquidity)
+    1st-order (non-shock)            → PASSIVE_LIMIT (post-only, pegged NBB)
+    2nd-order causal                 → PASSIVE_LIMIT
+    3rd-order structural             → TWAP
+    4th-order slow-macro             → VWAP
+
+PASSIVE_LIMIT = IBKR Relative (REL) order with:
+  - Price pegged to near-touch (NBB for buys, NBO for sells)
+  - Adaptive re-peg as the quote moves
+  - Cancels after `PASSIVE_PEG_TIMEOUT_SEC` (default 30s) if unfilled
+  - NEVER crosses the spread. If the strategy demands immediate
+    liquidity (tier3_shock=True) the signal is re-submitted as
+    LIMIT-at-market instead.
+
+Rationale: every tick of spread captured = ~15 bps of alpha preserved.
+Over 250 trades/quarter at ~1 bps/trade edge loss, that is >4% of
+annual return currently being handed to market-makers.
 
 Implements:
 - Bracket orders (entry + take-profit + stop-loss)
 - Pre-market trap mitigation
 - Regular Trading Hours enforcement
+- Passive peg-and-trail with auto-cancel
 """
 from __future__ import annotations
 
@@ -36,6 +52,11 @@ _RTH_OPEN = dt.time(9, 30)
 _RTH_CLOSE = dt.time(16, 0)
 _SAFE_OPEN = dt.time(9, 45)
 
+# Passive-routing knobs (Tier-1 microstructure).
+PASSIVE_PEG_TIMEOUT_SEC = 30           # cancel if unfilled after this window
+PASSIVE_PEG_POLL_INTERVAL_SEC = 2      # how often to re-check fill / re-peg
+PASSIVE_REPEG_TICK_THRESHOLD = 2       # re-peg when quote drifts >N ticks
+
 _order_queue: list[TradeSignal] = []
 _inflight_signals: set[str] = set()
 
@@ -46,19 +67,27 @@ def is_regular_trading_hours() -> bool:
     return _RTH_OPEN <= now_et <= _RTH_CLOSE
 
 
-def _determine_order_type(horizon: AlphaHorizon) -> OrderType:
-    """Route order type based on alpha horizon depth."""
-    match horizon:
+def _determine_order_type(signal: TradeSignal) -> OrderType:
+    """Route order type based on signal metadata.
+
+    The single institutional rule: we take liquidity ONLY for explicit
+    Tier-3 news shocks. Everything else routes passive to capture the
+    maker side of the spread.
+    """
+    if getattr(signal, "tier3_shock", False):
+        return OrderType.LIMIT  # cross the spread — news event needs fill now
+
+    match signal.alpha_horizon:
         case AlphaHorizon.FIRST_ORDER:
-            return OrderType.LIMIT
+            return OrderType.PASSIVE_LIMIT  # patient entry on structural alpha
         case AlphaHorizon.SECOND_ORDER:
-            return OrderType.LIMIT
+            return OrderType.PASSIVE_LIMIT
         case AlphaHorizon.THIRD_ORDER:
             return OrderType.TWAP
         case AlphaHorizon.FOURTH_ORDER:
             return OrderType.VWAP
         case _:
-            return OrderType.LIMIT
+            return OrderType.PASSIVE_LIMIT
 
 
 async def submit_signal(
@@ -79,7 +108,7 @@ async def submit_signal(
         _order_queue.append(signal)
         return signal
 
-    order_type = _determine_order_type(signal.alpha_horizon)
+    order_type = _determine_order_type(signal)
     ib_action = "SELL" if signal.action == TradeAction.SHORT else "BUY"
 
     stop_loss_pct = 0.03
@@ -190,6 +219,23 @@ async def _submit_to_ib(signal: TradeSignal, bracket: BracketOrder) -> TradeSign
                 transmit=False,
             )
             log.info(f"Using {algo_type} algo for {bracket.ticker} ({bracket.quantity} shares)")
+        elif bracket.order_type == OrderType.PASSIVE_LIMIT:
+            # IBKR Relative (REL) order: pegs to the near-touch (NBB for
+            # buys, NBO for sells) with auxPrice=0 offset = pure post-only.
+            # notHeld=True instructs IB not to auto-market if unfilled.
+            parent_order = Order(
+                action=bracket.action,
+                totalQuantity=bracket.quantity,
+                orderType="REL",
+                auxPrice=0.0,
+                lmtPrice=bracket.limit_price,  # ceiling (buy) / floor (sell) cap
+                notHeld=True,
+                transmit=False,
+            )
+            log.info(
+                f"Using PASSIVE REL peg for {bracket.ticker} "
+                f"({bracket.quantity} shares, cap=${bracket.limit_price:.2f})"
+            )
         else:
             parent_order = LimitOrder(
                 action=bracket.action,
@@ -226,6 +272,12 @@ async def _submit_to_ib(signal: TradeSignal, bracket: BracketOrder) -> TradeSign
             f"Bracket order submitted for {bracket.ticker} "
             f"(parent={parent_id}, {bracket.order_type.value}, {bracket.quantity} shares)"
         )
+
+        if bracket.order_type == OrderType.PASSIVE_LIMIT:
+            asyncio.create_task(
+                _passive_peg_monitor(ib, parent_trade, signal, bracket, contract)
+            )
+
         return signal
 
     except Exception as exc:
@@ -246,6 +298,58 @@ async def _submit_to_ib(signal: TradeSignal, bracket: BracketOrder) -> TradeSign
         _inflight_signals.discard(signal.signal_id)
         signal.status = SignalStatus.REJECTED
         raise IBKROrderRejectedError(0, str(exc)) from exc
+
+
+async def _passive_peg_monitor(
+    ib: Any,
+    parent_trade: Any,
+    signal: TradeSignal,
+    bracket: BracketOrder,
+    contract: Any,
+    max_wait_sec: int = PASSIVE_PEG_TIMEOUT_SEC,
+    poll_interval_sec: int = PASSIVE_PEG_POLL_INTERVAL_SEC,
+) -> None:
+    """Monitor a passive REL-peg parent order and cancel on timeout.
+
+    The IBKR REL algo already auto-tracks the NBB/NBO, so this loop's
+    main job is the timeout. If at T + max_wait_sec the parent still has
+    not filled, we cancel it. We do NOT cross the spread — the signal
+    would have been flagged tier3_shock upstream if it needed to.
+    """
+    deadline = dt.datetime.now(_ET) + dt.timedelta(seconds=max_wait_sec)
+    start_ts = dt.datetime.now(_ET)
+
+    try:
+        while dt.datetime.now(_ET) < deadline:
+            await asyncio.sleep(poll_interval_sec)
+
+            order_status = getattr(parent_trade.orderStatus, "status", "") or ""
+            filled_qty = getattr(parent_trade.orderStatus, "filled", 0) or 0
+            remaining = getattr(parent_trade.orderStatus, "remaining", bracket.quantity)
+
+            if order_status in ("Filled", "ApiCancelled", "Cancelled"):
+                log.info(
+                    f"[PASSIVE-PEG] {bracket.ticker} parent={parent_trade.order.orderId} "
+                    f"resolved status={order_status} filled={filled_qty}/{bracket.quantity}"
+                )
+                return
+
+        elapsed = (dt.datetime.now(_ET) - start_ts).total_seconds()
+        log.warning(
+            f"[PASSIVE-PEG] {bracket.ticker} unfilled after {elapsed:.0f}s — "
+            f"cancelling parent={parent_trade.order.orderId} "
+            f"(filled={getattr(parent_trade.orderStatus, 'filled', 0)}/"
+            f"{bracket.quantity}). NOT crossing spread."
+        )
+        try:
+            await asyncio.to_thread(ib.cancelOrder, parent_trade.order)
+        except Exception as cancel_exc:
+            log.error(
+                f"[PASSIVE-PEG] cancel failed for {bracket.ticker}: {cancel_exc}"
+            )
+        signal.status = SignalStatus.CANCELLED
+    except Exception as exc:
+        log.error(f"[PASSIVE-PEG] monitor error for {bracket.ticker}: {exc}")
 
 
 async def process_queued_orders(portfolio_equity: float) -> list[TradeSignal]:

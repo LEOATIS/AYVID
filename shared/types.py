@@ -85,6 +85,11 @@ class TradeAction(str, Enum):
 class OrderType(str, Enum):
     MARKET = "MARKET"
     LIMIT = "LIMIT"
+    # PASSIVE_LIMIT = post-only / maker-rebate-eligible. Routes as an
+    # IBKR RELATIVE (REL) order pegged to the near touch, adaptive
+    # patient. Trails the NBB (buy) / NBO (sell) for a fixed window
+    # and cancels if unfilled — NEVER crosses the spread.
+    PASSIVE_LIMIT = "PASSIVE_LIMIT"
     TWAP = "TWAP"
     VWAP = "VWAP"
 
@@ -327,6 +332,10 @@ class TradeSignal(BaseModel):
     compound_risk: float | None = None
     causal_path: list[str] = Field(default_factory=list)
     status: SignalStatus = SignalStatus.PENDING
+    # Tier-3 news shocks demand immediate liquidity and bypass passive
+    # pegging. Everything else (Tier-1 structural, Tier-2 causal) routes
+    # passive by default to capture maker rebates.
+    tier3_shock: bool = False
 
 
 class BracketOrder(BaseModel):

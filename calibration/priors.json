@@ -1,0 +1,396 @@
+{
+  "_generated_at": "2026-04-20T21:08:28.389749+00:00",
+  "_min_samples": 5,
+  "_schema_version": 1,
+  "priors": {
+    "deep_value_investment": {
+      "CHOPPY__HIGH_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "CHOPPY__LOW_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "CHOPPY__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "STRONG_TREND_DOWN__CRISIS": {
+        "ci": [
+          0.597,
+          3.877
+        ],
+        "max_rsi": 32.0,
+        "max_z": -1.2,
+        "min_expected_r": 1.5,
+        "min_factor_score": 0.45,
+        "n": 5,
+        "sharpe": 2.237,
+        "trades_per_100bars": 1.51,
+        "win_rate": 1.0
+      },
+      "STRONG_TREND_DOWN__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "STRONG_TREND_UP__LOW_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_DOWN__CRISIS": {
+        "best_sharpe_seen": -0.267,
+        "blocked_by_regime": true,
+        "n": 12
+      },
+      "WEAK_TREND_DOWN__HIGH_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_DOWN__LOW_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_DOWN__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__HIGH_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__LOW_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      }
+    },
+    "shock_directed_call_es": {
+      "CHOPPY__HIGH_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "CHOPPY__LOW_VOL": {
+        "ci": [
+          -0.448,
+          0.801
+        ],
+        "max_rsi": 22.0,
+        "max_z": -2.0,
+        "min_expected_r": 2.5,
+        "min_factor_score": 0.3,
+        "n": 10,
+        "sharpe": 0.177,
+        "trades_per_100bars": 3.01,
+        "win_rate": 0.3
+      },
+      "CHOPPY__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "STRONG_TREND_DOWN__CRISIS": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "STRONG_TREND_DOWN__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "STRONG_TREND_UP__LOW_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_DOWN__CRISIS": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_DOWN__HIGH_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_DOWN__LOW_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_DOWN__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__HIGH_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__LOW_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      }
+    },
+    "shock_directed_put_z": {
+      "CHOPPY__HIGH_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "CHOPPY__LOW_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "CHOPPY__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "STRONG_TREND_DOWN__CRISIS": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "STRONG_TREND_DOWN__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "STRONG_TREND_UP__LOW_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_DOWN__CRISIS": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_DOWN__HIGH_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_DOWN__LOW_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_DOWN__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__HIGH_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__LOW_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      }
+    },
+    "supply_chain_beneficiary": {
+      "CHOPPY__HIGH_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "CHOPPY__LOW_VOL": {
+        "ci": [
+          -0.177,
+          1.215
+        ],
+        "max_rsi": 22.0,
+        "max_z": -1.2,
+        "min_expected_r": 1.5,
+        "min_factor_score": 0.3,
+        "n": 9,
+        "sharpe": 0.519,
+        "trades_per_100bars": 2.71,
+        "win_rate": 0.778
+      },
+      "CHOPPY__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "STRONG_TREND_DOWN__CRISIS": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "STRONG_TREND_DOWN__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "STRONG_TREND_UP__LOW_VOL": {
+        "ci": [
+          -0.587,
+          1.034
+        ],
+        "max_rsi": 22.0,
+        "max_z": -2.0,
+        "min_expected_r": 2.5,
+        "min_factor_score": 0.3,
+        "n": 6,
+        "sharpe": 0.224,
+        "trades_per_100bars": 1.81,
+        "win_rate": 0.5
+      },
+      "WEAK_TREND_DOWN__CRISIS": {
+        "ci": [
+          -0.469,
+          0.936
+        ],
+        "max_rsi": 32.0,
+        "max_z": -1.2,
+        "min_expected_r": 1.5,
+        "min_factor_score": 0.3,
+        "n": 8,
+        "sharpe": 0.234,
+        "trades_per_100bars": 2.41,
+        "win_rate": 0.5
+      },
+      "WEAK_TREND_DOWN__HIGH_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_DOWN__LOW_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_DOWN__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__HIGH_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__LOW_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__NORMAL": {
+        "ci": [
+          -0.253,
+          0.776
+        ],
+        "max_rsi": 22.0,
+        "max_z": -2.0,
+        "min_expected_r": 1.5,
+        "min_factor_score": 0.45,
+        "n": 15,
+        "sharpe": 0.261,
+        "trades_per_100bars": 4.52,
+        "win_rate": 0.667
+      }
+    },
+    "supply_chain_oversold_dip": {
+      "CHOPPY__HIGH_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "CHOPPY__LOW_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "CHOPPY__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "STRONG_TREND_DOWN__CRISIS": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "STRONG_TREND_DOWN__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "STRONG_TREND_UP__LOW_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_DOWN__CRISIS": {
+        "best_sharpe_seen": -0.144,
+        "blocked_by_regime": true,
+        "n": 9
+      },
+      "WEAK_TREND_DOWN__HIGH_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_DOWN__LOW_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_DOWN__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__HIGH_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__LOW_VOL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__NORMAL": {
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      }
+    }
+  }
+}

@@ -4,26 +4,48 @@ from __future__ import annotations
 import pytest
 
 
-class TestDetermineOrderType:
-    def test_first_order_is_limit(self):
-        from execution_engine.broker.orders import _determine_order_type
-        from shared.types import AlphaHorizon, OrderType
-        assert _determine_order_type(AlphaHorizon.FIRST_ORDER) == OrderType.LIMIT
+def _mk_signal(horizon, *, tier3_shock: bool = False):
+    from shared.types import AlphaHorizon, TradeAction, TradeSignal
+    return TradeSignal(
+        signal_id="r-test",
+        ticker="AAPL",
+        action=TradeAction.LONG,
+        alpha_horizon=horizon,
+        confidence=0.7,
+        rationale="routing test",
+        tier3_shock=tier3_shock,
+    )
 
-    def test_second_order_is_limit(self):
+
+class TestDetermineOrderType:
+    """Tier-1 passive-first routing: only Tier-3 news shocks cross the spread."""
+
+    def test_first_order_non_shock_is_passive_limit(self):
         from execution_engine.broker.orders import _determine_order_type
         from shared.types import AlphaHorizon, OrderType
-        assert _determine_order_type(AlphaHorizon.SECOND_ORDER) == OrderType.LIMIT
+        assert _determine_order_type(_mk_signal(AlphaHorizon.FIRST_ORDER)) == OrderType.PASSIVE_LIMIT
+
+    def test_first_order_tier3_shock_is_limit(self):
+        from execution_engine.broker.orders import _determine_order_type
+        from shared.types import AlphaHorizon, OrderType
+        assert _determine_order_type(
+            _mk_signal(AlphaHorizon.FIRST_ORDER, tier3_shock=True)
+        ) == OrderType.LIMIT
+
+    def test_second_order_is_passive_limit(self):
+        from execution_engine.broker.orders import _determine_order_type
+        from shared.types import AlphaHorizon, OrderType
+        assert _determine_order_type(_mk_signal(AlphaHorizon.SECOND_ORDER)) == OrderType.PASSIVE_LIMIT
 
     def test_third_order_is_twap(self):
         from execution_engine.broker.orders import _determine_order_type
         from shared.types import AlphaHorizon, OrderType
-        assert _determine_order_type(AlphaHorizon.THIRD_ORDER) == OrderType.TWAP
+        assert _determine_order_type(_mk_signal(AlphaHorizon.THIRD_ORDER)) == OrderType.TWAP
 
     def test_fourth_order_is_vwap(self):
         from execution_engine.broker.orders import _determine_order_type
         from shared.types import AlphaHorizon, OrderType
-        assert _determine_order_type(AlphaHorizon.FOURTH_ORDER) == OrderType.VWAP
+        assert _determine_order_type(_mk_signal(AlphaHorizon.FOURTH_ORDER)) == OrderType.VWAP
 
 
 class TestSubmitSignalPaper:

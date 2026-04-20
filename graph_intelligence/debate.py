@@ -54,9 +54,58 @@ _ANALYST_WEIGHTS = {
     "Macro": 0.9,
 }
 
-_CONSENSUS_THRESHOLD = 0.50
-_SUPERMAJORITY_RATIO = 0.75
-_MIN_CONVICTION_TO_TRADE = 0.62
+# ── Tier-1 agentic gating (Step 4 — over-trading suppression) ──────
+# Raised from retail-grade 50% simple-majority to institutional 75%
+# supermajority. The old logic allowed 2-1-1 splits through with a
+# size discount — we now ABORT on any non-supermajority or any
+# bull/bear cross-direction disagreement.
+_CONSENSUS_THRESHOLD = 0.75          # was 0.50
+_SUPERMAJORITY_RATIO = 0.75          # ≥75% agreement required
+_UNANIMOUS_RATIO = 1.00              # 4-of-4 agreement
+_MIN_CONVICTION_TO_TRADE = 0.72      # was 0.62 (unanimous path)
+_MIN_CONVICTION_SUPERMAJORITY = 0.78  # 3-of-4: higher Bayesian bar
+
+# Vote-pattern taxonomy — drives the non-linear conviction update.
+_PATTERN_UNANIMOUS = "UNANIMOUS"
+_PATTERN_SUPERMAJORITY = "SUPERMAJORITY"
+_PATTERN_SPLIT_OPPOSITE = "SPLIT_OPPOSITE"
+_PATTERN_WEAK_MAJORITY = "WEAK_MAJORITY"
+_PATTERN_NO_CONSENSUS = "NO_CONSENSUS"
+
+
+def _classify_vote_pattern(votes: dict[str, int], total: int) -> str:
+    """Classify the disagreement structure of the swarm.
+
+    Rules (each terminal — no fall-through):
+      - ANY opposite-direction voting (long_v>0 AND short_v>0) → SPLIT_OPPOSITE
+        This is the critical new rule. Bull and bear together = zero edge.
+      - max_directional / total < 0.75 → WEAK_MAJORITY (e.g. 2-1-1)
+      - max_directional / total == 1.00 AND total ≥ 3 → UNANIMOUS
+      - max_directional / total ≥ 0.75 AND total ≥ 4 → SUPERMAJORITY (3-of-4)
+      - else → NO_CONSENSUS
+    """
+    long_v = votes.get("LONG", 0)
+    short_v = votes.get("SHORT", 0)
+    if total <= 0:
+        return _PATTERN_NO_CONSENSUS
+
+    # Hard abort: any bull-bear cross-direction split
+    if long_v > 0 and short_v > 0:
+        return _PATTERN_SPLIT_OPPOSITE
+
+    directional = long_v + short_v
+    max_dir = max(long_v, short_v)
+    if directional == 0:
+        return _PATTERN_NO_CONSENSUS
+
+    agree_ratio = max_dir / total
+    if agree_ratio >= _UNANIMOUS_RATIO and total >= 3:
+        return _PATTERN_UNANIMOUS
+    if agree_ratio >= _SUPERMAJORITY_RATIO and total >= 4:
+        return _PATTERN_SUPERMAJORITY
+    if agree_ratio < _SUPERMAJORITY_RATIO:
+        return _PATTERN_WEAK_MAJORITY
+    return _PATTERN_NO_CONSENSUS
 
 
 def _bayesian_aggregate(
@@ -124,14 +173,20 @@ def run_debate(
     analyst_opinions: list[dict],
     min_conviction: float = _MIN_CONVICTION_TO_TRADE,
 ) -> DebateResult:
-    """Execute the multi-agent debate protocol.
+    """Execute the multi-agent debate protocol (Tier-1, non-linear).
 
     Process:
     1. Count directional votes (LONG/SHORT/HOLD)
-    2. Check supermajority requirement (≥3/4 must agree on direction)
-    3. Compute Bayesian conviction from confidence-weighted opinions
-    4. Apply consensus boost/penalty
-    5. Determine if trade should execute
+    2. Classify the vote pattern (UNANIMOUS / SUPERMAJORITY / SPLIT_* / WEAK)
+    3. Apply non-linear gating:
+         • UNANIMOUS       → 1.15× conviction bonus, base threshold
+         • SUPERMAJORITY   → 0.92× conviction penalty, higher threshold
+         • SPLIT_OPPOSITE  → HARD ABORT (no size amount survives this)
+         • WEAK / NONE     → HARD ABORT
+
+    Only unanimous or 3-of-4 supermajority decisions with high Bayesian
+    conviction pass to Tier 2. This is the institutional "investment
+    committee" standard — discipline over volume.
     """
     votes = {"LONG": 0, "SHORT": 0, "HOLD": 0}
     for opinion in analyst_opinions:
@@ -152,32 +207,54 @@ def run_debate(
 
     best_direction = max(votes, key=lambda k: votes[k])
     agreement_ratio = votes[best_direction] / total_votes
-    has_consensus = agreement_ratio >= _CONSENSUS_THRESHOLD
-    is_supermajority = agreement_ratio >= _SUPERMAJORITY_RATIO
+    pattern = _classify_vote_pattern(votes, total_votes)
+    has_consensus = pattern in (_PATTERN_UNANIMOUS, _PATTERN_SUPERMAJORITY)
+    is_supermajority = pattern == _PATTERN_SUPERMAJORITY or pattern == _PATTERN_UNANIMOUS
 
     conviction, bay_direction = _bayesian_aggregate(analyst_opinions)
-
     if bay_direction != best_direction:
         conviction *= 0.7
 
-    # Unanimous agreement bonus
-    if agreement_ratio == 1.0 and total_votes >= 3:
+    # ── Non-linear conviction transform by pattern ──
+    should_trade = False
+    conviction_threshold = min_conviction
+    abort_reason = ""
+
+    if pattern == _PATTERN_SPLIT_OPPOSITE:
+        # Bulls AND bears both voting → no amount of conviction helps.
+        # This is the critical new rule that kills over-trading.
+        conviction = 0.0
+        abort_reason = (
+            f"SPLIT_OPPOSITE ({votes['LONG']}L vs {votes['SHORT']}S) — "
+            f"aborted; no edge from contradictory swarm"
+        )
+    elif pattern == _PATTERN_WEAK_MAJORITY:
+        conviction *= 0.40  # hard discount (was 0.50) — makes it almost unreachable
+        abort_reason = (
+            f"WEAK_MAJORITY ({agreement_ratio:.0%}<{_SUPERMAJORITY_RATIO:.0%}) — "
+            f"below Tier-1 supermajority bar"
+        )
+    elif pattern == _PATTERN_NO_CONSENSUS:
+        conviction *= 0.40
+        abort_reason = "NO_CONSENSUS — aborted"
+    elif pattern == _PATTERN_UNANIMOUS:
         conviction = min(conviction * 1.15, 0.95)
-    # Strong dissent penalty
-    elif agreement_ratio < 0.5:
-        conviction *= 0.5
+        conviction_threshold = _MIN_CONVICTION_TO_TRADE
+        should_trade = (
+            conviction >= conviction_threshold and best_direction != "HOLD"
+        )
+    elif pattern == _PATTERN_SUPERMAJORITY:
+        conviction *= 0.92  # small penalty for the dissenting voice
+        conviction_threshold = _MIN_CONVICTION_SUPERMAJORITY
+        should_trade = (
+            conviction >= conviction_threshold and best_direction != "HOLD"
+        )
 
     avg_confidence = float(np.mean([
         float(o.get("confidence", 0.5)) for o in analyst_opinions
     ])) if analyst_opinions else 0.0
 
     consensus_confidence = conviction * 0.7 + avg_confidence * 0.3
-
-    should_trade = (
-        has_consensus
-        and conviction >= min_conviction
-        and best_direction != "HOLD"
-    )
 
     dissenting = [
         f"{o['analyst']}: {o.get('thesis', '')[:100]}"
@@ -187,10 +264,12 @@ def run_debate(
 
     summary_parts = [
         f"Debate: {votes['LONG']}L/{votes['SHORT']}S/{votes['HOLD']}H",
-        f"Consensus: {'YES' if has_consensus else 'NO'} ({best_direction})",
-        f"Conviction: {conviction:.2f}",
+        f"Pattern: {pattern}",
+        f"Conviction: {conviction:.2f} (need {conviction_threshold:.2f})",
         f"Trade: {'YES' if should_trade else 'NO'}",
     ]
+    if abort_reason:
+        summary_parts.append(f"Abort: {abort_reason}")
     if dissenting:
         summary_parts.append(f"Dissents: {len(dissenting)}")
 

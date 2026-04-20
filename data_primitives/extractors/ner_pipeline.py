@@ -1,6 +1,10 @@
 """Named Entity Recognition pipeline — extracts structured entities from news
 and maps them into the Neo4j supply chain graph.
 
+Also hosts the **autonomous shock detector** used by the LangGraph
+pipeline and the backtest engine to replace the hardcoded
+`SHOCK_SCENARIOS` dictionary. See `detect_live_shock()`.
+
 Supports both OpenAI and Anthropic backends (selected via LLM_PROVIDER config).
 """
 from __future__ import annotations
@@ -330,3 +334,249 @@ async def process_news_batch(
         f"{len(all_events)} events ({failed} failures)"
     )
     return all_events
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Autonomous Shock Detector
+#
+#  Replaces the hardcoded `SHOCK_SCENARIOS` dict. Scans a recent
+#  news window, scores geopolitical / supply-chain escalation by
+#  keyword density + LLM classification, and — when a threshold is
+#  crossed — emits a structured `causal_intel` dict compatible with
+#  everything downstream (orchestrator MarketContext, backtest
+#  `shock_context`).
+# ═══════════════════════════════════════════════════════════════════
+
+# Keyword families. Each tuple = (category, keywords, default_bias).
+# Bias is used when no per-event LLM classification is available; it
+# reflects the historical default P&L direction of that shock family
+# on broad equity indices.
+_SHOCK_KEYWORD_FAMILIES: list[tuple[str, tuple[str, ...], str]] = [
+    # Geopolitical — historically index-bearish
+    ("geopolitical_war",   ("war", "invasion", "attack", "strike", "airstrike",
+                            "missile", "drone strike", "military conflict",
+                            "ceasefire violation", "mobilisation", "mobilization"),
+     "BEARISH"),
+    ("geopolitical_tension", ("tensions escalate", "escalating tensions",
+                              "standoff", "confrontation", "retaliation",
+                              "provocation", "threat of war", "red line"),
+     "BEARISH"),
+    ("sanctions_tariffs",  ("sanctions", "sanction", "tariff", "tariffs",
+                            "trade war", "export ban", "export controls",
+                            "embargo", "blockade", "blacklist"),
+     "BEARISH"),
+    ("middle_east",        ("iran", "israel", "gaza", "hezbollah", "houthi",
+                            "red sea", "strait of hormuz", "oil supply"),
+     "BEARISH"),
+    # Supply chain — selectively bearish on consumer / industrials
+    ("supply_chain",       ("factory fire", "plant explosion", "port closure",
+                            "shipping disruption", "container shortage",
+                            "chip shortage", "semiconductor shortage",
+                            "supply chain disruption", "supplier halt",
+                            "logistics bottleneck"),
+     "BEARISH"),
+    ("commodity_shock",    ("oil spike", "opec cuts", "opec+ cut",
+                            "natural gas crisis", "copper squeeze",
+                            "gold surge", "commodity rally",
+                            "power outage", "grid failure"),
+     "BEARISH"),
+    # Recovery / positive
+    ("recovery",           ("ceasefire agreed", "truce signed", "peace deal",
+                            "sanctions lifted", "tariff rollback",
+                            "plant reopened", "capacity restored",
+                            "supply restored"),
+     "BULLISH"),
+]
+
+# Minimum aggregate keyword-hit score (across all families) at which we
+# treat the window as containing a live shock. Calibrated so 2-3 strong
+# headlines trigger, random noise does not.
+_SHOCK_DETECTION_THRESHOLD = 3.0
+
+
+def _score_news_for_shock(
+    news_items: list[NewsItem],
+) -> tuple[float, dict[str, int], str]:
+    """Heuristic scoring pass over a news window.
+
+    Returns:
+        (total_score, per_family_hits, dominant_bias)
+    """
+    per_family: dict[str, int] = {}
+    bias_tally: dict[str, int] = {"BULLISH": 0, "BEARISH": 0, "NEUTRAL": 0}
+
+    for item in news_items:
+        text_lower = f"{item.title or ''} {item.text or ''}".lower()
+        if not text_lower.strip():
+            continue
+        for family, keywords, default_bias in _SHOCK_KEYWORD_FAMILIES:
+            hits = sum(1 for kw in keywords if kw in text_lower)
+            if hits <= 0:
+                continue
+            per_family[family] = per_family.get(family, 0) + hits
+            bias_tally[default_bias] = bias_tally.get(default_bias, 0) + hits
+
+    total_score = float(sum(per_family.values()))
+    dominant_bias = max(bias_tally, key=bias_tally.get) if bias_tally else "NEUTRAL"
+    if bias_tally["BULLISH"] == 0 and bias_tally["BEARISH"] == 0:
+        dominant_bias = "NEUTRAL"
+    return total_score, per_family, dominant_bias
+
+
+# Index symbols we attach directional biases to. These match the keys
+# used by the backtest engine's shock_context / index_bias block.
+_TRACKED_INDICES = (
+    "^GSPC", "^IXIC", "^DJI", "^RUT",
+    "^FTSE", "^GDAXI", "^FCHI", "^STOXX50E",
+    "^N225", "^HSI", "^NSEI", "^BSESN",
+)
+
+
+def _ticker_frequency(news_items: list[NewsItem]) -> dict[str, int]:
+    """Count which tickers are most mentioned in the news window."""
+    freq: dict[str, int] = {}
+    for item in news_items:
+        for t in (item.symbols or []):
+            if not t:
+                continue
+            freq[t] = freq.get(t, 0) + 1
+    return freq
+
+
+def detect_live_shock(
+    news_items: list[NewsItem],
+    *,
+    min_score: float = _SHOCK_DETECTION_THRESHOLD,
+    shock_magnitude: float = -0.08,
+) -> dict[str, Any] | None:
+    """Autonomous shock detector.
+
+    Given a window of recent news items (live or historical), returns a
+    `causal_intel` dict when enough keyword evidence is present to flag
+    an escalating shock. The dict is structurally identical to the
+    hardcoded `SHOCK_SCENARIOS[*]["causal_intel"]` blocks so it is a
+    drop-in replacement wherever those are used.
+
+    Returns None when the news window is not elevated enough — in which
+    case callers (backtester, LangGraph pipeline) should proceed with
+    zero shock context and let the regime gates decide.
+
+    Output schema:
+        {
+          "shock_type": "geopolitical" | "supply_chain" | "commodity" | "recovery",
+          "shock_families": {family: hit_count, ...},
+          "shock_score": float,
+          "expected_direction": "BEARISH" | "BULLISH" | "NEUTRAL",
+          "beneficiary_tickers": [str, ...],
+          "victim_tickers": [str, ...],
+          "index_bias": {"^GSPC": "BEARISH", ...},
+          "headline_sample": [str up to 5],
+          "causal_chain": "<free-text summary>",
+          "auto_detected": True,
+        }
+    """
+    if not news_items:
+        return None
+
+    score, families, dominant_bias = _score_news_for_shock(news_items)
+    if score < min_score:
+        return None
+
+    # Pick the top-mentioned family for typing.
+    if not families:
+        return None
+    top_family = max(families, key=families.get)
+    shock_type_map = {
+        "geopolitical_war": "geopolitical",
+        "geopolitical_tension": "geopolitical",
+        "sanctions_tariffs": "geopolitical",
+        "middle_east": "geopolitical",
+        "supply_chain": "supply_chain",
+        "commodity_shock": "commodity",
+        "recovery": "recovery",
+    }
+    shock_type = shock_type_map.get(top_family, "geopolitical")
+
+    # Ticker segregation — frequency-based proxy. In a real deployment
+    # the LangGraph mapper refines beneficiaries/victims via the Neo4j
+    # causal graph. This heuristic is the conservative default.
+    freq = _ticker_frequency(news_items)
+    top_tickers = sorted(freq.items(), key=lambda kv: -kv[1])[:10]
+    mentioned = [t for t, _ in top_tickers]
+
+    beneficiaries: list[str] = []
+    victims: list[str] = []
+    if dominant_bias == "BEARISH":
+        victims = mentioned[:6]
+        # Defensive sectors tend to benefit on bearish shocks.
+        beneficiaries = [t for t in ("GLD", "TLT", "XLU", "XLP") if t in freq]
+    elif dominant_bias == "BULLISH":
+        beneficiaries = mentioned[:6]
+        victims = [t for t in ("GLD", "TLT") if t in freq]
+    else:
+        victims = mentioned[:4]
+
+    index_bias = {idx: dominant_bias for idx in _TRACKED_INDICES}
+
+    sample = [item.title for item in news_items[:5] if item.title]
+    causal_chain = (
+        f"Auto-detected {shock_type} shock "
+        f"(score={score:.1f}, families={list(families.keys())}). "
+        f"Dominant bias: {dominant_bias}. "
+        f"Top tickers mentioned: {', '.join(mentioned[:5]) or 'none'}."
+    )
+
+    return {
+        "shock_type": shock_type,
+        "shock_families": families,
+        "shock_score": score,
+        "expected_direction": dominant_bias,
+        "beneficiary_tickers": beneficiaries,
+        "victim_tickers": victims,
+        "index_bias": index_bias,
+        "headline_sample": sample,
+        "causal_chain": causal_chain,
+        "auto_detected": True,
+    }
+
+
+def shock_context_from_news(
+    news_items: list[NewsItem],
+    *,
+    shock_magnitude: float = -0.08,
+    min_score: float = _SHOCK_DETECTION_THRESHOLD,
+) -> dict[str, Any] | None:
+    """Build a full `shock_context` dict (as consumed by the backtest
+    engine's `run_backtest(..., shock_context=...)`) from a news window.
+
+    Wraps `detect_live_shock` with the outer structure the backtester
+    expects.  Returns None if no shock detected.
+    """
+    intel = detect_live_shock(news_items, min_score=min_score)
+    if not intel:
+        return None
+
+    # The backtester reads `shock_tickers` as the equity universe
+    # active for the shock. Use heuristic mentions ∪ victims ∪ benefs.
+    mentioned = {t for t in (intel.get("victim_tickers") or []) if t}
+    mentioned |= {t for t in (intel.get("beneficiary_tickers") or []) if t}
+
+    return {
+        "supply_chain_shock": True,
+        "shock_source": f"auto:{intel['shock_type']}",
+        "shock_tickers": mentioned,
+        "shock_magnitude": shock_magnitude if intel["expected_direction"] == "BEARISH"
+                           else abs(shock_magnitude),
+        "causal_intel": intel,
+        "beneficiary_tickers": set(intel.get("beneficiary_tickers") or []),
+        "victim_tickers": set(intel.get("victim_tickers") or []),
+        "index_bias": intel.get("index_bias", {}),
+        "auto_detected": True,
+    }
+
+
+__all__ = [
+    "extract_entities", "classify_event_with_llm", "map_entities_to_graph",
+    "process_news_batch",
+    "detect_live_shock", "shock_context_from_news",
+]

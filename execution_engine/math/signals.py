@@ -190,28 +190,53 @@ def compute_volume_profile(volumes: np.ndarray, lookback: int = 20) -> float:
 
 
 def compute_trend_strength(prices: np.ndarray, short: int = 10, long: int = 30) -> float:
-    """ADX-inspired trend strength via directional movement index.
+    """Directional trend strength, strictly bounded to [-1.0, +1.0].
 
-    Returns value in [-1, 1]:
-        > 0.3 → strong uptrend
-        < -0.3 → strong downtrend
-        [-0.3, 0.3] → sideways/mean-reverting
+    Signed σ-normalised MA separation:
+        trend = (MA_short − MA_long) / σ_long
+    Then clipped to [-1, 1]. Used by the orchestrator as a sign-carrying
+    signal (`trend_strength > 0` = up, `< 0` = down). Magnitude only
+    meaningful relative to itself; for absolute trend strength bounded
+    0–100 (ADX-style), call `compute_trend_magnitude`.
     """
     if len(prices) < long + 1:
         return 0.0
 
-    short_ma = np.mean(prices[-short:])
-    long_ma = np.mean(prices[-long:])
-    mid_ma = np.mean(prices[-(long // 2):])
-
-    current = prices[-1]
-    long_avg = np.mean(prices[-long:])
-    std = np.std(prices[-long:])
-    if std < 1e-10:
+    short_ma = float(np.mean(prices[-short:]))
+    long_ma = float(np.mean(prices[-long:]))
+    std = float(np.std(prices[-long:], ddof=1))
+    if std < 1e-10 or not np.isfinite(std):
         return 0.0
 
     trend = (short_ma - long_ma) / std
+    if not np.isfinite(trend):
+        return 0.0
     return float(np.clip(trend, -1.0, 1.0))
+
+
+def compute_trend_magnitude(
+    highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 14,
+) -> float:
+    """Unsigned trend strength on the classical ADX scale, strictly [0, 100].
+
+    Thin wrapper over `regime.compute_adx` that guarantees bounded output
+    for the orchestrator / LLM prompt. Imported lazily to avoid a
+    circular regime ↔ signals dependency when either module is imported
+    in isolation.
+
+    Interpretation:
+        ADX > 25 → trending market
+        ADX ~ 20 → noise floor
+        ADX < 15 → ranging
+    """
+    try:
+        from execution_engine.math.regime import compute_adx
+    except ImportError:
+        return 0.0
+    val = compute_adx(highs, lows, closes, period=period)
+    if not np.isfinite(val):
+        return 0.0
+    return float(np.clip(val, 0.0, 100.0))
 
 
 def bayesian_conviction_update(
