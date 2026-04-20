@@ -77,7 +77,9 @@ async def fetch_reddit_sentiment(ticker: str, limit: int = 25) -> list[NewsItem]
     """Search all finance subreddits for posts mentioning *ticker*.
 
     Returns deduplicated NewsItems sorted by timestamp (oldest first).
-    Sentiment is left as ``None`` — scored downstream by the sentiment module.
+    Sentiment is left as ``None`` here and filled in downstream by
+    ``data_primitives.transformers.sentiment.score_news_items`` (OpenAI,
+    [-1, +1], 0.0 neutral).
     """
     async with httpx.AsyncClient(
         headers={"User-Agent": _USER_AGENT},

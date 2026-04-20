@@ -237,11 +237,15 @@ export function HeroVisual() {
 // ── helpers ─────────────────────────────────────────────────────────
 type N = { x: number; y: number };
 
+function round4(n: number) {
+  return Math.round(n * 1e4) / 1e4;
+}
+
 function ringNodes(count: number, rx: number, ry: number, phase = 0): N[] {
   const out: N[] = [];
   for (let i = 0; i < count; i++) {
     const t = phase + (i / count) * Math.PI * 2;
-    out.push({ x: Math.cos(t) * rx, y: Math.sin(t) * ry });
+    out.push({ x: round4(Math.cos(t) * rx), y: round4(Math.sin(t) * ry) });
   }
   return out;
 }

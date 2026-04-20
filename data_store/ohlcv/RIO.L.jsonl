@@ -1,124 +1,138 @@
-{"timestamp": "2026-01-20 00:00:00", "symbol": "RIO.L", "open": 6254.0, "high": 6318.0, "low": 6236.0, "close": 6314.0, "volume": 2743799}
-{"timestamp": "2026-01-21 00:00:00", "symbol": "RIO.L", "open": 6408.0, "high": 6676.0, "low": 6408.0, "close": 6641.0, "volume": 9505989}
-{"timestamp": "2026-01-22 00:00:00", "symbol": "RIO.L", "open": 6568.0, "high": 6587.0, "low": 6434.0, "close": 6486.0, "volume": 2939590}
-{"timestamp": "2026-01-23 00:00:00", "symbol": "RIO.L", "open": 6468.0, "high": 6605.0, "low": 6457.0, "close": 6576.0, "volume": 2010890}
-{"timestamp": "2026-01-26 00:00:00", "symbol": "RIO.L", "open": 6604.0, "high": 6746.0, "low": 6604.0, "close": 6676.0, "volume": 2315481}
-{"timestamp": "2026-01-27 00:00:00", "symbol": "RIO.L", "open": 6646.0, "high": 6737.0, "low": 6598.0, "close": 6728.0, "volume": 2115857}
-{"timestamp": "2026-01-28 00:00:00", "symbol": "RIO.L", "open": 6732.0, "high": 6780.0, "low": 6697.0, "close": 6751.0, "volume": 4694690}
-{"timestamp": "2026-01-29 00:00:00", "symbol": "RIO.L", "open": 6806.0, "high": 7023.0, "low": 6786.0, "close": 6849.0, "volume": 6242138}
-{"timestamp": "2026-01-30 00:00:00", "symbol": "RIO.L", "open": 6671.0, "high": 6785.0, "low": 6621.0, "close": 6738.0, "volume": 4028204}
-{"timestamp": "2026-02-02 00:00:00", "symbol": "RIO.L", "open": 6520.0, "high": 6813.0, "low": 6520.0, "close": 6802.0, "volume": 5637231}
-{"timestamp": "2026-02-03 00:00:00", "symbol": "RIO.L", "open": 6850.0, "high": 7038.0, "low": 6832.0, "close": 7038.0, "volume": 3539553}
-{"timestamp": "2026-02-04 00:00:00", "symbol": "RIO.L", "open": 7041.0, "high": 7228.0, "low": 6999.0, "close": 7005.0, "volume": 3229154}
-{"timestamp": "2026-02-05 00:00:00", "symbol": "RIO.L", "open": 6884.0, "high": 6983.0, "low": 6781.0, "close": 6826.0, "volume": 5355128}
-{"timestamp": "2026-02-06 00:00:00", "symbol": "RIO.L", "open": 6685.0, "high": 6887.0, "low": 6685.0, "close": 6843.0, "volume": 3777401}
-{"timestamp": "2026-02-09 00:00:00", "symbol": "RIO.L", "open": 6905.0, "high": 7051.0, "low": 6860.0, "close": 7051.0, "volume": 3649170}
-{"timestamp": "2026-02-10 00:00:00", "symbol": "RIO.L", "open": 7048.0, "high": 7087.0, "low": 6979.0, "close": 7083.0, "volume": 6135495}
-{"timestamp": "2026-02-11 00:00:00", "symbol": "RIO.L", "open": 7194.0, "high": 7320.7548828125, "low": 7183.5, "close": 7279.0, "volume": 2507462}
-{"timestamp": "2026-02-12 00:00:00", "symbol": "RIO.L", "open": 7350.0, "high": 7421.0, "low": 7194.0, "close": 7211.0, "volume": 2796889}
-{"timestamp": "2026-02-13 00:00:00", "symbol": "RIO.L", "open": 7210.0, "high": 7241.0, "low": 7019.3251953125, "close": 7187.0, "volume": 3983672}
-{"timestamp": "2026-02-16 00:00:00", "symbol": "RIO.L", "open": 7100.0, "high": 7115.0, "low": 7000.0, "close": 7111.0, "volume": 2610574}
-{"timestamp": "2026-02-17 00:00:00", "symbol": "RIO.L", "open": 7110.0, "high": 7116.0, "low": 6963.0, "close": 7116.0, "volume": 2427814}
-{"timestamp": "2026-02-18 00:00:00", "symbol": "RIO.L", "open": 7220.0, "high": 7389.0, "low": 7139.0, "close": 7389.0, "volume": 2891106}
-{"timestamp": "2026-02-19 00:00:00", "symbol": "RIO.L", "open": 7221.0, "high": 7259.0, "low": 7005.0, "close": 7118.0, "volume": 2868507}
-{"timestamp": "2026-02-20 00:00:00", "symbol": "RIO.L", "open": 7107.0, "high": 7235.0, "low": 7050.0, "close": 7122.0, "volume": 2661416}
-{"timestamp": "2026-02-23 00:00:00", "symbol": "RIO.L", "open": 7136.0, "high": 7239.0, "low": 6197.0, "close": 7162.0, "volume": 2423351}
-{"timestamp": "2026-02-24 00:00:00", "symbol": "RIO.L", "open": 7091.0, "high": 7303.0, "low": 7053.0, "close": 7269.0, "volume": 3695520}
-{"timestamp": "2026-02-25 00:00:00", "symbol": "RIO.L", "open": 7341.0, "high": 7557.0, "low": 7307.0, "close": 7461.0, "volume": 3073790}
-{"timestamp": "2026-02-26 00:00:00", "symbol": "RIO.L", "open": 7515.0, "high": 7515.0, "low": 7220.0, "close": 7282.0, "volume": 2916262}
-{"timestamp": "2026-02-27 00:00:00", "symbol": "RIO.L", "open": 7426.0, "high": 7468.0, "low": 7320.0, "close": 7335.0, "volume": 3613319}
-{"timestamp": "2026-03-02 00:00:00", "symbol": "RIO.L", "open": 7417.0, "high": 7417.2861328125, "low": 7248.0, "close": 7336.0, "volume": 2775681}
-{"timestamp": "2026-03-03 00:00:00", "symbol": "RIO.L", "open": 7225.0, "high": 7288.0, "low": 6946.0, "close": 7100.0, "volume": 3821872}
-{"timestamp": "2026-03-04 00:00:00", "symbol": "RIO.L", "open": 7133.0, "high": 7234.0, "low": 7097.0, "close": 7190.0, "volume": 4241919}
-{"timestamp": "2026-03-05 00:00:00", "symbol": "RIO.L", "open": 7000.0, "high": 7022.0, "low": 6767.0, "close": 6787.0, "volume": 2809796}
-{"timestamp": "2026-03-06 00:00:00", "symbol": "RIO.L", "open": 6831.0, "high": 6893.0, "low": 6657.0, "close": 6749.0, "volume": 2406682}
-{"timestamp": "2026-03-09 00:00:00", "symbol": "RIO.L", "open": 6451.0, "high": 6661.0, "low": 6401.0, "close": 6635.0, "volume": 8663344}
-{"timestamp": "2026-03-10 00:00:00", "symbol": "RIO.L", "open": 6701.0, "high": 6844.0, "low": 6670.0, "close": 6837.0, "volume": 3529462}
-{"timestamp": "2026-03-11 00:00:00", "symbol": "RIO.L", "open": 6808.0, "high": 6843.0, "low": 6722.0, "close": 6791.0, "volume": 3332128}
-{"timestamp": "2026-03-12 00:00:00", "symbol": "RIO.L", "open": 6799.0, "high": 6927.0, "low": 6761.0, "close": 6845.0, "volume": 2750197}
-{"timestamp": "2026-03-13 00:00:00", "symbol": "RIO.L", "open": 6811.0, "high": 6835.0, "low": 6663.80078125, "close": 6665.0, "volume": 2454711}
-{"timestamp": "2026-03-16 00:00:00", "symbol": "RIO.L", "open": 6651.0, "high": 6798.0, "low": 6625.0, "close": 6694.0, "volume": 1877001}
-{"timestamp": "2026-03-17 00:00:00", "symbol": "RIO.L", "open": 6731.0, "high": 6820.0, "low": 6708.7822265625, "close": 6757.0, "volume": 1260957}
-{"timestamp": "2026-03-18 00:00:00", "symbol": "RIO.L", "open": 6786.0, "high": 6800.0, "low": 6617.0, "close": 6663.0, "volume": 2942205}
-{"timestamp": "2026-03-19 00:00:00", "symbol": "RIO.L", "open": 6463.0, "high": 6488.0, "low": 6211.0, "close": 6338.0, "volume": 3639140}
-{"timestamp": "2026-03-20 00:00:00", "symbol": "RIO.L", "open": 6399.0, "high": 6434.0, "low": 6218.89794921875, "close": 6246.0, "volume": 7811145}
-{"timestamp": "2026-03-23 00:00:00", "symbol": "RIO.L", "open": 6111.0, "high": 6470.0, "low": 6049.0, "close": 6375.0, "volume": 7260431}
-{"timestamp": "2026-03-24 00:00:00", "symbol": "RIO.L", "open": 6325.0, "high": 6481.0, "low": 6287.0, "close": 6481.0, "volume": 6004575}
-{"timestamp": "2026-03-25 00:00:00", "symbol": "RIO.L", "open": 6528.0, "high": 6603.0, "low": 6509.0, "close": 6532.0, "volume": 1622505}
-{"timestamp": "2026-03-26 00:00:00", "symbol": "RIO.L", "open": 6436.0, "high": 6474.0, "low": 6345.0, "close": 6430.0, "volume": 3546384}
-{"timestamp": "2026-03-27 00:00:00", "symbol": "RIO.L", "open": 6548.0, "high": 6549.0, "low": 6359.0, "close": 6545.0, "volume": 3452489}
-{"timestamp": "2026-03-30 00:00:00", "symbol": "RIO.L", "open": 6837.0, "high": 6837.0, "low": 6727.0, "close": 6772.0, "volume": 3782788}
-{"timestamp": "2026-03-31 00:00:00", "symbol": "RIO.L", "open": 6800.0, "high": 6974.0, "low": 6780.0, "close": 6944.0, "volume": 3001344}
-{"timestamp": "2026-04-01 00:00:00", "symbol": "RIO.L", "open": 7151.0, "high": 7161.0, "low": 7050.0, "close": 7118.0, "volume": 3045752}
-{"timestamp": "2026-04-02 00:00:00", "symbol": "RIO.L", "open": 6992.0, "high": 7159.0, "low": 6938.0, "close": 7102.0, "volume": 3449328}
-{"timestamp": "2026-04-07 00:00:00", "symbol": "RIO.L", "open": 7116.0, "high": 7184.0, "low": 7055.0, "close": 7119.0, "volume": 2773232}
-{"timestamp": "2026-04-08 00:00:00", "symbol": "RIO.L", "open": 7508.0, "high": 7575.0, "low": 7300.0, "close": 7332.0, "volume": 3820450}
-{"timestamp": "2026-04-09 00:00:00", "symbol": "RIO.L", "open": 7375.0, "high": 7380.0, "low": 7217.0, "close": 7248.0, "volume": 1847658}
-{"timestamp": "2026-04-10 00:00:00", "symbol": "RIO.L", "open": 7240.0, "high": 7375.0, "low": 7232.0, "close": 7345.0, "volume": 2764589}
-{"timestamp": "2026-04-13 00:00:00", "symbol": "RIO.L", "open": 7270.0, "high": 7356.0, "low": 7247.0, "close": 7316.0, "volume": 1489907}
-{"timestamp": "2026-04-14 00:00:00", "symbol": "RIO.L", "open": 7408.0, "high": 7422.0, "low": 7270.0, "close": 7310.0, "volume": 2021379}
-{"timestamp": "2026-04-15 00:00:00", "symbol": "RIO.L", "open": 7328.0, "high": 7390.0, "low": 7243.0, "close": 7243.0, "volume": 1524691}
-{"timestamp": "2026-04-16 00:00:00", "symbol": "RIO.L", "open": 7395.0, "high": 7432.0, "low": 7340.0, "close": 7369.0, "volume": 2119878}
-{"timestamp": "2026-04-17 00:00:00", "symbol": "RIO.L", "open": 7412.0, "high": 7466.0, "low": 7292.0, "close": 7448.0, "volume": 2163324}
-{"timestamp": "2026-01-20 00:00:00", "symbol": "RIO.L", "open": 6254.0, "high": 6318.0, "low": 6236.0, "close": 6314.0, "volume": 2743799}
-{"timestamp": "2026-01-21 00:00:00", "symbol": "RIO.L", "open": 6408.0, "high": 6676.0, "low": 6408.0, "close": 6641.0, "volume": 9505989}
-{"timestamp": "2026-01-22 00:00:00", "symbol": "RIO.L", "open": 6568.0, "high": 6587.0, "low": 6434.0, "close": 6486.0, "volume": 2939590}
-{"timestamp": "2026-01-23 00:00:00", "symbol": "RIO.L", "open": 6468.0, "high": 6605.0, "low": 6457.0, "close": 6576.0, "volume": 2010890}
-{"timestamp": "2026-01-26 00:00:00", "symbol": "RIO.L", "open": 6604.0, "high": 6746.0, "low": 6604.0, "close": 6676.0, "volume": 2315481}
-{"timestamp": "2026-01-27 00:00:00", "symbol": "RIO.L", "open": 6646.0, "high": 6737.0, "low": 6598.0, "close": 6728.0, "volume": 2115857}
-{"timestamp": "2026-01-28 00:00:00", "symbol": "RIO.L", "open": 6732.0, "high": 6780.0, "low": 6697.0, "close": 6751.0, "volume": 4694690}
-{"timestamp": "2026-01-29 00:00:00", "symbol": "RIO.L", "open": 6806.0, "high": 7023.0, "low": 6786.0, "close": 6849.0, "volume": 6242138}
-{"timestamp": "2026-01-30 00:00:00", "symbol": "RIO.L", "open": 6671.0, "high": 6785.0, "low": 6621.0, "close": 6738.0, "volume": 4028204}
-{"timestamp": "2026-02-02 00:00:00", "symbol": "RIO.L", "open": 6520.0, "high": 6813.0, "low": 6520.0, "close": 6802.0, "volume": 5637231}
-{"timestamp": "2026-02-03 00:00:00", "symbol": "RIO.L", "open": 6850.0, "high": 7038.0, "low": 6832.0, "close": 7038.0, "volume": 3539553}
-{"timestamp": "2026-02-04 00:00:00", "symbol": "RIO.L", "open": 7041.0, "high": 7228.0, "low": 6999.0, "close": 7005.0, "volume": 3229154}
-{"timestamp": "2026-02-05 00:00:00", "symbol": "RIO.L", "open": 6884.0, "high": 6983.0, "low": 6781.0, "close": 6826.0, "volume": 5355128}
-{"timestamp": "2026-02-06 00:00:00", "symbol": "RIO.L", "open": 6685.0, "high": 6887.0, "low": 6685.0, "close": 6843.0, "volume": 3777401}
-{"timestamp": "2026-02-09 00:00:00", "symbol": "RIO.L", "open": 6905.0, "high": 7051.0, "low": 6860.0, "close": 7051.0, "volume": 3649170}
-{"timestamp": "2026-02-10 00:00:00", "symbol": "RIO.L", "open": 7048.0, "high": 7087.0, "low": 6979.0, "close": 7083.0, "volume": 6135495}
-{"timestamp": "2026-02-11 00:00:00", "symbol": "RIO.L", "open": 7194.0, "high": 7320.7548828125, "low": 7183.5, "close": 7279.0, "volume": 2507462}
-{"timestamp": "2026-02-12 00:00:00", "symbol": "RIO.L", "open": 7350.0, "high": 7421.0, "low": 7194.0, "close": 7211.0, "volume": 2796889}
-{"timestamp": "2026-02-13 00:00:00", "symbol": "RIO.L", "open": 7210.0, "high": 7241.0, "low": 7019.3251953125, "close": 7187.0, "volume": 3983672}
-{"timestamp": "2026-02-16 00:00:00", "symbol": "RIO.L", "open": 7100.0, "high": 7115.0, "low": 7000.0, "close": 7111.0, "volume": 2610574}
-{"timestamp": "2026-02-17 00:00:00", "symbol": "RIO.L", "open": 7110.0, "high": 7116.0, "low": 6963.0, "close": 7116.0, "volume": 2427814}
-{"timestamp": "2026-02-18 00:00:00", "symbol": "RIO.L", "open": 7220.0, "high": 7389.0, "low": 7139.0, "close": 7389.0, "volume": 2891106}
-{"timestamp": "2026-02-19 00:00:00", "symbol": "RIO.L", "open": 7221.0, "high": 7259.0, "low": 7005.0, "close": 7118.0, "volume": 2868507}
-{"timestamp": "2026-02-20 00:00:00", "symbol": "RIO.L", "open": 7107.0, "high": 7235.0, "low": 7050.0, "close": 7122.0, "volume": 2661416}
-{"timestamp": "2026-02-23 00:00:00", "symbol": "RIO.L", "open": 7136.0, "high": 7239.0, "low": 6197.0, "close": 7162.0, "volume": 2423351}
-{"timestamp": "2026-02-24 00:00:00", "symbol": "RIO.L", "open": 7091.0, "high": 7303.0, "low": 7053.0, "close": 7269.0, "volume": 3695520}
-{"timestamp": "2026-02-25 00:00:00", "symbol": "RIO.L", "open": 7341.0, "high": 7557.0, "low": 7307.0, "close": 7461.0, "volume": 3073790}
-{"timestamp": "2026-02-26 00:00:00", "symbol": "RIO.L", "open": 7515.0, "high": 7515.0, "low": 7220.0, "close": 7282.0, "volume": 2916262}
-{"timestamp": "2026-02-27 00:00:00", "symbol": "RIO.L", "open": 7426.0, "high": 7468.0, "low": 7320.0, "close": 7335.0, "volume": 3613319}
-{"timestamp": "2026-03-02 00:00:00", "symbol": "RIO.L", "open": 7417.0, "high": 7417.2861328125, "low": 7248.0, "close": 7336.0, "volume": 2775681}
-{"timestamp": "2026-03-03 00:00:00", "symbol": "RIO.L", "open": 7225.0, "high": 7288.0, "low": 6946.0, "close": 7100.0, "volume": 3821872}
-{"timestamp": "2026-03-04 00:00:00", "symbol": "RIO.L", "open": 7133.0, "high": 7234.0, "low": 7097.0, "close": 7190.0, "volume": 4241919}
-{"timestamp": "2026-03-05 00:00:00", "symbol": "RIO.L", "open": 7000.0, "high": 7022.0, "low": 6767.0, "close": 6787.0, "volume": 2809796}
-{"timestamp": "2026-03-06 00:00:00", "symbol": "RIO.L", "open": 6831.0, "high": 6893.0, "low": 6657.0, "close": 6749.0, "volume": 2406682}
-{"timestamp": "2026-03-09 00:00:00", "symbol": "RIO.L", "open": 6451.0, "high": 6661.0, "low": 6401.0, "close": 6635.0, "volume": 8663344}
-{"timestamp": "2026-03-10 00:00:00", "symbol": "RIO.L", "open": 6701.0, "high": 6844.0, "low": 6670.0, "close": 6837.0, "volume": 3529462}
-{"timestamp": "2026-03-11 00:00:00", "symbol": "RIO.L", "open": 6808.0, "high": 6843.0, "low": 6722.0, "close": 6791.0, "volume": 3332128}
-{"timestamp": "2026-03-12 00:00:00", "symbol": "RIO.L", "open": 6799.0, "high": 6927.0, "low": 6761.0, "close": 6845.0, "volume": 2750197}
-{"timestamp": "2026-03-13 00:00:00", "symbol": "RIO.L", "open": 6811.0, "high": 6835.0, "low": 6663.80078125, "close": 6665.0, "volume": 2454711}
-{"timestamp": "2026-03-16 00:00:00", "symbol": "RIO.L", "open": 6651.0, "high": 6798.0, "low": 6625.0, "close": 6694.0, "volume": 1877001}
-{"timestamp": "2026-03-17 00:00:00", "symbol": "RIO.L", "open": 6731.0, "high": 6820.0, "low": 6708.7822265625, "close": 6757.0, "volume": 1260957}
-{"timestamp": "2026-03-18 00:00:00", "symbol": "RIO.L", "open": 6786.0, "high": 6800.0, "low": 6617.0, "close": 6663.0, "volume": 2942205}
-{"timestamp": "2026-03-19 00:00:00", "symbol": "RIO.L", "open": 6463.0, "high": 6488.0, "low": 6211.0, "close": 6338.0, "volume": 3639140}
-{"timestamp": "2026-03-20 00:00:00", "symbol": "RIO.L", "open": 6399.0, "high": 6434.0, "low": 6218.89794921875, "close": 6246.0, "volume": 7811145}
-{"timestamp": "2026-03-23 00:00:00", "symbol": "RIO.L", "open": 6111.0, "high": 6470.0, "low": 6049.0, "close": 6375.0, "volume": 7260431}
-{"timestamp": "2026-03-24 00:00:00", "symbol": "RIO.L", "open": 6325.0, "high": 6481.0, "low": 6287.0, "close": 6481.0, "volume": 6004575}
-{"timestamp": "2026-03-25 00:00:00", "symbol": "RIO.L", "open": 6528.0, "high": 6603.0, "low": 6509.0, "close": 6532.0, "volume": 1622505}
-{"timestamp": "2026-03-26 00:00:00", "symbol": "RIO.L", "open": 6436.0, "high": 6474.0, "low": 6345.0, "close": 6430.0, "volume": 3546384}
-{"timestamp": "2026-03-27 00:00:00", "symbol": "RIO.L", "open": 6548.0, "high": 6549.0, "low": 6359.0, "close": 6545.0, "volume": 3452489}
-{"timestamp": "2026-03-30 00:00:00", "symbol": "RIO.L", "open": 6837.0, "high": 6837.0, "low": 6727.0, "close": 6772.0, "volume": 3782788}
-{"timestamp": "2026-03-31 00:00:00", "symbol": "RIO.L", "open": 6800.0, "high": 6974.0, "low": 6780.0, "close": 6944.0, "volume": 3001344}
-{"timestamp": "2026-04-01 00:00:00", "symbol": "RIO.L", "open": 7151.0, "high": 7161.0, "low": 7050.0, "close": 7118.0, "volume": 3045752}
-{"timestamp": "2026-04-02 00:00:00", "symbol": "RIO.L", "open": 6992.0, "high": 7159.0, "low": 6938.0, "close": 7102.0, "volume": 3449328}
-{"timestamp": "2026-04-07 00:00:00", "symbol": "RIO.L", "open": 7116.0, "high": 7184.0, "low": 7055.0, "close": 7119.0, "volume": 2773232}
-{"timestamp": "2026-04-08 00:00:00", "symbol": "RIO.L", "open": 7508.0, "high": 7575.0, "low": 7300.0, "close": 7332.0, "volume": 3820450}
-{"timestamp": "2026-04-09 00:00:00", "symbol": "RIO.L", "open": 7375.0, "high": 7380.0, "low": 7217.0, "close": 7248.0, "volume": 1847658}
-{"timestamp": "2026-04-10 00:00:00", "symbol": "RIO.L", "open": 7240.0, "high": 7375.0, "low": 7232.0, "close": 7345.0, "volume": 2764589}
-{"timestamp": "2026-04-13 00:00:00", "symbol": "RIO.L", "open": 7270.0, "high": 7356.0, "low": 7247.0, "close": 7316.0, "volume": 1489907}
-{"timestamp": "2026-04-14 00:00:00", "symbol": "RIO.L", "open": 7408.0, "high": 7422.0, "low": 7270.0, "close": 7310.0, "volume": 2021379}
-{"timestamp": "2026-04-15 00:00:00", "symbol": "RIO.L", "open": 7328.0, "high": 7390.0, "low": 7243.0, "close": 7243.0, "volume": 1524691}
-{"timestamp": "2026-04-16 00:00:00", "symbol": "RIO.L", "open": 7395.0, "high": 7432.0, "low": 7340.0, "close": 7369.0, "volume": 2119878}
-{"timestamp": "2026-04-17 00:00:00", "symbol": "RIO.L", "open": 7412.0, "high": 7466.0, "low": 7292.0, "close": 7448.0, "volume": 2163324}
+{"timestamp":"2025-10-01T00:00:00","symbol":"RIO.L","open":4875.5,"high":4955.0,"low":4870.0,"close":4891.5,"volume":3492557}
+{"timestamp":"2025-10-02T00:00:00","symbol":"RIO.L","open":4955.0,"high":4973.5,"low":4862.5,"close":4873.0,"volume":1839312}
+{"timestamp":"2025-10-03T00:00:00","symbol":"RIO.L","open":4920.0,"high":4947.5,"low":4897.5,"close":4931.0,"volume":3851488}
+{"timestamp":"2025-10-06T00:00:00","symbol":"RIO.L","open":4910.5,"high":5002.0,"low":4899.0,"close":4991.0,"volume":3519386}
+{"timestamp":"2025-10-07T00:00:00","symbol":"RIO.L","open":4965.5,"high":4990.5,"low":4925.0,"close":4955.5,"volume":1761674}
+{"timestamp":"2025-10-08T00:00:00","symbol":"RIO.L","open":4973.0,"high":5057.0,"low":4955.5,"close":5047.0,"volume":2605388}
+{"timestamp":"2025-10-09T00:00:00","symbol":"RIO.L","open":5110.0,"high":5171.0,"low":5049.0,"close":5049.0,"volume":2128213}
+{"timestamp":"2025-10-10T00:00:00","symbol":"RIO.L","open":4990.0,"high":5090.0,"low":4976.0,"close":4983.5,"volume":2499152}
+{"timestamp":"2025-10-13T00:00:00","symbol":"RIO.L","open":5003.0,"high":5090.0,"low":4999.0,"close":5082.0,"volume":1933144}
+{"timestamp":"2025-10-14T00:00:00","symbol":"RIO.L","open":4981.0,"high":5082.0,"low":4970.5,"close":5082.0,"volume":2259533}
+{"timestamp":"2025-10-15T00:00:00","symbol":"RIO.L","open":5135.0,"high":5157.0,"low":5060.18408203125,"close":5141.0,"volume":1839133}
+{"timestamp":"2025-10-16T00:00:00","symbol":"RIO.L","open":5147.0,"high":5152.0,"low":5103.0,"close":5138.0,"volume":1314740}
+{"timestamp":"2025-10-17T00:00:00","symbol":"RIO.L","open":5088.0,"high":5103.0,"low":5029.0,"close":5050.0,"volume":2058441}
+{"timestamp":"2025-10-20T00:00:00","symbol":"RIO.L","open":5084.0,"high":5146.0,"low":5054.0,"close":5130.0,"volume":1883806}
+{"timestamp":"2025-10-21T00:00:00","symbol":"RIO.L","open":5189.0,"high":5189.0,"low":5084.0,"close":5097.0,"volume":1612653}
+{"timestamp":"2025-10-22T00:00:00","symbol":"RIO.L","open":5223.0,"high":5286.0,"low":5169.0,"close":5205.0,"volume":6334894}
+{"timestamp":"2025-10-23T00:00:00","symbol":"RIO.L","open":5216.0,"high":5341.0,"low":5201.0,"close":5301.0,"volume":3897767}
+{"timestamp":"2025-10-24T00:00:00","symbol":"RIO.L","open":5239.0,"high":5325.0,"low":5239.0,"close":5325.0,"volume":2579339}
+{"timestamp":"2025-10-28T00:00:00","symbol":"RIO.L","open":5294.0,"high":5429.669921875,"low":5262.0,"close":5408.0,"volume":2010041}
+{"timestamp":"2025-10-29T00:00:00","symbol":"RIO.L","open":5483.0,"high":5565.0,"low":5457.0,"close":5546.0,"volume":2636583}
+{"timestamp":"2025-10-30T00:00:00","symbol":"RIO.L","open":5460.0,"high":5500.0,"low":5426.0,"close":5483.0,"volume":2226299}
+{"timestamp":"2025-10-31T00:00:00","symbol":"RIO.L","open":5489.0,"high":5511.0,"low":5471.0,"close":5486.0,"volume":1768425}
+{"timestamp":"2025-11-03T00:00:00","symbol":"RIO.L","open":5428.0,"high":5445.0,"low":5353.0,"close":5360.0,"volume":1848309}
+{"timestamp":"2025-11-04T00:00:00","symbol":"RIO.L","open":5298.0,"high":5300.0,"low":5232.0,"close":5272.0,"volume":4634235}
+{"timestamp":"2025-11-05T00:00:00","symbol":"RIO.L","open":5206.0,"high":5313.10302734375,"low":5206.0,"close":5278.0,"volume":2214425}
+{"timestamp":"2025-11-06T00:00:00","symbol":"RIO.L","open":5320.0,"high":5344.0,"low":5221.0,"close":5259.0,"volume":3187261}
+{"timestamp":"2025-11-07T00:00:00","symbol":"RIO.L","open":5255.0,"high":5262.0,"low":5159.0,"close":5226.0,"volume":1886729}
+{"timestamp":"2025-11-10T00:00:00","symbol":"RIO.L","open":5304.0,"high":5329.0,"low":5270.001953125,"close":5301.0,"volume":3741356}
+{"timestamp":"2025-11-11T00:00:00","symbol":"RIO.L","open":5318.0,"high":5353.0,"low":5303.0,"close":5324.0,"volume":1257835}
+{"timestamp":"2025-11-12T00:00:00","symbol":"RIO.L","open":5375.0,"high":5447.0,"low":5373.0,"close":5410.0,"volume":2613348}
+{"timestamp":"2025-11-13T00:00:00","symbol":"RIO.L","open":5427.0,"high":5452.0,"low":5407.0,"close":5411.0,"volume":1272135}
+{"timestamp":"2025-11-14T00:00:00","symbol":"RIO.L","open":5355.0,"high":5394.0,"low":5291.0,"close":5394.0,"volume":2134698}
+{"timestamp":"2025-11-17T00:00:00","symbol":"RIO.L","open":5397.0,"high":5410.0,"low":5357.0,"close":5398.0,"volume":1264300}
+{"timestamp":"2025-11-18T00:00:00","symbol":"RIO.L","open":5220.0,"high":5307.24609375,"low":5183.0,"close":5288.0,"volume":2853769}
+{"timestamp":"2025-11-19T00:00:00","symbol":"RIO.L","open":5274.0,"high":5343.0,"low":5250.0,"close":5307.0,"volume":1500708}
+{"timestamp":"2025-11-20T00:00:00","symbol":"RIO.L","open":5385.0,"high":5662.0,"low":5331.0,"close":5337.0,"volume":3492858}
+{"timestamp":"2025-11-21T00:00:00","symbol":"RIO.L","open":5182.0,"high":5313.0,"low":5182.0,"close":5308.0,"volume":2409005}
+{"timestamp":"2025-11-24T00:00:00","symbol":"RIO.L","open":5342.0,"high":5381.0,"low":5305.0,"close":5355.0,"volume":3328364}
+{"timestamp":"2025-11-25T00:00:00","symbol":"RIO.L","open":5372.0,"high":5449.0,"low":5367.0,"close":5400.0,"volume":1651852}
+{"timestamp":"2025-11-26T00:00:00","symbol":"RIO.L","open":5450.0,"high":5489.0,"low":5407.0,"close":5461.0,"volume":5710174}
+{"timestamp":"2025-11-27T00:00:00","symbol":"RIO.L","open":5400.0,"high":5424.0,"low":5355.0,"close":5355.0,"volume":1041402}
+{"timestamp":"2025-11-28T00:00:00","symbol":"RIO.L","open":5363.0,"high":5435.0,"low":5363.0,"close":5422.0,"volume":1655757}
+{"timestamp":"2025-12-01T00:00:00","symbol":"RIO.L","open":5414.0,"high":5498.0,"low":5399.0,"close":5465.0,"volume":1904338}
+{"timestamp":"2025-12-02T00:00:00","symbol":"RIO.L","open":5467.0,"high":5475.0,"low":5417.0,"close":5417.0,"volume":1432174}
+{"timestamp":"2025-12-03T00:00:00","symbol":"RIO.L","open":5471.0,"high":5517.0,"low":5469.0,"close":5504.0,"volume":2501212}
+{"timestamp":"2025-12-04T00:00:00","symbol":"RIO.L","open":5642.0,"high":5647.59814453125,"low":5445.0,"close":5494.0,"volume":3665663}
+{"timestamp":"2025-12-05T00:00:00","symbol":"RIO.L","open":5550.0,"high":5571.0,"low":5470.115234375,"close":5500.0,"volume":1635280}
+{"timestamp":"2025-12-08T00:00:00","symbol":"RIO.L","open":5476.0,"high":5537.0,"low":5473.0,"close":5476.0,"volume":1787481}
+{"timestamp":"2025-12-09T00:00:00","symbol":"RIO.L","open":5446.0,"high":5538.0,"low":5442.0,"close":5528.0,"volume":2268219}
+{"timestamp":"2025-12-10T00:00:00","symbol":"RIO.L","open":5571.0,"high":5668.0,"low":5563.0,"close":5607.0,"volume":2663797}
+{"timestamp":"2025-12-11T00:00:00","symbol":"RIO.L","open":5671.0,"high":5690.0,"low":5595.0,"close":5685.0,"volume":2571577}
+{"timestamp":"2025-12-12T00:00:00","symbol":"RIO.L","open":5734.0,"high":5755.0,"low":5589.0,"close":5589.0,"volume":3366671}
+{"timestamp":"2025-12-15T00:00:00","symbol":"RIO.L","open":5632.0,"high":5661.0,"low":5598.0,"close":5632.0,"volume":2121432}
+{"timestamp":"2025-12-16T00:00:00","symbol":"RIO.L","open":5656.0,"high":5706.0,"low":5644.0,"close":5663.0,"volume":3768263}
+{"timestamp":"2025-12-17T00:00:00","symbol":"RIO.L","open":5690.0,"high":5812.0,"low":5681.0,"close":5753.0,"volume":6056594}
+{"timestamp":"2025-12-18T00:00:00","symbol":"RIO.L","open":5773.0,"high":5801.0,"low":5733.5888671875,"close":5791.0,"volume":2235214}
+{"timestamp":"2025-12-19T00:00:00","symbol":"RIO.L","open":5791.0,"high":5851.0,"low":5765.0,"close":5838.0,"volume":5817202}
+{"timestamp":"2025-12-22T00:00:00","symbol":"RIO.L","open":5872.0,"high":5967.0,"low":5856.0,"close":5931.0,"volume":3162349}
+{"timestamp":"2025-12-23T00:00:00","symbol":"RIO.L","open":5920.0,"high":6019.0,"low":5908.0,"close":5997.0,"volume":1834575}
+{"timestamp":"2025-12-24T00:00:00","symbol":"RIO.L","open":5992.0,"high":6005.0,"low":5972.0,"close":5982.0,"volume":840570}
+{"timestamp":"2025-12-29T00:00:00","symbol":"RIO.L","open":5990.0,"high":6025.0,"low":5940.0,"close":5950.0,"volume":1662321}
+{"timestamp":"2025-12-30T00:00:00","symbol":"RIO.L","open":5972.0,"high":6047.0,"low":5962.0,"close":6026.0,"volume":1288770}
+{"timestamp":"2025-12-31T00:00:00","symbol":"RIO.L","open":5975.0,"high":5996.0,"low":5960.0,"close":5994.0,"volume":389226}
+{"timestamp":"2026-01-02T00:00:00","symbol":"RIO.L","open":5995.0,"high":6058.0,"low":5986.0,"close":5986.0,"volume":2042723}
+{"timestamp":"2026-01-05T00:00:00","symbol":"RIO.L","open":6100.0,"high":6131.0,"low":6047.0,"close":6091.0,"volume":1671557}
+{"timestamp":"2026-01-06T00:00:00","symbol":"RIO.L","open":6159.0,"high":6291.0,"low":6107.0,"close":6291.0,"volume":3826917}
+{"timestamp":"2026-01-07T00:00:00","symbol":"RIO.L","open":6277.0,"high":6317.0,"low":6193.0,"close":6258.0,"volume":1901311}
+{"timestamp":"2026-01-08T00:00:00","symbol":"RIO.L","open":6260.0,"high":6277.0,"low":6161.0,"close":6194.0,"volume":1842408}
+{"timestamp":"2026-01-09T00:00:00","symbol":"RIO.L","open":6070.0,"high":6119.0,"low":5991.0,"close":6006.0,"volume":5248639}
+{"timestamp":"2026-01-12T00:00:00","symbol":"RIO.L","open":6046.0,"high":6135.0,"low":6000.0,"close":6135.0,"volume":3173665}
+{"timestamp":"2026-01-13T00:00:00","symbol":"RIO.L","open":6146.0,"high":6247.0,"low":6116.0,"close":6214.0,"volume":1821636}
+{"timestamp":"2026-01-14T00:00:00","symbol":"RIO.L","open":6249.0,"high":6359.0,"low":6137.67822265625,"close":6355.0,"volume":3561203}
+{"timestamp":"2026-01-15T00:00:00","symbol":"RIO.L","open":6291.0,"high":6468.0,"low":6262.0,"close":6468.0,"volume":6583854}
+{"timestamp":"2026-01-16T00:00:00","symbol":"RIO.L","open":6400.0,"high":6406.5,"low":6287.0,"close":6347.0,"volume":3480019}
+{"timestamp":"2026-01-19T00:00:00","symbol":"RIO.L","open":6355.0,"high":6397.0,"low":6314.0,"close":6339.0,"volume":1281013}
+{"timestamp":"2026-01-20T00:00:00","symbol":"RIO.L","open":6254.0,"high":6318.0,"low":6236.0,"close":6314.0,"volume":2743799}
+{"timestamp":"2026-01-21T00:00:00","symbol":"RIO.L","open":6408.0,"high":6676.0,"low":6408.0,"close":6641.0,"volume":9505989}
+{"timestamp":"2026-01-22T00:00:00","symbol":"RIO.L","open":6568.0,"high":6587.0,"low":6434.0,"close":6486.0,"volume":2939590}
+{"timestamp":"2026-01-23T00:00:00","symbol":"RIO.L","open":6468.0,"high":6605.0,"low":6457.0,"close":6576.0,"volume":2010890}
+{"timestamp":"2026-01-26T00:00:00","symbol":"RIO.L","open":6604.0,"high":6746.0,"low":6604.0,"close":6676.0,"volume":2315481}
+{"timestamp":"2026-01-27T00:00:00","symbol":"RIO.L","open":6646.0,"high":6737.0,"low":6598.0,"close":6728.0,"volume":2115857}
+{"timestamp":"2026-01-28T00:00:00","symbol":"RIO.L","open":6732.0,"high":6780.0,"low":6697.0,"close":6751.0,"volume":4694690}
+{"timestamp":"2026-01-29T00:00:00","symbol":"RIO.L","open":6806.0,"high":7023.0,"low":6786.0,"close":6849.0,"volume":6242138}
+{"timestamp":"2026-01-30T00:00:00","symbol":"RIO.L","open":6671.0,"high":6785.0,"low":6621.0,"close":6738.0,"volume":4028204}
+{"timestamp":"2026-02-02T00:00:00","symbol":"RIO.L","open":6520.0,"high":6813.0,"low":6520.0,"close":6802.0,"volume":5637231}
+{"timestamp":"2026-02-03T00:00:00","symbol":"RIO.L","open":6850.0,"high":7038.0,"low":6832.0,"close":7038.0,"volume":3539553}
+{"timestamp":"2026-02-04T00:00:00","symbol":"RIO.L","open":7041.0,"high":7228.0,"low":6999.0,"close":7005.0,"volume":3229154}
+{"timestamp":"2026-02-05T00:00:00","symbol":"RIO.L","open":6884.0,"high":6983.0,"low":6781.0,"close":6826.0,"volume":5355128}
+{"timestamp":"2026-02-06T00:00:00","symbol":"RIO.L","open":6685.0,"high":6887.0,"low":6685.0,"close":6843.0,"volume":3777401}
+{"timestamp":"2026-02-09T00:00:00","symbol":"RIO.L","open":6905.0,"high":7051.0,"low":6860.0,"close":7051.0,"volume":3649170}
+{"timestamp":"2026-02-10T00:00:00","symbol":"RIO.L","open":7048.0,"high":7087.0,"low":6979.0,"close":7083.0,"volume":6135495}
+{"timestamp":"2026-02-11T00:00:00","symbol":"RIO.L","open":7194.0,"high":7320.7548828125,"low":7183.5,"close":7279.0,"volume":2507462}
+{"timestamp":"2026-02-12T00:00:00","symbol":"RIO.L","open":7350.0,"high":7421.0,"low":7194.0,"close":7211.0,"volume":2796889}
+{"timestamp":"2026-02-13T00:00:00","symbol":"RIO.L","open":7210.0,"high":7241.0,"low":7019.3251953125,"close":7187.0,"volume":3983672}
+{"timestamp":"2026-02-16T00:00:00","symbol":"RIO.L","open":7100.0,"high":7115.0,"low":7000.0,"close":7111.0,"volume":2610574}
+{"timestamp":"2026-02-17T00:00:00","symbol":"RIO.L","open":7110.0,"high":7116.0,"low":6963.0,"close":7116.0,"volume":2427814}
+{"timestamp":"2026-02-18T00:00:00","symbol":"RIO.L","open":7220.0,"high":7389.0,"low":7139.0,"close":7389.0,"volume":2891106}
+{"timestamp":"2026-02-19T00:00:00","symbol":"RIO.L","open":7221.0,"high":7259.0,"low":7005.0,"close":7118.0,"volume":2868507}
+{"timestamp":"2026-02-20T00:00:00","symbol":"RIO.L","open":7107.0,"high":7235.0,"low":7050.0,"close":7122.0,"volume":2661416}
+{"timestamp":"2026-02-23T00:00:00","symbol":"RIO.L","open":7136.0,"high":7239.0,"low":6197.0,"close":7162.0,"volume":2423351}
+{"timestamp":"2026-02-24T00:00:00","symbol":"RIO.L","open":7091.0,"high":7303.0,"low":7053.0,"close":7269.0,"volume":3695520}
+{"timestamp":"2026-02-25T00:00:00","symbol":"RIO.L","open":7341.0,"high":7557.0,"low":7307.0,"close":7461.0,"volume":3073790}
+{"timestamp":"2026-02-26T00:00:00","symbol":"RIO.L","open":7515.0,"high":7515.0,"low":7220.0,"close":7282.0,"volume":2916262}
+{"timestamp":"2026-02-27T00:00:00","symbol":"RIO.L","open":7426.0,"high":7468.0,"low":7320.0,"close":7335.0,"volume":3613319}
+{"timestamp":"2026-03-02T00:00:00","symbol":"RIO.L","open":7417.0,"high":7417.2861328125,"low":7248.0,"close":7336.0,"volume":2775681}
+{"timestamp":"2026-03-03T00:00:00","symbol":"RIO.L","open":7225.0,"high":7288.0,"low":6946.0,"close":7100.0,"volume":3821872}
+{"timestamp":"2026-03-04T00:00:00","symbol":"RIO.L","open":7133.0,"high":7234.0,"low":7097.0,"close":7190.0,"volume":4241919}
+{"timestamp":"2026-03-05T00:00:00","symbol":"RIO.L","open":7000.0,"high":7022.0,"low":6767.0,"close":6787.0,"volume":2809796}
+{"timestamp":"2026-03-06T00:00:00","symbol":"RIO.L","open":6831.0,"high":6893.0,"low":6657.0,"close":6749.0,"volume":2406682}
+{"timestamp":"2026-03-09T00:00:00","symbol":"RIO.L","open":6451.0,"high":6661.0,"low":6401.0,"close":6635.0,"volume":8663344}
+{"timestamp":"2026-03-10T00:00:00","symbol":"RIO.L","open":6701.0,"high":6844.0,"low":6670.0,"close":6837.0,"volume":3529462}
+{"timestamp":"2026-03-11T00:00:00","symbol":"RIO.L","open":6808.0,"high":6843.0,"low":6722.0,"close":6791.0,"volume":3332128}
+{"timestamp":"2026-03-12T00:00:00","symbol":"RIO.L","open":6799.0,"high":6927.0,"low":6761.0,"close":6845.0,"volume":2750197}
+{"timestamp":"2026-03-13T00:00:00","symbol":"RIO.L","open":6811.0,"high":6835.0,"low":6663.80078125,"close":6665.0,"volume":2454711}
+{"timestamp":"2026-03-16T00:00:00","symbol":"RIO.L","open":6651.0,"high":6798.0,"low":6625.0,"close":6694.0,"volume":1877001}
+{"timestamp":"2026-03-17T00:00:00","symbol":"RIO.L","open":6731.0,"high":6820.0,"low":6708.7822265625,"close":6757.0,"volume":1260957}
+{"timestamp":"2026-03-18T00:00:00","symbol":"RIO.L","open":6786.0,"high":6800.0,"low":6617.0,"close":6663.0,"volume":2942205}
+{"timestamp":"2026-03-19T00:00:00","symbol":"RIO.L","open":6463.0,"high":6488.0,"low":6211.0,"close":6338.0,"volume":3639140}
+{"timestamp":"2026-03-20T00:00:00","symbol":"RIO.L","open":6399.0,"high":6434.0,"low":6218.89794921875,"close":6246.0,"volume":7811145}
+{"timestamp":"2026-03-23T00:00:00","symbol":"RIO.L","open":6111.0,"high":6470.0,"low":6049.0,"close":6375.0,"volume":7260431}
+{"timestamp":"2026-03-24T00:00:00","symbol":"RIO.L","open":6325.0,"high":6481.0,"low":6287.0,"close":6481.0,"volume":6004575}
+{"timestamp":"2026-03-25T00:00:00","symbol":"RIO.L","open":6528.0,"high":6603.0,"low":6509.0,"close":6532.0,"volume":1622505}
+{"timestamp":"2026-03-26T00:00:00","symbol":"RIO.L","open":6436.0,"high":6474.0,"low":6345.0,"close":6430.0,"volume":3546384}
+{"timestamp":"2026-03-27T00:00:00","symbol":"RIO.L","open":6548.0,"high":6549.0,"low":6359.0,"close":6545.0,"volume":3452489}
+{"timestamp":"2026-03-30T00:00:00","symbol":"RIO.L","open":6837.0,"high":6837.0,"low":6727.0,"close":6772.0,"volume":3782788}
+{"timestamp":"2026-03-31T00:00:00","symbol":"RIO.L","open":6800.0,"high":6974.0,"low":6780.0,"close":6944.0,"volume":3001344}
+{"timestamp":"2026-04-01T00:00:00","symbol":"RIO.L","open":7151.0,"high":7161.0,"low":7050.0,"close":7118.0,"volume":3045752}
+{"timestamp":"2026-04-02T00:00:00","symbol":"RIO.L","open":6992.0,"high":7159.0,"low":6938.0,"close":7102.0,"volume":3449328}
+{"timestamp":"2026-04-07T00:00:00","symbol":"RIO.L","open":7116.0,"high":7184.0,"low":7055.0,"close":7119.0,"volume":2773232}
+{"timestamp":"2026-04-08T00:00:00","symbol":"RIO.L","open":7508.0,"high":7575.0,"low":7300.0,"close":7332.0,"volume":3820450}
+{"timestamp":"2026-04-09T00:00:00","symbol":"RIO.L","open":7375.0,"high":7380.0,"low":7217.0,"close":7248.0,"volume":1847658}
+{"timestamp":"2026-04-10T00:00:00","symbol":"RIO.L","open":7240.0,"high":7375.0,"low":7232.0,"close":7345.0,"volume":2764589}
+{"timestamp":"2026-04-13T00:00:00","symbol":"RIO.L","open":7270.0,"high":7356.0,"low":7247.0,"close":7316.0,"volume":1489907}
+{"timestamp":"2026-04-14T00:00:00","symbol":"RIO.L","open":7408.0,"high":7422.0,"low":7270.0,"close":7310.0,"volume":2021379}
+{"timestamp":"2026-04-15T00:00:00","symbol":"RIO.L","open":7328.0,"high":7390.0,"low":7243.0,"close":7243.0,"volume":1524691}
+{"timestamp":"2026-04-16T00:00:00","symbol":"RIO.L","open":7395.0,"high":7432.0,"low":7340.0,"close":7369.0,"volume":2119878}
+{"timestamp":"2026-04-17T00:00:00","symbol":"RIO.L","open":7412.0,"high":7466.0,"low":7292.0,"close":7448.0,"volume":2163324}
+{"timestamp":"2026-04-20T00:00:00","symbol":"RIO.L","open":7393.0,"high":7413.0,"low":7314.0,"close":7395.0,"volume":1771761}

@@ -1,124 +1,139 @@
-{"timestamp": "2026-01-20 00:00:00", "symbol": "ULVR.L", "open": 4751.0, "high": 4778.5, "low": 4712.0, "close": 4775.0, "volume": 4263471}
-{"timestamp": "2026-01-21 00:00:00", "symbol": "ULVR.L", "open": 4790.5, "high": 4853.5, "low": 4777.5, "close": 4785.0, "volume": 2175360}
-{"timestamp": "2026-01-22 00:00:00", "symbol": "ULVR.L", "open": 4783.5, "high": 4848.5, "low": 4757.0, "close": 4816.0, "volume": 2360876}
-{"timestamp": "2026-01-23 00:00:00", "symbol": "ULVR.L", "open": 4816.0, "high": 4864.2431640625, "low": 4802.5, "close": 4864.0, "volume": 2345026}
-{"timestamp": "2026-01-26 00:00:00", "symbol": "ULVR.L", "open": 4864.0, "high": 4904.5, "low": 4842.5, "close": 4861.5, "volume": 3308726}
-{"timestamp": "2026-01-27 00:00:00", "symbol": "ULVR.L", "open": 4852.0, "high": 4898.0, "low": 4841.5, "close": 4864.5, "volume": 2321628}
-{"timestamp": "2026-01-28 00:00:00", "symbol": "ULVR.L", "open": 4847.0, "high": 4847.5, "low": 4769.5, "close": 4815.5, "volume": 2858798}
-{"timestamp": "2026-01-29 00:00:00", "symbol": "ULVR.L", "open": 4776.0, "high": 4887.5, "low": 4756.0, "close": 4867.5, "volume": 4435435}
-{"timestamp": "2026-01-30 00:00:00", "symbol": "ULVR.L", "open": 4864.5, "high": 4946.5, "low": 4846.0, "close": 4940.5, "volume": 3142406}
-{"timestamp": "2026-02-02 00:00:00", "symbol": "ULVR.L", "open": 5000.0, "high": 5055.0, "low": 4986.0, "close": 4992.0, "volume": 5358414}
-{"timestamp": "2026-02-03 00:00:00", "symbol": "ULVR.L", "open": 4983.5, "high": 5045.0, "low": 4928.0, "close": 5045.0, "volume": 4343677}
-{"timestamp": "2026-02-04 00:00:00", "symbol": "ULVR.L", "open": 5033.0, "high": 5185.0, "low": 5031.0, "close": 5178.0, "volume": 4701431}
-{"timestamp": "2026-02-05 00:00:00", "symbol": "ULVR.L", "open": 5198.0, "high": 5278.0, "low": 5147.0, "close": 5250.0, "volume": 3022675}
-{"timestamp": "2026-02-06 00:00:00", "symbol": "ULVR.L", "open": 5235.0, "high": 5268.0, "low": 5210.0, "close": 5250.0, "volume": 3171936}
-{"timestamp": "2026-02-09 00:00:00", "symbol": "ULVR.L", "open": 5216.0, "high": 5234.0, "low": 5158.0, "close": 5165.0, "volume": 2768730}
-{"timestamp": "2026-02-10 00:00:00", "symbol": "ULVR.L", "open": 5175.0, "high": 5246.0, "low": 5156.0, "close": 5244.0, "volume": 4731871}
-{"timestamp": "2026-02-11 00:00:00", "symbol": "ULVR.L", "open": 5236.0, "high": 5328.0, "low": 5236.0, "close": 5320.0, "volume": 3600144}
-{"timestamp": "2026-02-12 00:00:00", "symbol": "ULVR.L", "open": 5360.0, "high": 5360.0, "low": 5130.0, "close": 5355.0, "volume": 5219335}
-{"timestamp": "2026-02-13 00:00:00", "symbol": "ULVR.L", "open": 5340.0, "high": 5469.0, "low": 5321.0, "close": 5432.0, "volume": 9368012}
-{"timestamp": "2026-02-16 00:00:00", "symbol": "ULVR.L", "open": 5432.0, "high": 5435.0, "low": 5374.0, "close": 5420.0, "volume": 3559283}
-{"timestamp": "2026-02-17 00:00:00", "symbol": "ULVR.L", "open": 5413.0, "high": 5475.0, "low": 5404.0, "close": 5413.0, "volume": 3295351}
-{"timestamp": "2026-02-18 00:00:00", "symbol": "ULVR.L", "open": 5383.0, "high": 5409.0, "low": 5328.0, "close": 5328.0, "volume": 4672412}
-{"timestamp": "2026-02-19 00:00:00", "symbol": "ULVR.L", "open": 5321.0, "high": 5365.60009765625, "low": 5304.0, "close": 5320.0, "volume": 8497146}
-{"timestamp": "2026-02-20 00:00:00", "symbol": "ULVR.L", "open": 5323.0, "high": 5382.0, "low": 5311.0, "close": 5380.0, "volume": 3134431}
-{"timestamp": "2026-02-23 00:00:00", "symbol": "ULVR.L", "open": 5420.0, "high": 5465.0, "low": 5380.0, "close": 5462.0, "volume": 5131542}
-{"timestamp": "2026-02-24 00:00:00", "symbol": "ULVR.L", "open": 5473.0, "high": 5526.0, "low": 5458.0, "close": 5472.0, "volume": 3043843}
-{"timestamp": "2026-02-25 00:00:00", "symbol": "ULVR.L", "open": 5480.0, "high": 5491.0, "low": 5361.0, "close": 5402.0, "volume": 5258840}
-{"timestamp": "2026-02-26 00:00:00", "symbol": "ULVR.L", "open": 5368.0, "high": 5387.0, "low": 5345.0, "close": 5361.0, "volume": 3668403}
-{"timestamp": "2026-02-27 00:00:00", "symbol": "ULVR.L", "open": 5369.0, "high": 5474.0, "low": 5351.0, "close": 5467.0, "volume": 4757029}
-{"timestamp": "2026-03-02 00:00:00", "symbol": "ULVR.L", "open": 5434.0, "high": 5434.0, "low": 5304.0, "close": 5326.0, "volume": 4052374}
-{"timestamp": "2026-03-03 00:00:00", "symbol": "ULVR.L", "open": 5299.0, "high": 5305.02001953125, "low": 5128.0, "close": 5134.0, "volume": 4150649}
-{"timestamp": "2026-03-04 00:00:00", "symbol": "ULVR.L", "open": 5163.0, "high": 5169.0, "low": 5104.5, "close": 5115.0, "volume": 4306655}
-{"timestamp": "2026-03-05 00:00:00", "symbol": "ULVR.L", "open": 5134.0, "high": 5134.0, "low": 5040.0, "close": 5056.0, "volume": 5119634}
-{"timestamp": "2026-03-06 00:00:00", "symbol": "ULVR.L", "open": 5036.0, "high": 5044.2138671875, "low": 4916.0, "close": 4935.0, "volume": 5305754}
-{"timestamp": "2026-03-09 00:00:00", "symbol": "ULVR.L", "open": 4926.0, "high": 4926.0, "low": 4843.0, "close": 4903.5, "volume": 3613367}
-{"timestamp": "2026-03-10 00:00:00", "symbol": "ULVR.L", "open": 4915.0, "high": 4945.0, "low": 4865.0, "close": 4907.0, "volume": 4737907}
-{"timestamp": "2026-03-11 00:00:00", "symbol": "ULVR.L", "open": 4879.5, "high": 4898.0, "low": 4824.0, "close": 4846.0, "volume": 4203018}
-{"timestamp": "2026-03-12 00:00:00", "symbol": "ULVR.L", "open": 4837.0, "high": 4874.0, "low": 4808.5, "close": 4827.5, "volume": 4431996}
-{"timestamp": "2026-03-13 00:00:00", "symbol": "ULVR.L", "open": 4792.0, "high": 4855.0, "low": 4748.9658203125, "close": 4834.5, "volume": 3104478}
-{"timestamp": "2026-03-16 00:00:00", "symbol": "ULVR.L", "open": 4839.0, "high": 4913.5, "low": 4835.5, "close": 4881.0, "volume": 3740921}
-{"timestamp": "2026-03-17 00:00:00", "symbol": "ULVR.L", "open": 4891.0, "high": 4901.02978515625, "low": 4863.0, "close": 4880.0, "volume": 7420219}
-{"timestamp": "2026-03-18 00:00:00", "symbol": "ULVR.L", "open": 4875.0, "high": 4883.0, "low": 4693.5, "close": 4712.5, "volume": 4852824}
-{"timestamp": "2026-03-19 00:00:00", "symbol": "ULVR.L", "open": 4652.5, "high": 4672.5, "low": 4568.0, "close": 4574.0, "volume": 4620726}
-{"timestamp": "2026-03-20 00:00:00", "symbol": "ULVR.L", "open": 4625.0, "high": 4662.0, "low": 4588.0, "close": 4595.5, "volume": 10237336}
-{"timestamp": "2026-03-23 00:00:00", "symbol": "ULVR.L", "open": 4564.5, "high": 4643.5, "low": 4535.0, "close": 4535.0, "volume": 5659554}
-{"timestamp": "2026-03-24 00:00:00", "symbol": "ULVR.L", "open": 4528.5, "high": 4549.0, "low": 4494.5, "close": 4528.0, "volume": 8215608}
-{"timestamp": "2026-03-25 00:00:00", "symbol": "ULVR.L", "open": 4539.0, "high": 4554.5, "low": 4481.0, "close": 4523.5, "volume": 5060802}
-{"timestamp": "2026-03-26 00:00:00", "symbol": "ULVR.L", "open": 4504.0, "high": 4531.5, "low": 4478.0, "close": 4485.0, "volume": 6321193}
-{"timestamp": "2026-03-27 00:00:00", "symbol": "ULVR.L", "open": 4500.0, "high": 4500.0, "low": 4452.0, "close": 4479.5, "volume": 5982942}
-{"timestamp": "2026-03-30 00:00:00", "symbol": "ULVR.L", "open": 4500.0, "high": 4539.5, "low": 4456.5, "close": 4528.5, "volume": 5933627}
-{"timestamp": "2026-03-31 00:00:00", "symbol": "ULVR.L", "open": 4555.5, "high": 4574.5, "low": 4197.0, "close": 4199.0, "volume": 15851122}
-{"timestamp": "2026-04-01 00:00:00", "symbol": "ULVR.L", "open": 4230.5, "high": 4252.0, "low": 4068.0, "close": 4187.0, "volume": 14233632}
-{"timestamp": "2026-04-02 00:00:00", "symbol": "ULVR.L", "open": 4205.5, "high": 4214.0, "low": 4134.5, "close": 4172.5, "volume": 10589574}
-{"timestamp": "2026-04-07 00:00:00", "symbol": "ULVR.L", "open": 4220.0, "high": 4233.5, "low": 4180.0, "close": 4188.0, "volume": 4484441}
-{"timestamp": "2026-04-08 00:00:00", "symbol": "ULVR.L", "open": 4251.0, "high": 4320.5, "low": 4233.0, "close": 4297.5, "volume": 12077127}
-{"timestamp": "2026-04-09 00:00:00", "symbol": "ULVR.L", "open": 4313.0, "high": 4332.0, "low": 4250.0, "close": 4308.5, "volume": 4765461}
-{"timestamp": "2026-04-10 00:00:00", "symbol": "ULVR.L", "open": 4302.0, "high": 4352.5, "low": 4298.5, "close": 4313.0, "volume": 5290332}
-{"timestamp": "2026-04-13 00:00:00", "symbol": "ULVR.L", "open": 4298.0, "high": 4306.5, "low": 4263.5, "close": 4295.0, "volume": 2187208}
-{"timestamp": "2026-04-14 00:00:00", "symbol": "ULVR.L", "open": 4269.5, "high": 4316.5, "low": 4250.0, "close": 4250.0, "volume": 5974558}
-{"timestamp": "2026-04-15 00:00:00", "symbol": "ULVR.L", "open": 4269.5, "high": 4272.5, "low": 4236.5, "close": 4251.0, "volume": 5885236}
-{"timestamp": "2026-04-16 00:00:00", "symbol": "ULVR.L", "open": 4256.5, "high": 4270.0, "low": 4212.0, "close": 4212.0, "volume": 4992397}
-{"timestamp": "2026-04-17 00:00:00", "symbol": "ULVR.L", "open": 4232.5, "high": 4319.0, "low": 4205.0, "close": 4299.0, "volume": 9815908}
-{"timestamp": "2026-01-20 00:00:00", "symbol": "ULVR.L", "open": 4751.0, "high": 4778.5, "low": 4712.0, "close": 4775.0, "volume": 4263471}
-{"timestamp": "2026-01-21 00:00:00", "symbol": "ULVR.L", "open": 4790.5, "high": 4853.5, "low": 4777.5, "close": 4785.0, "volume": 2175360}
-{"timestamp": "2026-01-22 00:00:00", "symbol": "ULVR.L", "open": 4783.5, "high": 4848.5, "low": 4757.0, "close": 4816.0, "volume": 2360876}
-{"timestamp": "2026-01-23 00:00:00", "symbol": "ULVR.L", "open": 4816.0, "high": 4864.2431640625, "low": 4802.5, "close": 4864.0, "volume": 2345026}
-{"timestamp": "2026-01-26 00:00:00", "symbol": "ULVR.L", "open": 4864.0, "high": 4904.5, "low": 4842.5, "close": 4861.5, "volume": 3308726}
-{"timestamp": "2026-01-27 00:00:00", "symbol": "ULVR.L", "open": 4852.0, "high": 4898.0, "low": 4841.5, "close": 4864.5, "volume": 2321628}
-{"timestamp": "2026-01-28 00:00:00", "symbol": "ULVR.L", "open": 4847.0, "high": 4847.5, "low": 4769.5, "close": 4815.5, "volume": 2858798}
-{"timestamp": "2026-01-29 00:00:00", "symbol": "ULVR.L", "open": 4776.0, "high": 4887.5, "low": 4756.0, "close": 4867.5, "volume": 4435435}
-{"timestamp": "2026-01-30 00:00:00", "symbol": "ULVR.L", "open": 4864.5, "high": 4946.5, "low": 4846.0, "close": 4940.5, "volume": 3142406}
-{"timestamp": "2026-02-02 00:00:00", "symbol": "ULVR.L", "open": 5000.0, "high": 5055.0, "low": 4986.0, "close": 4992.0, "volume": 5358414}
-{"timestamp": "2026-02-03 00:00:00", "symbol": "ULVR.L", "open": 4983.5, "high": 5045.0, "low": 4928.0, "close": 5045.0, "volume": 4343677}
-{"timestamp": "2026-02-04 00:00:00", "symbol": "ULVR.L", "open": 5033.0, "high": 5185.0, "low": 5031.0, "close": 5178.0, "volume": 4701431}
-{"timestamp": "2026-02-05 00:00:00", "symbol": "ULVR.L", "open": 5198.0, "high": 5278.0, "low": 5147.0, "close": 5250.0, "volume": 3022675}
-{"timestamp": "2026-02-06 00:00:00", "symbol": "ULVR.L", "open": 5235.0, "high": 5268.0, "low": 5210.0, "close": 5250.0, "volume": 3171936}
-{"timestamp": "2026-02-09 00:00:00", "symbol": "ULVR.L", "open": 5216.0, "high": 5234.0, "low": 5158.0, "close": 5165.0, "volume": 2768730}
-{"timestamp": "2026-02-10 00:00:00", "symbol": "ULVR.L", "open": 5175.0, "high": 5246.0, "low": 5156.0, "close": 5244.0, "volume": 4731871}
-{"timestamp": "2026-02-11 00:00:00", "symbol": "ULVR.L", "open": 5236.0, "high": 5328.0, "low": 5236.0, "close": 5320.0, "volume": 3600144}
-{"timestamp": "2026-02-12 00:00:00", "symbol": "ULVR.L", "open": 5360.0, "high": 5360.0, "low": 5130.0, "close": 5355.0, "volume": 5219335}
-{"timestamp": "2026-02-13 00:00:00", "symbol": "ULVR.L", "open": 5340.0, "high": 5469.0, "low": 5321.0, "close": 5432.0, "volume": 9368012}
-{"timestamp": "2026-02-16 00:00:00", "symbol": "ULVR.L", "open": 5432.0, "high": 5435.0, "low": 5374.0, "close": 5420.0, "volume": 3559283}
-{"timestamp": "2026-02-17 00:00:00", "symbol": "ULVR.L", "open": 5413.0, "high": 5475.0, "low": 5404.0, "close": 5413.0, "volume": 3295351}
-{"timestamp": "2026-02-18 00:00:00", "symbol": "ULVR.L", "open": 5383.0, "high": 5409.0, "low": 5328.0, "close": 5328.0, "volume": 4672412}
-{"timestamp": "2026-02-19 00:00:00", "symbol": "ULVR.L", "open": 5321.0, "high": 5365.60009765625, "low": 5304.0, "close": 5320.0, "volume": 8497146}
-{"timestamp": "2026-02-20 00:00:00", "symbol": "ULVR.L", "open": 5323.0, "high": 5382.0, "low": 5311.0, "close": 5380.0, "volume": 3134431}
-{"timestamp": "2026-02-23 00:00:00", "symbol": "ULVR.L", "open": 5420.0, "high": 5465.0, "low": 5380.0, "close": 5462.0, "volume": 5131542}
-{"timestamp": "2026-02-24 00:00:00", "symbol": "ULVR.L", "open": 5473.0, "high": 5526.0, "low": 5458.0, "close": 5472.0, "volume": 3043843}
-{"timestamp": "2026-02-25 00:00:00", "symbol": "ULVR.L", "open": 5480.0, "high": 5491.0, "low": 5361.0, "close": 5402.0, "volume": 5258840}
-{"timestamp": "2026-02-26 00:00:00", "symbol": "ULVR.L", "open": 5368.0, "high": 5387.0, "low": 5345.0, "close": 5361.0, "volume": 3668403}
-{"timestamp": "2026-02-27 00:00:00", "symbol": "ULVR.L", "open": 5369.0, "high": 5474.0, "low": 5351.0, "close": 5467.0, "volume": 4757029}
-{"timestamp": "2026-03-02 00:00:00", "symbol": "ULVR.L", "open": 5434.0, "high": 5434.0, "low": 5304.0, "close": 5326.0, "volume": 4052374}
-{"timestamp": "2026-03-03 00:00:00", "symbol": "ULVR.L", "open": 5299.0, "high": 5305.02001953125, "low": 5128.0, "close": 5134.0, "volume": 4150649}
-{"timestamp": "2026-03-04 00:00:00", "symbol": "ULVR.L", "open": 5163.0, "high": 5169.0, "low": 5104.5, "close": 5115.0, "volume": 4306655}
-{"timestamp": "2026-03-05 00:00:00", "symbol": "ULVR.L", "open": 5134.0, "high": 5134.0, "low": 5040.0, "close": 5056.0, "volume": 5119634}
-{"timestamp": "2026-03-06 00:00:00", "symbol": "ULVR.L", "open": 5036.0, "high": 5044.2138671875, "low": 4916.0, "close": 4935.0, "volume": 5305754}
-{"timestamp": "2026-03-09 00:00:00", "symbol": "ULVR.L", "open": 4926.0, "high": 4926.0, "low": 4843.0, "close": 4903.5, "volume": 3613367}
-{"timestamp": "2026-03-10 00:00:00", "symbol": "ULVR.L", "open": 4915.0, "high": 4945.0, "low": 4865.0, "close": 4907.0, "volume": 4737907}
-{"timestamp": "2026-03-11 00:00:00", "symbol": "ULVR.L", "open": 4879.5, "high": 4898.0, "low": 4824.0, "close": 4846.0, "volume": 4203018}
-{"timestamp": "2026-03-12 00:00:00", "symbol": "ULVR.L", "open": 4837.0, "high": 4874.0, "low": 4808.5, "close": 4827.5, "volume": 4431996}
-{"timestamp": "2026-03-13 00:00:00", "symbol": "ULVR.L", "open": 4792.0, "high": 4855.0, "low": 4748.9658203125, "close": 4834.5, "volume": 3104478}
-{"timestamp": "2026-03-16 00:00:00", "symbol": "ULVR.L", "open": 4839.0, "high": 4913.5, "low": 4835.5, "close": 4881.0, "volume": 3740921}
-{"timestamp": "2026-03-17 00:00:00", "symbol": "ULVR.L", "open": 4891.0, "high": 4901.02978515625, "low": 4863.0, "close": 4880.0, "volume": 7420219}
-{"timestamp": "2026-03-18 00:00:00", "symbol": "ULVR.L", "open": 4875.0, "high": 4883.0, "low": 4693.5, "close": 4712.5, "volume": 4852824}
-{"timestamp": "2026-03-19 00:00:00", "symbol": "ULVR.L", "open": 4652.5, "high": 4672.5, "low": 4568.0, "close": 4574.0, "volume": 4620726}
-{"timestamp": "2026-03-20 00:00:00", "symbol": "ULVR.L", "open": 4625.0, "high": 4662.0, "low": 4588.0, "close": 4595.5, "volume": 10237336}
-{"timestamp": "2026-03-23 00:00:00", "symbol": "ULVR.L", "open": 4564.5, "high": 4643.5, "low": 4535.0, "close": 4535.0, "volume": 5659554}
-{"timestamp": "2026-03-24 00:00:00", "symbol": "ULVR.L", "open": 4528.5, "high": 4549.0, "low": 4494.5, "close": 4528.0, "volume": 8215608}
-{"timestamp": "2026-03-25 00:00:00", "symbol": "ULVR.L", "open": 4539.0, "high": 4554.5, "low": 4481.0, "close": 4523.5, "volume": 5060802}
-{"timestamp": "2026-03-26 00:00:00", "symbol": "ULVR.L", "open": 4504.0, "high": 4531.5, "low": 4478.0, "close": 4485.0, "volume": 6321193}
-{"timestamp": "2026-03-27 00:00:00", "symbol": "ULVR.L", "open": 4500.0, "high": 4500.0, "low": 4452.0, "close": 4479.5, "volume": 5982942}
-{"timestamp": "2026-03-30 00:00:00", "symbol": "ULVR.L", "open": 4500.0, "high": 4539.5, "low": 4456.5, "close": 4528.5, "volume": 5933627}
-{"timestamp": "2026-03-31 00:00:00", "symbol": "ULVR.L", "open": 4555.5, "high": 4574.5, "low": 4197.0, "close": 4199.0, "volume": 15851122}
-{"timestamp": "2026-04-01 00:00:00", "symbol": "ULVR.L", "open": 4230.5, "high": 4252.0, "low": 4068.0, "close": 4187.0, "volume": 14233632}
-{"timestamp": "2026-04-02 00:00:00", "symbol": "ULVR.L", "open": 4205.5, "high": 4214.0, "low": 4134.5, "close": 4172.5, "volume": 10589574}
-{"timestamp": "2026-04-07 00:00:00", "symbol": "ULVR.L", "open": 4220.0, "high": 4233.5, "low": 4180.0, "close": 4188.0, "volume": 4484441}
-{"timestamp": "2026-04-08 00:00:00", "symbol": "ULVR.L", "open": 4251.0, "high": 4320.5, "low": 4233.0, "close": 4297.5, "volume": 12077127}
-{"timestamp": "2026-04-09 00:00:00", "symbol": "ULVR.L", "open": 4313.0, "high": 4332.0, "low": 4250.0, "close": 4308.5, "volume": 4765461}
-{"timestamp": "2026-04-10 00:00:00", "symbol": "ULVR.L", "open": 4302.0, "high": 4352.5, "low": 4298.5, "close": 4313.0, "volume": 5290332}
-{"timestamp": "2026-04-13 00:00:00", "symbol": "ULVR.L", "open": 4298.0, "high": 4306.5, "low": 4263.5, "close": 4295.0, "volume": 2187208}
-{"timestamp": "2026-04-14 00:00:00", "symbol": "ULVR.L", "open": 4269.5, "high": 4316.5, "low": 4250.0, "close": 4250.0, "volume": 5974558}
-{"timestamp": "2026-04-15 00:00:00", "symbol": "ULVR.L", "open": 4269.5, "high": 4272.5, "low": 4236.5, "close": 4251.0, "volume": 5885236}
-{"timestamp": "2026-04-16 00:00:00", "symbol": "ULVR.L", "open": 4256.5, "high": 4270.0, "low": 4212.0, "close": 4212.0, "volume": 4992397}
-{"timestamp": "2026-04-17 00:00:00", "symbol": "ULVR.L", "open": 4232.5, "high": 4319.0, "low": 4205.0, "close": 4299.0, "volume": 9815908}
+{"timestamp":"2025-10-01T00:00:00","symbol":"ULVR.L","open":4713.095703125,"high":4728.06787109375,"low":4655.34521484375,"close":4675.66455078125,"volume":2557280}
+{"timestamp":"2025-10-02T00:00:00","symbol":"ULVR.L","open":4652.13671875,"high":4689.5673828125,"low":4638.2333984375,"close":4688.498046875,"volume":2366820}
+{"timestamp":"2025-10-03T00:00:00","symbol":"ULVR.L","open":4689.5673828125,"high":4713.095703125,"low":4659.62255859375,"close":4697.0537109375,"volume":1734425}
+{"timestamp":"2025-10-06T00:00:00","symbol":"ULVR.L","open":4660.6923828125,"high":4684.22021484375,"low":4631.81689453125,"close":4638.2333984375,"volume":2341747}
+{"timestamp":"2025-10-07T00:00:00","symbol":"ULVR.L","open":4653.2060546875,"high":4664.97021484375,"low":4631.28125,"close":4658.55322265625,"volume":2620208}
+{"timestamp":"2025-10-08T00:00:00","symbol":"ULVR.L","open":4662.8310546875,"high":4700.26220703125,"low":4641.45263671875,"close":4676.73388671875,"volume":2457666}
+{"timestamp":"2025-10-09T00:00:00","symbol":"ULVR.L","open":4682.08154296875,"high":4737.69287109375,"low":4682.08154296875,"close":4728.06787109375,"volume":3289592}
+{"timestamp":"2025-10-10T00:00:00","symbol":"ULVR.L","open":4769.77685546875,"high":4821.11083984375,"low":4767.6376953125,"close":4796.51318359375,"volume":3099740}
+{"timestamp":"2025-10-13T00:00:00","symbol":"ULVR.L","open":4831.80517578125,"high":4831.80517578125,"low":4766.568359375,"close":4786.88818359375,"volume":3849200}
+{"timestamp":"2025-10-14T00:00:00","symbol":"ULVR.L","open":4835.013671875,"high":4874.58349609375,"low":4814.69384765625,"close":4874.58349609375,"volume":3336503}
+{"timestamp":"2025-10-15T00:00:00","symbol":"ULVR.L","open":4874.58349609375,"high":4875.65283203125,"low":4786.88818359375,"close":4820.04150390625,"volume":4794709}
+{"timestamp":"2025-10-16T00:00:00","symbol":"ULVR.L","open":4838.22216796875,"high":4908.80615234375,"low":4808.0537109375,"close":4908.80615234375,"volume":2548586}
+{"timestamp":"2025-10-17T00:00:00","symbol":"ULVR.L","open":4905.59765625,"high":5006.12646484375,"low":4876.72265625,"close":4989.015625,"volume":2826564}
+{"timestamp":"2025-10-20T00:00:00","symbol":"ULVR.L","open":4931.2646484375,"high":4998.640625,"low":4929.1259765625,"close":4982.5986328125,"volume":1860339}
+{"timestamp":"2025-10-21T00:00:00","symbol":"ULVR.L","open":4958.0009765625,"high":4972.9736328125,"low":4928.056640625,"close":4958.0009765625,"volume":2659785}
+{"timestamp":"2025-10-22T00:00:00","symbol":"ULVR.L","open":4955.8623046875,"high":4980.4599609375,"low":4915.22265625,"close":4976.18212890625,"volume":3387395}
+{"timestamp":"2025-10-23T00:00:00","symbol":"ULVR.L","open":4972.9736328125,"high":5076.7109375,"low":4948.3759765625,"close":5010.40478515625,"volume":3006938}
+{"timestamp":"2025-10-24T00:00:00","symbol":"ULVR.L","open":4938.7509765625,"high":5023.23828125,"low":4938.7509765625,"close":5014.6826171875,"volume":3456198}
+{"timestamp":"2025-10-27T00:00:00","symbol":"ULVR.L","open":5003.98779296875,"high":5022.16845703125,"low":4971.904296875,"close":4992.2236328125,"volume":1782471}
+{"timestamp":"2025-10-28T00:00:00","symbol":"ULVR.L","open":5026.4462890625,"high":5032.86328125,"low":4943.02880859375,"close":4952.65380859375,"volume":4019733}
+{"timestamp":"2025-10-29T00:00:00","symbol":"ULVR.L","open":4956.931640625,"high":4977.25146484375,"low":4912.54931640625,"close":4930.1953125,"volume":2241101}
+{"timestamp":"2025-10-30T00:00:00","symbol":"ULVR.L","open":4899.18115234375,"high":4941.95947265625,"low":4892.76416015625,"close":4925.91748046875,"volume":2010934}
+{"timestamp":"2025-10-31T00:00:00","symbol":"ULVR.L","open":4925.91748046875,"high":4937.681640625,"low":4885.2783203125,"close":4907.73681640625,"volume":1825393}
+{"timestamp":"2025-11-03T00:00:00","symbol":"ULVR.L","open":4886.34765625,"high":4933.40380859375,"low":4875.65283203125,"close":4916.29248046875,"volume":1959902}
+{"timestamp":"2025-11-04T00:00:00","symbol":"ULVR.L","open":4904.5283203125,"high":4955.8623046875,"low":4867.09716796875,"close":4953.7236328125,"volume":2222960}
+{"timestamp":"2025-11-05T00:00:00","symbol":"ULVR.L","open":4960.14013671875,"high":4993.29345703125,"low":4945.16748046875,"close":4972.9736328125,"volume":3121972}
+{"timestamp":"2025-11-06T00:00:00","symbol":"ULVR.L","open":4904.5283203125,"high":4917.36181640625,"low":4860.6806640625,"close":4912.0146484375,"volume":5318031}
+{"timestamp":"2025-11-07T00:00:00","symbol":"ULVR.L","open":4883.13916015625,"high":4951.58447265625,"low":4870.3056640625,"close":4938.7509765625,"volume":2474115}
+{"timestamp":"2025-11-10T00:00:00","symbol":"ULVR.L","open":4945.16748046875,"high":4947.306640625,"low":4864.95849609375,"close":4907.73681640625,"volume":4737103}
+{"timestamp":"2025-11-11T00:00:00","symbol":"ULVR.L","open":4946.2373046875,"high":4950.51513671875,"low":4926.98681640625,"close":4929.1259765625,"volume":4135260}
+{"timestamp":"2025-11-12T00:00:00","symbol":"ULVR.L","open":4900.25048828125,"high":4930.1953125,"low":4884.84619140625,"close":4928.056640625,"volume":3342026}
+{"timestamp":"2025-11-13T00:00:00","symbol":"ULVR.L","open":4910.9453125,"high":4921.6396484375,"low":4844.6962890625,"close":4881.00048828125,"volume":1829825}
+{"timestamp":"2025-11-14T00:00:00","symbol":"ULVR.L","open":4845.7080078125,"high":4870.3056640625,"low":4780.47119140625,"close":4780.47119140625,"volume":3059511}
+{"timestamp":"2025-11-17T00:00:00","symbol":"ULVR.L","open":4766.568359375,"high":4800.791015625,"low":4741.970703125,"close":4776.193359375,"volume":4460227}
+{"timestamp":"2025-11-18T00:00:00","symbol":"ULVR.L","open":4777.26318359375,"high":4800.791015625,"low":4762.29052734375,"close":4781.541015625,"volume":3812324}
+{"timestamp":"2025-11-19T00:00:00","symbol":"ULVR.L","open":4790.0966796875,"high":4825.388671875,"low":4775.1240234375,"close":4789.02685546875,"volume":5122536}
+{"timestamp":"2025-11-20T00:00:00","symbol":"ULVR.L","open":4789.02685546875,"high":4806.13818359375,"low":4768.70751953125,"close":4793.3046875,"volume":6696919}
+{"timestamp":"2025-11-21T00:00:00","symbol":"ULVR.L","open":4833.9443359375,"high":4914.1533203125,"low":4815.763671875,"close":4903.458984375,"volume":3221072}
+{"timestamp":"2025-11-24T00:00:00","symbol":"ULVR.L","open":4903.458984375,"high":4914.1533203125,"low":4835.599609375,"close":4836.0830078125,"volume":5848967}
+{"timestamp":"2025-11-25T00:00:00","symbol":"ULVR.L","open":4825.388671875,"high":4911.84326171875,"low":4815.763671875,"close":4868.1669921875,"volume":2617697}
+{"timestamp":"2025-11-26T00:00:00","symbol":"ULVR.L","open":4856.40283203125,"high":4861.75,"low":4801.8603515625,"close":4835.013671875,"volume":4158968}
+{"timestamp":"2025-11-27T00:00:00","symbol":"ULVR.L","open":4829.66650390625,"high":4836.0830078125,"low":4797.58251953125,"close":4833.9443359375,"volume":6950711}
+{"timestamp":"2025-11-28T00:00:00","symbol":"ULVR.L","open":4869.236328125,"high":4878.861328125,"low":4817.90234375,"close":4859.611328125,"volume":3949176}
+{"timestamp":"2025-12-01T00:00:00","symbol":"ULVR.L","open":4859.611328125,"high":4931.37158203125,"low":4858.54150390625,"close":4875.65283203125,"volume":3530264}
+{"timestamp":"2025-12-02T00:00:00","symbol":"ULVR.L","open":4893.833984375,"high":4893.833984375,"low":4770.84619140625,"close":4794.37451171875,"volume":6199402}
+{"timestamp":"2025-12-03T00:00:00","symbol":"ULVR.L","open":4796.51318359375,"high":4811.48583984375,"low":4743.04052734375,"close":4762.29052734375,"volume":6609120}
+{"timestamp":"2025-12-04T00:00:00","symbol":"ULVR.L","open":4719.51220703125,"high":4765.4990234375,"low":4697.0537109375,"close":4735.55419921875,"volume":2444690}
+{"timestamp":"2025-12-05T00:00:00","symbol":"ULVR.L","open":4731.2763671875,"high":4770.84619140625,"low":4714.1650390625,"close":4765.4990234375,"volume":3494084}
+{"timestamp":"2025-12-08T00:00:00","symbol":"ULVR.L","open":4884.75,"high":4917.375,"low":4637.25,"close":4680.0,"volume":4327257}
+{"timestamp":"2025-12-09T00:00:00","symbol":"ULVR.L","open":4679.5,"high":4887.5,"low":4641.5,"close":4846.5,"volume":4599250}
+{"timestamp":"2025-12-10T00:00:00","symbol":"ULVR.L","open":4799.0,"high":4836.5,"low":4799.0,"close":4820.0,"volume":3348477}
+{"timestamp":"2025-12-11T00:00:00","symbol":"ULVR.L","open":4725.5,"high":4853.5,"low":4724.0,"close":4853.5,"volume":2907722}
+{"timestamp":"2025-12-12T00:00:00","symbol":"ULVR.L","open":4832.5,"high":4846.5,"low":4794.0,"close":4835.5,"volume":3532745}
+{"timestamp":"2025-12-15T00:00:00","symbol":"ULVR.L","open":4844.5,"high":4874.5,"low":4835.0,"close":4845.0,"volume":2877107}
+{"timestamp":"2025-12-16T00:00:00","symbol":"ULVR.L","open":4869.5,"high":4879.54296875,"low":4779.0,"close":4793.5,"volume":2745845}
+{"timestamp":"2025-12-17T00:00:00","symbol":"ULVR.L","open":4781.5,"high":4895.5,"low":4779.0,"close":4881.5,"volume":4124399}
+{"timestamp":"2025-12-18T00:00:00","symbol":"ULVR.L","open":4926.0,"high":4930.0,"low":4845.5,"close":4890.0,"volume":11834434}
+{"timestamp":"2025-12-19T00:00:00","symbol":"ULVR.L","open":4861.5,"high":5542.10986328125,"low":4855.5,"close":4890.0,"volume":18555792}
+{"timestamp":"2025-12-22T00:00:00","symbol":"ULVR.L","open":4882.0,"high":4882.0,"low":4832.5,"close":4840.5,"volume":3740755}
+{"timestamp":"2025-12-23T00:00:00","symbol":"ULVR.L","open":4825.5,"high":4866.0,"low":4822.7099609375,"close":4857.5,"volume":2707957}
+{"timestamp":"2025-12-24T00:00:00","symbol":"ULVR.L","open":4860.0,"high":4860.0,"low":4821.5,"close":4838.0,"volume":965125}
+{"timestamp":"2025-12-29T00:00:00","symbol":"ULVR.L","open":4860.0,"high":4880.0,"low":4827.0,"close":4860.0,"volume":1856866}
+{"timestamp":"2025-12-30T00:00:00","symbol":"ULVR.L","open":4834.5,"high":4867.5,"low":4834.5,"close":4856.0,"volume":972638}
+{"timestamp":"2025-12-31T00:00:00","symbol":"ULVR.L","open":4863.5,"high":4875.0,"low":4853.0,"close":4859.5,"volume":740510}
+{"timestamp":"2026-01-02T00:00:00","symbol":"ULVR.L","open":4851.5,"high":4878.5,"low":4798.5,"close":4822.5,"volume":2104974}
+{"timestamp":"2026-01-05T00:00:00","symbol":"ULVR.L","open":4822.5,"high":4824.5,"low":4658.5,"close":4699.0,"volume":2719572}
+{"timestamp":"2026-01-06T00:00:00","symbol":"ULVR.L","open":4681.0,"high":4770.0,"low":4656.5,"close":4744.0,"volume":3602559}
+{"timestamp":"2026-01-07T00:00:00","symbol":"ULVR.L","open":4744.0,"high":4753.39306640625,"low":4609.4521484375,"close":4631.0,"volume":3393853}
+{"timestamp":"2026-01-08T00:00:00","symbol":"ULVR.L","open":4594.5,"high":4680.0,"low":4584.5,"close":4665.0,"volume":4587618}
+{"timestamp":"2026-01-09T00:00:00","symbol":"ULVR.L","open":4712.5,"high":4750.0,"low":4678.0,"close":4744.0,"volume":2541158}
+{"timestamp":"2026-01-12T00:00:00","symbol":"ULVR.L","open":4770.0,"high":4791.0,"low":4743.5,"close":4770.5,"volume":3780204}
+{"timestamp":"2026-01-13T00:00:00","symbol":"ULVR.L","open":4759.0,"high":4785.0,"low":4731.5,"close":4774.5,"volume":2514056}
+{"timestamp":"2026-01-14T00:00:00","symbol":"ULVR.L","open":4777.0,"high":4831.5,"low":4767.5,"close":4831.5,"volume":2522435}
+{"timestamp":"2026-01-15T00:00:00","symbol":"ULVR.L","open":4814.0,"high":4826.5009765625,"low":4779.0,"close":4780.5,"volume":3035490}
+{"timestamp":"2026-01-16T00:00:00","symbol":"ULVR.L","open":4774.0,"high":4799.5,"low":4750.5,"close":4761.5,"volume":3327129}
+{"timestamp":"2026-01-19T00:00:00","symbol":"ULVR.L","open":4800.0,"high":4812.5,"low":4745.0,"close":4756.0,"volume":2244989}
+{"timestamp":"2026-01-20T00:00:00","symbol":"ULVR.L","open":4751.0,"high":4778.5,"low":4712.0,"close":4775.0,"volume":4263471}
+{"timestamp":"2026-01-21T00:00:00","symbol":"ULVR.L","open":4790.5,"high":4853.5,"low":4777.5,"close":4785.0,"volume":2175360}
+{"timestamp":"2026-01-22T00:00:00","symbol":"ULVR.L","open":4783.5,"high":4848.5,"low":4757.0,"close":4816.0,"volume":2360876}
+{"timestamp":"2026-01-23T00:00:00","symbol":"ULVR.L","open":4816.0,"high":4864.2431640625,"low":4802.5,"close":4864.0,"volume":2345026}
+{"timestamp":"2026-01-26T00:00:00","symbol":"ULVR.L","open":4864.0,"high":4904.5,"low":4842.5,"close":4861.5,"volume":3308726}
+{"timestamp":"2026-01-27T00:00:00","symbol":"ULVR.L","open":4852.0,"high":4898.0,"low":4841.5,"close":4864.5,"volume":2321628}
+{"timestamp":"2026-01-28T00:00:00","symbol":"ULVR.L","open":4847.0,"high":4847.5,"low":4769.5,"close":4815.5,"volume":2858798}
+{"timestamp":"2026-01-29T00:00:00","symbol":"ULVR.L","open":4776.0,"high":4887.5,"low":4756.0,"close":4867.5,"volume":4435435}
+{"timestamp":"2026-01-30T00:00:00","symbol":"ULVR.L","open":4864.5,"high":4946.5,"low":4846.0,"close":4940.5,"volume":3142406}
+{"timestamp":"2026-02-02T00:00:00","symbol":"ULVR.L","open":5000.0,"high":5055.0,"low":4986.0,"close":4992.0,"volume":5358414}
+{"timestamp":"2026-02-03T00:00:00","symbol":"ULVR.L","open":4983.5,"high":5045.0,"low":4928.0,"close":5045.0,"volume":4343677}
+{"timestamp":"2026-02-04T00:00:00","symbol":"ULVR.L","open":5033.0,"high":5185.0,"low":5031.0,"close":5178.0,"volume":4701431}
+{"timestamp":"2026-02-05T00:00:00","symbol":"ULVR.L","open":5198.0,"high":5278.0,"low":5147.0,"close":5250.0,"volume":3022675}
+{"timestamp":"2026-02-06T00:00:00","symbol":"ULVR.L","open":5235.0,"high":5268.0,"low":5210.0,"close":5250.0,"volume":3171936}
+{"timestamp":"2026-02-09T00:00:00","symbol":"ULVR.L","open":5216.0,"high":5234.0,"low":5158.0,"close":5165.0,"volume":2768730}
+{"timestamp":"2026-02-10T00:00:00","symbol":"ULVR.L","open":5175.0,"high":5246.0,"low":5156.0,"close":5244.0,"volume":4731871}
+{"timestamp":"2026-02-11T00:00:00","symbol":"ULVR.L","open":5236.0,"high":5328.0,"low":5236.0,"close":5320.0,"volume":3600144}
+{"timestamp":"2026-02-12T00:00:00","symbol":"ULVR.L","open":5360.0,"high":5360.0,"low":5130.0,"close":5355.0,"volume":5219335}
+{"timestamp":"2026-02-13T00:00:00","symbol":"ULVR.L","open":5340.0,"high":5469.0,"low":5321.0,"close":5432.0,"volume":9368012}
+{"timestamp":"2026-02-16T00:00:00","symbol":"ULVR.L","open":5432.0,"high":5435.0,"low":5374.0,"close":5420.0,"volume":3559283}
+{"timestamp":"2026-02-17T00:00:00","symbol":"ULVR.L","open":5413.0,"high":5475.0,"low":5404.0,"close":5413.0,"volume":3295351}
+{"timestamp":"2026-02-18T00:00:00","symbol":"ULVR.L","open":5383.0,"high":5409.0,"low":5328.0,"close":5328.0,"volume":4672412}
+{"timestamp":"2026-02-19T00:00:00","symbol":"ULVR.L","open":5321.0,"high":5365.60009765625,"low":5304.0,"close":5320.0,"volume":8497146}
+{"timestamp":"2026-02-20T00:00:00","symbol":"ULVR.L","open":5323.0,"high":5382.0,"low":5311.0,"close":5380.0,"volume":3134431}
+{"timestamp":"2026-02-23T00:00:00","symbol":"ULVR.L","open":5420.0,"high":5465.0,"low":5380.0,"close":5462.0,"volume":5131542}
+{"timestamp":"2026-02-24T00:00:00","symbol":"ULVR.L","open":5473.0,"high":5526.0,"low":5458.0,"close":5472.0,"volume":3043843}
+{"timestamp":"2026-02-25T00:00:00","symbol":"ULVR.L","open":5480.0,"high":5491.0,"low":5361.0,"close":5402.0,"volume":5258840}
+{"timestamp":"2026-02-26T00:00:00","symbol":"ULVR.L","open":5368.0,"high":5387.0,"low":5345.0,"close":5361.0,"volume":3668403}
+{"timestamp":"2026-02-27T00:00:00","symbol":"ULVR.L","open":5369.0,"high":5474.0,"low":5351.0,"close":5467.0,"volume":4757029}
+{"timestamp":"2026-03-02T00:00:00","symbol":"ULVR.L","open":5434.0,"high":5434.0,"low":5304.0,"close":5326.0,"volume":4052374}
+{"timestamp":"2026-03-03T00:00:00","symbol":"ULVR.L","open":5299.0,"high":5305.02001953125,"low":5128.0,"close":5134.0,"volume":4150649}
+{"timestamp":"2026-03-04T00:00:00","symbol":"ULVR.L","open":5163.0,"high":5169.0,"low":5104.5,"close":5115.0,"volume":4306655}
+{"timestamp":"2026-03-05T00:00:00","symbol":"ULVR.L","open":5134.0,"high":5134.0,"low":5040.0,"close":5056.0,"volume":5119634}
+{"timestamp":"2026-03-06T00:00:00","symbol":"ULVR.L","open":5036.0,"high":5044.2138671875,"low":4916.0,"close":4935.0,"volume":5305754}
+{"timestamp":"2026-03-09T00:00:00","symbol":"ULVR.L","open":4926.0,"high":4926.0,"low":4843.0,"close":4903.5,"volume":3613367}
+{"timestamp":"2026-03-10T00:00:00","symbol":"ULVR.L","open":4915.0,"high":4945.0,"low":4865.0,"close":4907.0,"volume":4737907}
+{"timestamp":"2026-03-11T00:00:00","symbol":"ULVR.L","open":4879.5,"high":4898.0,"low":4824.0,"close":4846.0,"volume":4203018}
+{"timestamp":"2026-03-12T00:00:00","symbol":"ULVR.L","open":4837.0,"high":4874.0,"low":4808.5,"close":4827.5,"volume":4431996}
+{"timestamp":"2026-03-13T00:00:00","symbol":"ULVR.L","open":4792.0,"high":4855.0,"low":4748.9658203125,"close":4834.5,"volume":3104478}
+{"timestamp":"2026-03-16T00:00:00","symbol":"ULVR.L","open":4839.0,"high":4913.5,"low":4835.5,"close":4881.0,"volume":3740921}
+{"timestamp":"2026-03-17T00:00:00","symbol":"ULVR.L","open":4891.0,"high":4901.02978515625,"low":4863.0,"close":4880.0,"volume":7420219}
+{"timestamp":"2026-03-18T00:00:00","symbol":"ULVR.L","open":4875.0,"high":4883.0,"low":4693.5,"close":4712.5,"volume":4852824}
+{"timestamp":"2026-03-19T00:00:00","symbol":"ULVR.L","open":4652.5,"high":4672.5,"low":4568.0,"close":4574.0,"volume":4620726}
+{"timestamp":"2026-03-20T00:00:00","symbol":"ULVR.L","open":4625.0,"high":4662.0,"low":4588.0,"close":4595.5,"volume":10237336}
+{"timestamp":"2026-03-23T00:00:00","symbol":"ULVR.L","open":4564.5,"high":4643.5,"low":4535.0,"close":4535.0,"volume":5659554}
+{"timestamp":"2026-03-24T00:00:00","symbol":"ULVR.L","open":4528.5,"high":4549.0,"low":4494.5,"close":4528.0,"volume":8215608}
+{"timestamp":"2026-03-25T00:00:00","symbol":"ULVR.L","open":4539.0,"high":4554.5,"low":4481.0,"close":4523.5,"volume":5060802}
+{"timestamp":"2026-03-26T00:00:00","symbol":"ULVR.L","open":4504.0,"high":4531.5,"low":4478.0,"close":4485.0,"volume":6321193}
+{"timestamp":"2026-03-27T00:00:00","symbol":"ULVR.L","open":4500.0,"high":4500.0,"low":4452.0,"close":4479.5,"volume":5982942}
+{"timestamp":"2026-03-30T00:00:00","symbol":"ULVR.L","open":4500.0,"high":4539.5,"low":4456.5,"close":4528.5,"volume":5933627}
+{"timestamp":"2026-03-31T00:00:00","symbol":"ULVR.L","open":4555.5,"high":4574.5,"low":4197.0,"close":4199.0,"volume":15851122}
+{"timestamp":"2026-04-01T00:00:00","symbol":"ULVR.L","open":4230.5,"high":4252.0,"low":4068.0,"close":4187.0,"volume":14233632}
+{"timestamp":"2026-04-02T00:00:00","symbol":"ULVR.L","open":4205.5,"high":4214.0,"low":4134.5,"close":4172.5,"volume":10589574}
+{"timestamp":"2026-04-07T00:00:00","symbol":"ULVR.L","open":4220.0,"high":4233.5,"low":4180.0,"close":4188.0,"volume":4484441}
+{"timestamp":"2026-04-08T00:00:00","symbol":"ULVR.L","open":4251.0,"high":4320.5,"low":4233.0,"close":4297.5,"volume":12077127}
+{"timestamp":"2026-04-09T00:00:00","symbol":"ULVR.L","open":4313.0,"high":4332.0,"low":4250.0,"close":4308.5,"volume":4765461}
+{"timestamp":"2026-04-10T00:00:00","symbol":"ULVR.L","open":4302.0,"high":4352.5,"low":4298.5,"close":4313.0,"volume":5290332}
+{"timestamp":"2026-04-13T00:00:00","symbol":"ULVR.L","open":4298.0,"high":4306.5,"low":4263.5,"close":4295.0,"volume":2187208}
+{"timestamp":"2026-04-14T00:00:00","symbol":"ULVR.L","open":4269.5,"high":4316.5,"low":4250.0,"close":4250.0,"volume":5974558}
+{"timestamp":"2026-04-15T00:00:00","symbol":"ULVR.L","open":4269.5,"high":4272.5,"low":4236.5,"close":4251.0,"volume":5885236}
+{"timestamp":"2026-04-16T00:00:00","symbol":"ULVR.L","open":4256.5,"high":4270.0,"low":4212.0,"close":4212.0,"volume":4992397}
+{"timestamp":"2026-04-17T00:00:00","symbol":"ULVR.L","open":4232.5,"high":4319.0,"low":4205.0,"close":4299.0,"volume":9815908}
+{"timestamp":"2026-04-20T00:00:00","symbol":"ULVR.L","open":4284.5,"high":4297.5,"low":4255.5,"close":4269.0,"volume":5681855}

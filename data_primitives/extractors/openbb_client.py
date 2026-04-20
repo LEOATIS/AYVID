@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import os
 from typing import Any
 
 import pandas as pd
@@ -18,6 +19,13 @@ from shared.logger import get_logger
 from shared.types import FuturesQuote, NewsItem, OHLCVBar, OptionsChainSnapshot
 
 log = get_logger("data.openbb")
+
+# yfinance's curl_cffi backend picks up system/macOS proxy settings and
+# Yahoo Finance rejects the CONNECT tunnel with 403.  Strip proxy env
+# vars so yfinance connects directly.
+for _proxy_var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY",
+                   "ALL_PROXY", "all_proxy"):
+    os.environ.pop(_proxy_var, None)
 
 # ── Credential injection ─────────────────────────────────────
 

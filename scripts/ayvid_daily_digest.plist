@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd plist for the AYVID daily digest generator.
+
+  Fires once a day at 23:55 PT (06:55 UTC next day) to roll up the day's
+  fills + equity snapshots into live/daily/YYYY-MM-DD.md and append a
+  one-liner to live/run_log.txt.
+
+  Installed automatically by scripts/install_launchd.sh (you can opt out
+  by editing that script).
+
+  Replace __REPO_ROOT__ before loading.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ayvid.daily_digest</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__REPO_ROOT__/venv/bin/python</string>
+        <string>__REPO_ROOT__/scripts/daily_digest.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO_ROOT__</string>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>23</integer>
+        <key>Minute</key>
+        <integer>55</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>__REPO_ROOT__/live/logs/launchd_digest.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__REPO_ROOT__/live/logs/launchd_digest.err.log</string>
+</dict>
+</plist>

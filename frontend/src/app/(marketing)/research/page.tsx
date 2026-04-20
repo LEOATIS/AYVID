@@ -15,21 +15,21 @@ const NOTES: { date: string; tag: string; title: string; teaser: string }[] = [
       "Trading every ticker every day on technicals lost 99.98% over an 8-year window in our shop. The same engine, restricted to event-conditioned windows surfaced by the graph, returned +43.65% compounded. The full report is in the operations console.",
   },
   {
-    date: "2025 · Q4",
+    date: "2026 · Q2",
     tag: "Architecture",
     title: "A four-agent swarm produces calibrated conviction. A single model does not.",
     teaser:
       "Strategist, Mapper, Auditor, Supervisor. We measure their disagreement as a first-class signal — high-disagreement trades are systematically smaller, regardless of average conviction.",
   },
   {
-    date: "2025 · Q3",
+    date: "2026 · Q2",
     tag: "Data",
     title: "What an N-th order supply-chain graph actually buys you.",
     teaser:
       "On the Red Sea closure of late 2024, the graph proposed bunker-fuel beneficiaries (BP) two hops from the shock — names a keyword search would miss. The relevant traversal is exhibit 1 in the AYVID 10-K corpus.",
   },
   {
-    date: "2025 · Q2",
+    date: "2026 · Q2",
     tag: "Risk",
     title: "Independent kill switches are not paranoia. They are uptime.",
     teaser:

@@ -195,7 +195,7 @@ def _iter_windows(
         except ValueError:
             win_end = dt.date(win_end_year, win_end_month, 28)
         win_end = min(win_end, end)
-        if (win_end - cur).days < 30:
+        if (win_end - cur).days < 20:
             break
         windows.append((cur, win_end))
         next_year = cur.year + (cur.month - 1 + step_months) // 12

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd plist for the AYVID paper-trading runner.
+
+  Install (after editing paths):
+    cp scripts/ayvid_runner.plist ~/Library/LaunchAgents/com.ayvid.runner.plist
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ayvid.runner.plist
+
+  Stop:
+    launchctl bootout gui/$(id -u)/com.ayvid.runner
+
+  Why a separate plist from the backend:
+    * Independent restart cycles — if the runner crashes, the API keeps
+      serving the operations console and vice versa.
+    * Different failure profile: the runner can hang waiting on IB. We
+      want launchd to restart it without touching the backend.
+    * Replace __REPO_ROOT__ before loading.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ayvid.runner</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__REPO_ROOT__/venv/bin/python</string>
+        <string>-m</string>
+        <string>cli.app</string>
+        <string>trade</string>
+        <string>paper-start</string>
+        <string>--equity</string>
+        <string>1000000</string>
+        <string>--interval</string>
+        <string>60</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO_ROOT__</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>StandardOutPath</key>
+    <string>__REPO_ROOT__/live/logs/launchd_runner.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__REPO_ROOT__/live/logs/launchd_runner.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>__REPO_ROOT__/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+</dict>
+</plist>

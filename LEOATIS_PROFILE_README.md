@@ -63,40 +63,58 @@ A **modular monolith**, ~50k lines of Python, one repo, strict dependency invers
 
 Plus: FastAPI REST+SSE backend · Typer+Rich CLI with 40 commands and a live dashboard · pytest including chaos/resilience suite · Docker Compose with Neo4j + QuestDB.
 
-### Validated on real historical shocks
+### Validated post-cost, walk-forward, with a published negative control
 
-Back-tested end-to-end on five named shock scenarios — Suez Canal 2021, Semiconductor Shortage 2022, Russia-Ukraine 2022, COVID Crash 2020, US-China Tariff 2018 — with supply-chain shock context injected into the same path used at runtime:
+Every PnL number in AYVID is **post-cost** (IBKR-Tiered commissions + symbol-aware slippage via `backtesting/cost_model.py`) and every backtest is **walk-forward** — no cherry-picked windows, no in-sample overfit. Two backtests are published in the repo, both run on the same 2018→2025 cached OHLCV with the same cost model:
 
-| Metric | Result |
-|---|---|
-| Annualized Return | **+18.4%** |
-| Sortino Ratio | **1.38** |
-| Calmar Ratio | **4.08** |
-| Graph Intelligence PnL contribution | **+27.2%** across 437 trades |
-| Best scenario (Semiconductor 2022) | **+21.8%** @ Sharpe 1.19 |
-| COVID Crash 2020 | **+10.8%** @ Sharpe 1.78 |
+| Mode | Compounded 2018→2025 | Trades | Avg cost drag | % Sharpe > 1.0 | Best outcome |
+|---|---:|---:|---:|---:|---:|
+| Naive (trade every ticker every day on technicals) | **−99.98%** | 16,168 | 7.40% | 0.0% | −5.78% (90th pct) |
+| **Shock-driven (graph-surfaced tickers, in-window)** | **+43.65%** | 1,343 | 1.93% | 30.0% | **+98.86% (COVID-19)** |
+
+Same engine, same data, same cost model — the **144 percentage-point swing** is the measured value of the causal-graph layer. We publish the −99.98% baseline on purpose: it is the expected result of running an event-blind orchestrator at full IBKR cost, and it falsifies the claim that the alpha is "just a clever orchestrator." Full methodology: [`document/backtests/SHOCK_VS_NAIVE_COMPARISON.md`](https://github.com/LEOATIS/AYVID/blob/main/document/backtests/SHOCK_VS_NAIVE_COMPARISON.md).
+
+Honest weakness: the shock-driven profile is **asymmetric long-vol / crisis-alpha** — strong on COVID (+99%), Q4-2018 selloff (+71%), SVB (+29%), DeepSeek (+24%), Russia (+10%), Suez (+2%); weak on rally scenarios (post-COVID −2%, NVIDIA blowout −6%, ChatGPT rally −8%, Trump rally −10%). Documented, quantified, on the near-term roadmap.
+
+### Also shipped
+
+- **Live paper-trading runner** (IB + shadow modes) emitting `live/equity_curve.jsonl` continuously — `ayvid trade paper-start`.
+- **Next.js 15 marketing site + operations console** (`frontend/`) with a live-shock demo screen that plays the whole pipeline end-to-end in 60 seconds.
+- **Live REST surface** for the console (`backend/api/v1/endpoints/live_routes.py`) exposing equity curve, runner status, trades, positions, backtest reports, and scenarios.
+- **Gemini-CLI-style REPL** (`cli/repl.py`) that wraps the 46-command Typer app with a persistent prompt and live status bar.
 
 ### Tech stack
 
-`Python 3.11` · `LangGraph` · `GPT-4o` · `Claude 3.5 Sonnet` · `Neo4j 5 (APOC + GDS)` · `Qdrant` · `QuestDB` · `OpenBB SDK` · `ib_async` · `FastAPI` · `Typer + Rich` · `Pydantic` · `Tenacity` · `C++` (kill switch) · `mmap + seqlock IPC` · `pytest` · `Docker Compose`
+`Python 3.11` · `LangGraph` · `GPT-4o` · `Claude 3.5 Sonnet` · `Neo4j 5 (APOC + GDS)` · `Qdrant` · `QuestDB` · `Hopsworks` · `OpenBB SDK` · `ib_async` · `FastAPI` · `Typer + Rich` · `Pydantic` · `Tenacity` · `C++` (kill switch) · `mmap + seqlock IPC` · `pytest` · `Next.js 15 (App Router, route groups)` · `Tailwind` · `Docker Compose` (three multi-stage production images)
 
 ---
 
 ## Philosophy
 
-- **Build end to end.** Data ingestion, model, backend, CLI, execution, broker, watchdog, tests — all of it.
-- **No toys.** If it doesn't handle real expiry calendars, real reconnects, real partial fills, it doesn't count.
-- **Alpha is in the details.** -1R clamps, DTE-scaled sizing, per-index cooldowns, seqlock reads. Every detail is load-bearing.
+- **Build end to end.** Data ingestion, NER, graph, agents, backend, CLI, REPL, execution, broker, watchdog, frontend, tests — all of it, one person, one repo.
+- **No toys.** If it doesn't handle real expiry calendars, real reconnects, real partial fills, real commissions, real slippage, it doesn't count.
+- **Alpha is in the details.** −1R clamps, DTE-scaled sizing, per-index cooldowns, seqlock reads, IBKR-Tiered cost calibration. Every detail is load-bearing.
+- **Publish the negative control.** The −99.98% naive walk-forward is in the repo because real quant diligence starts with "show me what *doesn't* work."
 - **Ship.** Opinions without running code are noise.
+
+---
+
+## Status · April 2026
+
+- **YC S26 applicant.** AI-Native Hedge Funds RFS (Charlie Holtz). On-time deadline **May 4, 2026 · 8 PM PT**; decisions by June 5; batch runs July–September.
+- **IB Paper runner live** since 2026-04-19, writing `live/equity_curve.jsonl` every 60 s.
+- **Two walk-forward backtests published** post-cost on 2018→2025 data.
+- **Live-shock demo screen** shipping at `/console/live-shock` — 6-second loop, ready for the 60-second YC application video.
 
 ---
 
 ## What's next on LEOATIS
 
-- Live paper-trading loop with auto-execute gated on SignalBook conviction
-- Swift/iOS front-end for live portfolio + signal monitoring (build target iOS 26)
-- Expanded shock corpus with continuous NER on live news firehose
-- Hopsworks feature store sync for multi-horizon model retraining
+- Symmetric rally-side coverage (close the long-vol asymmetry quantified in the shock-driven report).
+- 4+ weeks of unbroken live paper equity curve by submission.
+- Swift/iOS front-end for live portfolio + signal monitoring (build target iOS 26).
+- Expanded shock corpus with continuous NER on a live news firehose.
+- Hopsworks feature-store sync for multi-horizon model retraining.
 
 ---
 

@@ -1,6 +1,6 @@
 # AYVID — AI-Native Hedge Fund
 
-**Status:** YC S26 candidate · AI-Native Hedge Funds RFS (Charlie Holtz) · live IB paper trading · two backtests published (naive + shock-driven, 2018→2025, post-cost) ([positioning doc](document/yc/COMPANY_POSITIONING.md))
+**Status:** YC S26 applicant · AI-Native Hedge Funds RFS (Charlie Holtz) · on-time deadline **May 4, 2026 · 8:00 PM PT** · decisions by June 5 · batch runs July → September (San Francisco) · live IB-Paper runner since **2026-04-19** · two post-cost walk-forward backtests published (naive vs. shock-driven, 2018→2025) · Next.js 15 marketing site + operations console shipped ([full positioning doc](document/yc/COMPANY_POSITIONING.md))
 
 AYVID is an AI-native hedge fund. Swarms of LLM agents read 10-Ks, earnings calls, SEC filings, and global news in real time, trace the causal consequences through a live Neo4j supply-chain graph, and route sized, risk-limited orders into Interactive Brokers — end-to-end, no humans in the loop on the trade path. The stack runs two tracks in parallel: **index F&O across 20 global markets** and **equities across 50+ dynamically-screened names**.
 
@@ -28,9 +28,9 @@ Same engine, same data, same IBKR-Tiered cost model. The 144-percentage-point sw
                         ┌──────────────────────────────────────────────────────────┐
                         │                    AYVID System                          │
   ┌──────────────┐      │  ┌─────────────────────────────────────────────────────┐ │
-  │   CLI        │      │  │              Graph Intelligence (LangGraph)         │ │
+  │   CLI + REPL │      │  │              Graph Intelligence (LangGraph)         │ │
   │  (Typer/Rich)│──────│──│  Strategist → Mapper → Auditor → Supervisor        │ │
-  │  40 commands │      │  │  Strategy Orchestrator (Index F&O + Equity)         │ │
+  │  46 commands │      │  │  Strategy Orchestrator (Index F&O + Equity)         │ │
   └──────────────┘      │  │  Bayesian Multi-Analyst Debate                     │ │
                         │  └─────────────────────────────────────────────────────┘ │
   ┌──────────────┐      │  ┌───────────────────────┐ ┌──────────────────────────┐ │
@@ -363,12 +363,14 @@ AYVID/
 │   │   └── recovery.py        Full recovery: position reconciliation + bracket validation
 │   ├── signal_book.py         Pre-computed signal cache (TTL, regime awareness,
 │   │                          atomic persistence, override-pending, RLock)
+│   ├── paper_runner.py        Live paper-trading runner (IB + shadow modes)
+│   │                          emitting live/equity_curve.jsonl + trades.jsonl + positions.json
 │   ├── kill_switch/
 │   │   └── memory_map.py      mmap writer (dedicated daemon thread, no starvation)
 │   └── watchdog/
 │       └── mmap_bridge.py     C++ watchdog bridge (seqlock IPC, SIGKILL on breach)
 │
-├── backtesting/              Historical replay engine
+├── backtesting/              Historical replay + walk-forward engine
 │   ├── engine.py             Two-track backtest: Index F&O + Equity
 │   │                         Intraday-only F&O (BTST gated by conviction >= 0.80),
 │   │                         hard -1R stop on all trades, regime-aware directional filter,
@@ -376,6 +378,14 @@ AYVID/
 │   │                         DTE floor + DTE-scaled lot sizing, 50% F&O capital cap,
 │   │                         real expiry calendars, Black-Scholes pricing,
 │   │                         R-multiple tracking, trailing stops, partial profit-taking
+│   ├── cost_model.py         IBKR-Tiered commissions + symbol-aware bid/ask slippage
+│   │                         (US options $0.65/ctr first 100, US futures ES/NQ ~$0.85/side,
+│   │                         micros ~$0.25/side, equities ~$0.0035/share, $0.35 min cap 1%,
+│   │                         non-US index F&O ~$1.20/ctr). Applied at every entry/exit.
+│   ├── walkforward.py        Rolling-window aggregator:
+│   │                         - run_walkforward(): naive out-of-sample sweep
+│   │                         - run_shock_driven_walkforward(): 20-scenario catalog
+│   │                         Both emit JSON + Markdown reports to document/backtests/.
 │   └── report_generator.py   Institutional report generator (JSON + TXT)
 │                             Executive summary, risk metrics (Sortino/Calmar/VaR),
 │                             alpha decomposition, R-distribution, strategy attribution,
@@ -387,20 +397,26 @@ AYVID/
 │   │   └── security.py       API key registry
 │   ├── api/v1/endpoints/
 │   │   ├── graph_routes.py   Graph stats, shock analysis, edge ingest
-│   │   └── trade_routes.py   Portfolio, signals, risk, execution
-│   ├── api/sse/
+│   │   ├── trade_routes.py   Portfolio, signals, risk, execution, queued orders
+│   │   └── live_routes.py    Live data surface for the ops console:
+│   │                         /equity, /runner-status, /trades, /positions, /signals,
+│   │                         /backtests, /backtests/{name}, /scenarios, /system-status
+│   ├── api/sse/              and api/v1/sse/
 │   │   └── streamer.py       Server-sent events for live updates
 │   └── services/
 │       └── orchestrator.py   Three-tier orchestration: signal book → fast path → LLM
 │                             auto_execute_from_book(), fast_execute(), execute_signal()
 │
-├── cli/                      Typer CLI (40 commands across 4 groups + dashboard)
-│   ├── app.py                Main app entry point
+├── cli/                      Typer CLI (46 commands across 4 groups + dashboard + REPL)
+│   ├── app.py                Main app entry point — drops into REPL when no subcommand
+│   ├── repl.py               Gemini-CLI-style persistent prompt with live status bar
 │   ├── dashboard.py          Live Rich terminal dashboard
 │   ├── commands/
-│   │   ├── data.py           22 commands: backtest, scenarios, report, universe, ...
+│   │   ├── data.py           25 commands: backtest, walkforward, shock-walkforward,
+│   │   │                     bulk-ingest, scenarios, report, universe, ...
 │   │   ├── graph.py          6 commands: init, seed, stats, scan, analyze, centrality
-│   │   ├── trade.py          6 commands: portfolio, signals, execute, risk, sizing, queued
+│   │   ├── trade.py          9 commands: paper-start, paper-status, paper-render,
+│   │   │                     portfolio, signals, execute, risk, sizing, queued
 │   │   └── system.py         5 commands: status, config, serve, latency, killswitch
 │   └── widgets/              Rich rendering: banner, portfolio, signals, supply chain
 │
@@ -422,29 +438,73 @@ AYVID/
 │   ├── ohlcv/                Per-equity OHLCV (AAPL.jsonl, TSM.jsonl, ...)
 │   └── intraday/             Intraday bars (created on demand)
 │
-├── scripts/                  Demo and utility scripts
-├── infra/                    Terraform stubs
-├── docker-compose.yml        Neo4j + QuestDB + AYVID API + pipeline
-├── Makefile                  Shortcuts: make backtest, make serve, make test, ...
-└── pyproject.toml            Python 3.11+, all dependencies
+├── live/                     Paper-trading runner artifacts (populated at runtime)
+│   ├── equity_curve.jsonl    One snapshot per cycle (mode, equity, cash, PnL, ...)
+│   ├── trades.jsonl          One row per executed (or shadow) fill, post-cost
+│   ├── positions.json        Current open positions
+│   ├── equity_curve.png/svg  Rendered curve for the YC video
+│   └── run_meta.json         Run metadata (start time, mode, IB account, ...)
+│
+├── frontend/                 Next.js 15 app (marketing site + operations console)
+│   ├── src/app/(marketing)/  Public marketing site
+│   │   ├── page.tsx          Home (Hero, Marquee, Identity, Process, Comparison, ...)
+│   │   ├── about/            Why AYVID exists, regulatory posture
+│   │   ├── approach/         How we build (modular monolith, causal graph, kill switch)
+│   │   ├── research/         Selected research notes
+│   │   └── contact/          LP + YC-partner + console-access routing
+│   ├── src/app/console/      Gated operations console
+│   │   ├── page.tsx          Console home (equity curve, runner status, key stats)
+│   │   ├── live-shock/       60-second YC demo: shock -> graph -> signals -> orders
+│   │   ├── backtests/        Backtest index + per-report deep-dive (/backtests/{name})
+│   │   ├── scenarios/        Named shock scenarios browser
+│   │   ├── signals/          Live signal book (conviction, direction, R)
+│   │   ├── portfolio/        Positions + PnL from /api/live
+│   │   └── docs/             Inline rendering of architecture + positioning docs
+│   └── src/components/       Hero, CapabilityMarquee, EquityChart, GraphPropagation,
+│                             ShockEvent, SignalsList, TradesList, ConsoleGate, ...
+│
+├── document/
+│   ├── yc/COMPANY_POSITIONING.md         Canonical YC S26 positioning document
+│   ├── backtests/                        Published post-cost reports (YC artifacts)
+│   │   ├── SHOCK_VS_NAIVE_COMPARISON.md  Headline naive-vs-shock methodology diff
+│   │   ├── walkforward_report_loose.md   Naive walk-forward (negative control)
+│   │   ├── shock_driven_report.md        Shock-driven walk-forward (operating mode)
+│   │   └── shock_driven_strict.md        Sensitivity run (min-conviction=0.70)
+│   └── AYVID_Codebase_Architecture_Analysis.md   Full subsystem architecture write-up
+│
+├── scripts/                  Demo and utility scripts (scripts/demo.py)
+├── infra/                    Terraform stubs (cloudrun.tf, compute.tf, main.tf)
+├── docker-compose.yml        Neo4j + QuestDB + Qdrant + AYVID API + execution + frontend
+├── Dockerfile                FastAPI backend image (uvicorn, 2 workers, non-root, HC)
+├── Dockerfile.execution      Paper-trading runner image (IB or shadow), shared volume
+├── frontend/Dockerfile       Next.js 15 standalone build (~150 MB, non-root)
+├── Makefile                  Shortcuts: make backtest, make serve, make test, make lint, ...
+└── pyproject.toml            Python 3.11+, all dependencies (ayvid script entrypoint)
 ```
 
 ## CLI Reference
 
-### `ayvid data` — Market Data & Backtesting (22 commands)
+The CLI ships **46 commands** across four groups (`data` · `graph` · `trade` · `system`) plus two top-level conveniences (`dashboard`, `repl`). Invoke `ayvid` with no subcommand to drop into the **Gemini-CLI-style persistent REPL** (`cli/repl.py`).
+
+### `ayvid data` — Market Data & Backtesting (25 commands)
 
 ```bash
-# Backtesting
+# Backtesting + walk-forward (post-cost on IBKR-Tiered model)
 data backtest [--days 60] [--equity 1000000] [--fresh]
               [--universe auto|us_mega|global|...]
               [--start-date 2022-02-20] [--end-date 2022-04-30]
               [--scenario suez_canal_2021]
+data walkforward           --start 2018-01-01 --end 2025-12-31 \
+                           --window-months 9 --step-months 3 \
+                           --equity 1000000 --name walkforward_report_loose
+data shock-walkforward     --start 2018-01-01 --end 2025-12-31 \
+                           --equity 1000000 --name shock_driven_report
 data backtest-fno [--days 60]        # Deprecated, use backtest
 
 # Shock Scenarios & Reporting
-data scenarios                       # List available named shock scenarios
+data scenarios                       # List all named historical shock scenarios
 data report [--scenarios all|suez_canal_2021,...]
-            [--compare-baseline]     # YC-ready performance report (JSON + Markdown)
+            [--compare-baseline]     # YC-ready multi-scenario performance report (JSON + Markdown)
 
 # Universe & Scanning
 data universe                        # Build and display global investment universe
@@ -461,8 +521,9 @@ data sectors                         # US sector performance
 data calendar                        # Macroeconomic event calendar (14 days)
 
 # Data Ingestion
-data ingest AAPL TSLA NVDA [--days 90]   # Fetch OHLCV + news for tickers
-data ingest-intraday AAPL [--interval 5m] [--days 5]  # Intraday bars
+data ingest AAPL TSLA NVDA [--days 90]                    # Fetch OHLCV + news for tickers
+data ingest-intraday AAPL [--interval 5m] [--days 5]      # Intraday bars
+data bulk-ingest [--universe auto|global|...] [--days 180] [--workers 8]  # Parallel OHLCV backfill
 data pipeline                        # Full cycle: news -> NER -> graph -> analysis
 
 # Research
@@ -484,9 +545,16 @@ graph analyze TSM                    # Full LangGraph causal analysis pipeline
 graph centrality                     # PageRank + betweenness (top 15)
 ```
 
-### `ayvid trade` — Portfolio & Execution (6 commands)
+### `ayvid trade` — Portfolio & Execution (9 commands)
 
 ```bash
+# Live paper-trading runner + equity-curve artifacts
+trade paper-start [--interval 60] [--shadow] [--equity 1000000]
+                                     # Writes live/equity_curve.jsonl, trades.jsonl, positions.json
+trade paper-status                   # One-shot snapshot of the latest curve row
+trade paper-render [--format png|svg]  # Render live/equity_curve.{png,svg} for the YC video
+
+# Portfolio, signals, manual exec
 trade portfolio                      # Current positions and P&L
 trade signals                        # Recent trade signals
 trade execute AAPL LONG [--confidence 0.7]  # Manual paper trade
@@ -505,10 +573,11 @@ system latency                       # Pipeline node latencies, fast-path speed,
 system killswitch                    # C++ watchdog status and mmap file
 ```
 
-### `ayvid dashboard` — Live Monitoring
+### Top-level conveniences
 
 ```bash
-dashboard                            # Full-screen Rich terminal dashboard
+ayvid                                # Drops into the persistent REPL (Gemini-CLI style)
+ayvid dashboard                      # Full-screen Rich terminal dashboard
 ```
 
 ## Backtest Output

@@ -137,7 +137,7 @@ export default function AboutPage() {
           </h3>
           <Link
             href="/contact"
-            className="inline-flex items-center gap-2 border border-[hsl(var(--bg)/0.3)] px-5 py-3 text-[13px] font-medium text-[hsl(var(--bg))] transition-colors hover:bg-[hsl(var(--bg))] hover:text-ink"
+            className="inline-flex items-center gap-2 border border-[hsl(var(--bg)/0.3)] px-5 py-3 text-[13px] font-medium text-[hsl(var(--bg))] transition-colors hover:bg-[hsl(var(--bg))] hover:text-[hsl(var(--fg))]"
           >
             Speak with the desk →
           </Link>

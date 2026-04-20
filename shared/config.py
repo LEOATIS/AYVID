@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     # --- LLM Providers ---
     OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o"
+    # Cheap/fast model used for high-volume per-NewsItem sentiment scoring.
+    # Overridable via env; kept separate from OPENAI_MODEL so the heavier
+    # model can still be used for causal reasoning and daily compression.
+    OPENAI_SENTIMENT_MODEL: str = "gpt-4o-mini"
     ANTHROPIC_API_KEY: str | None = None
     ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
     LLM_PROVIDER: str = "openai"
@@ -45,6 +49,24 @@ class Settings(BaseSettings):
             self.NEO4J_USER = self.NEO4J_USERNAME
         elif not self.NEO4J_USER:
             self.NEO4J_USER = "neo4j"
+        return self
+
+    @model_validator(mode="after")
+    def _validate_live_routing(self) -> "Settings":
+        # Safety: if we're about to route orders to IB, the account must be a
+        # paper account (DU* / DUQ*) unless LIVE_TRADING is explicitly enabled.
+        # This prevents a silent foot-gun where someone flips PAPER_TRADING=false
+        # with a live IB_ACCOUNT and AUTO_EXECUTE starts blasting real money.
+        if not self.PAPER_TRADING and self.AUTO_EXECUTE and self.IB_ACCOUNT:
+            acct = self.IB_ACCOUNT.strip().upper()
+            is_paper = acct.startswith("DU") or acct.startswith("DUQ")
+            if not is_paper and not self.LIVE_TRADING_CONFIRMED:
+                raise ValueError(
+                    f"Refusing to start: AUTO_EXECUTE=true + PAPER_TRADING=false "
+                    f"+ IB_ACCOUNT={self.IB_ACCOUNT!r} is NOT a paper account "
+                    f"(no DU/DUQ prefix). Set LIVE_TRADING_CONFIRMED=true in .env "
+                    f"to explicitly opt-in to real-money trading."
+                )
         return self
 
     # --- Qdrant ---
@@ -86,6 +108,8 @@ class Settings(BaseSettings):
     API_KEY: str | None = None
     LLM_LIVE_ORCHESTRATOR: bool = False
     AUTO_EXECUTE: bool = False
+    # Hard opt-in to real-money (live, non-paper) IB trading. Keep False.
+    LIVE_TRADING_CONFIRMED: bool = False
 
 
 settings = Settings()

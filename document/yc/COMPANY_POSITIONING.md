@@ -1,7 +1,10 @@
 # AYVID — YC S26 Application: Company Positioning
 
-> AI-Native Hedge Funds RFS · Charlie Holtz
-> Submission target: Summer 2026 batch
+> **AI-Native Hedge Funds RFS · Charlie Holtz**
+> **Batch:** Summer 2026 (July–September, San Francisco)
+> **On-time deadline:** May 4, 2026 · 8:00 PM PT — decisions by June 5
+> **Status:** engine shipped, IB-Paper runner live since 2026-04-19, two post-cost walk-forward backtests published, live-shock demo screen shipping
+> **Founder identity fields below** marked `<!-- FILL BEFORE SUBMIT -->` are the only placeholders remaining in this document.
 
 ## One-liner
 
@@ -38,7 +41,7 @@ A fund pitch at YC gets "what about compliance?" as the first question. Here is 
 
 | Phase | Structure | Capital | Regulatory posture |
 |---|---|---|---|
-| **Today (pre-YC)** | Solo proprietary account trading IB Paper (live runner since [DATE]) + local prop capital | ≤ personal capital | None required. Proprietary trading on own account. |
+| **Today (pre-YC)** | Solo proprietary account trading IB Paper (live runner since 2026-04-19) + local prop capital | ≤ personal capital | None required. Proprietary trading on own account. |
 | **YC batch (S26)** | Delaware LLC, 506(b) private fund wrapper, ≤35 accredited investors, founder as sole GP | ~$1–3M friends-and-family/YC investors | **3(c)(1) exempt fund** — no SEC registration; state-level notice filings only. Standard YC-legal template (Cooley / Orrick have run this dozens of times). |
 | **Post-YC (12–24 mo)** | SEC-registered RIA once AUM > $100M, plus prime-broker relationship (IB Prime or Goldman Marquee) | $10–100M external LP | Full ADV-1/ADV-2, CCO on retainer (fractional first), quarterly 13F filings. |
 
@@ -60,14 +63,17 @@ We are **not** claiming the reg path is zero-cost; we are claiming we have a con
 | Two-track trading (index F&O across 20 markets + equities) | Shipped | `graph_intelligence/agents/strategy_orchestrator.py` |
 | IB integration (paper + live) with bracket orders, recovery, sequence validation | Shipped | `execution_engine/broker/` |
 | C++-grade kill switch w/ seqlock mmap IPC (10 Hz watchdog) | Shipped | `execution_engine/{kill_switch,watchdog}/` |
-| **Full IBKR-Tiered transaction-cost model (commissions + symbol-aware slippage)** | **Shipped — new** | `backtesting/cost_model.py` |
-| **Naive walk-forward backtester (rolling 9-month windows, 2018→2025)** | **Shipped — new** | `backtesting/walkforward.py` · `ayvid data walkforward` |
-| **Shock-driven walk-forward (20 named shocks 2018-2025, graph-aware ticker selection)** | **Shipped — new** | `backtesting/walkforward.py:run_shock_driven_walkforward` · `ayvid data shock-walkforward` |
-| **Live paper-trading runner emitting a daily equity-curve artifact** | **Shipped — new** | `execution_engine/paper_runner.py` · `ayvid trade paper-start` |
-| **Live-shock demo screen (Next.js 15)** | **Shipped — new** | `frontend/src/app/live-shock/page.tsx` |
-| Production multi-stage Dockerfiles for API + execution + frontend | **Shipped — new** | `Dockerfile`, `Dockerfile.execution`, `frontend/Dockerfile` |
+| **Full IBKR-Tiered transaction-cost model (commissions + symbol-aware slippage)** | Shipped | `backtesting/cost_model.py` |
+| **Naive walk-forward backtester (rolling 9-month windows, 2018→2025)** | Shipped | `backtesting/walkforward.py` · `ayvid data walkforward` |
+| **Shock-driven walk-forward (20 named shocks 2018-2025, graph-aware ticker selection)** | Shipped | `backtesting/walkforward.py:run_shock_driven_walkforward` · `ayvid data shock-walkforward` |
+| **Live paper-trading runner (IB + shadow modes) emitting a daily equity-curve artifact** | Shipped | `execution_engine/paper_runner.py` · `ayvid trade paper-start` / `paper-status` / `paper-render` |
+| **Live-shock demo screen (Next.js 15)** | Shipped | `frontend/src/app/console/live-shock/page.tsx` |
+| **Live-data REST surface for the console (equity curve, runner status, backtests, scenarios)** | Shipped | `backend/api/v1/endpoints/live_routes.py` |
+| **Marketing + operations-console split (Next.js 15 app router, two route groups)** | Shipped | `frontend/src/app/(marketing)/` + `frontend/src/app/console/` |
+| **Gemini-CLI-style persistent REPL** (default when `ayvid` is invoked without a subcommand) | Shipped | `cli/repl.py` |
+| Production multi-stage Dockerfiles for API + execution + frontend | Shipped | `Dockerfile`, `Dockerfile.execution`, `frontend/Dockerfile` |
 
-The bold rows are the YC-application gap-closers built specifically to address every weakness a quant-literate YC partner would probe.
+Every row in the "What's in the box" table is runnable today from a fresh clone. None of it is roadmap.
 
 ---
 
@@ -105,7 +111,7 @@ Target: **≥4 weeks of unbroken curve at submission.** If we don't have 4 weeks
 
 ## The 60-second YC demo video
 
-`/live-shock` plays the entire AYVID pipeline in a single screen, in real time:
+`/console/live-shock` (route-group: `frontend/src/app/console/live-shock/page.tsx`) plays the entire AYVID pipeline in a single screen, in real time:
 
 1. **Shock detected** — Red Sea closure ingested from EDGAR + Reuters, GPT-4o-extracted causal chain.
 2. **Graph propagation** — 3-hop walk through the Neo4j supply-chain graph, animating Tier 1 (≤30s, beneficiaries), Tier 2 (~120s, second-order winners), Tier 3 (~5m, downstream index victims).
@@ -148,13 +154,15 @@ Honest gaps — things YC will ask about and the answers we'll give:
 3. **Post-cost, walk-forward, with a negative control.** We are the only team that will publish a −99.98% baseline *on purpose*, to prove the graph is doing the work. Quant-literate partners will recognize this instantly as the sign of someone who has actually run backtests.
 4. **Live paper PnL.** Not simulated. IB Paper or shadow-loop against real prices, shipping a JSONL curve and a PNG.
 5. **Executable fund structure.** 3(c)(1) wrapper in batch, RIA at $100M — not hand-waving about "figuring out compliance later".
-6. **Solo founder who shipped.** Every line of this repo is one person's work over [N] months — the stack that a normal team would take 18 months and a seed round to build.
+6. **Solo founder who shipped.** Every line of this repo is one person's focused work since early April 2026 — the modular-monolith stack (LangGraph 4-agent pipeline, Neo4j supply-chain graph, IBKR-Tiered cost model, C++ kill switch, two-track F&O + equity engine, Next.js 15 marketing + operations console, live paper runner) that a normal team would take 18 months and a seed round to build.
 
 ---
 
 ## Founder
 
-[Founder name] — solo founder. Background: ex-quant researcher at [redacted], ML/infra. Built every line of AYVID over the last [N] months. Active on the YC co-founder board.
+<!-- FILL BEFORE SUBMIT: replace the bracketed fields with the final application identity. -->
+
+**[Founder full name]** — solo founder. Background: quant + ML/infra; shipped every line of AYVID end-to-end (LLM agent graph, supply-chain topology, IBKR cost model, C++ kill switch, paper-trading runner, Next.js marketing + console). Built since early April 2026 (see [`git log --reverse`](https://github.com/LEOATIS/AYVID/commits/main)). Actively recruiting a quant co-founder through the YC co-founder board.
 
 ---
 

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd plist for the AYVID FastAPI backend.
+
+  Install:
+    cp scripts/ayvid_backend.plist ~/Library/LaunchAgents/com.ayvid.backend.plist
+    # Edit WorkingDirectory and UserName to match your machine, then:
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ayvid.backend.plist
+
+  Tail logs:
+    tail -f ~/Desktop/AYVID/live/logs/launchd_backend.out.log
+
+  Stop:
+    launchctl bootout gui/$(id -u)/com.ayvid.backend
+
+  Notes:
+    * KeepAlive=true auto-restarts on any exit (crash, OOM, etc).
+    * ThrottleInterval=30 prevents crash-loops from pegging CPU.
+    * RunAtLoad=true starts the service on user login (so after a reboot
+      the stack comes back up without manual intervention).
+    * WorkingDirectory must be the repo root so .env is loaded correctly.
+    * Replace __USERNAME__ and __REPO_ROOT__ below before loading.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ayvid.backend</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__REPO_ROOT__/venv/bin/python</string>
+        <string>-m</string>
+        <string>cli.app</string>
+        <string>system</string>
+        <string>serve</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+        <string>--port</string>
+        <string>8000</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO_ROOT__</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>StandardOutPath</key>
+    <string>__REPO_ROOT__/live/logs/launchd_backend.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__REPO_ROOT__/live/logs/launchd_backend.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>__REPO_ROOT__/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+</dict>
+</plist>

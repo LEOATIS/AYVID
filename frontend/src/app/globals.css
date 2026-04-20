@@ -95,14 +95,34 @@
     isolation: isolate;
   }
 
-  /* ── Cinematic dark-mode atmosphere — ONE continuous warm photo
-     set under the entire marketing site (Polo aesthetic).
-     Two fixed-position pseudo-elements anchored to the viewport so
-     the warm "radiating core" stays in the TOP-RIGHT corner and the
-     grain follows the viewport at every scroll depth.
+  /* ── Cinematic atmosphere — ONE continuous photo set under the
+     entire marketing site (Polo aesthetic).
+     Fixed-position pseudo-elements anchored to the viewport so the
+     "radiating core" stays in the TOP-RIGHT corner and the grain
+     follows the viewport at every scroll depth.
      The marketing-shell creates its own stacking context via
      `isolation: isolate`, so z-index: -1 / -2 here paint behind
-     interactive content but above the page background. */
+     interactive content but above the page background.
+     Light mode: cool institutional blue wash, faintly fills right. */
+  .marketing-shell::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    background:
+      radial-gradient(
+        720px 600px at 100% 0%,
+        hsl(218 50% 82% / 0.30),
+        hsl(218 50% 82% / 0.08) 35%,
+        transparent 60%
+      ),
+      radial-gradient(
+        520px 420px at 0% 100%,
+        hsl(218 30% 88% / 0.15),
+        transparent 60%
+      );
+  }
   html.dark .marketing-shell::before {
     content: "";
     position: fixed;
@@ -1223,9 +1243,26 @@
     z-index: 0;
     background:
       radial-gradient(
-        60ch 50ch at 50% 35%,
-        hsl(var(--glow-color) / 0.40),
+        650px 520px at 82% 22%,
+        hsl(var(--brand) / 0.07),
+        hsl(var(--brand) / 0.02) 40%,
+        transparent 72%
+      ),
+      radial-gradient(
+        480px 400px at 70% 60%,
+        hsl(218 60% 72% / 0.12),
+        hsl(218 60% 72% / 0.03) 42%,
         transparent 70%
+      ),
+      radial-gradient(
+        60ch 50ch at 40% 35%,
+        hsl(var(--glow-color) / 0.35),
+        transparent 70%
+      ),
+      radial-gradient(
+        900px 500px at 90% 10%,
+        hsl(215 40% 90% / 0.50),
+        transparent 65%
       );
   }
   html.dark .hero-glow {

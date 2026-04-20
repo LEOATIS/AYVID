@@ -64,10 +64,10 @@ function Identity() {
     "Risk-limited execution",
   ];
   const timeline = [
-    { role: "AYVID engine v0", org: "Modular monolith", year: "2024" },
-    { role: "Causal graph + agent swarm", org: "Tier-2 rollout", year: "2025" },
-    { role: "IB Paper · live shock catalog", org: "20 named shocks", year: "2025" },
-    { role: "YC S26 · seed conversations", org: "Allocator outreach", year: "2026" },
+    { role: "AYVID founded", org: "Engine v0 · modular monolith", year: "Apr 2026" },
+    { role: "Causal graph + agent swarm", org: "Neo4j + LangGraph integration", year: "Apr 2026" },
+    { role: "IB Paper · live shock catalog", org: "20 named shocks · walk-forward", year: "Apr 2026" },
+    { role: "YC S26 · seed conversations", org: "Allocator outreach", year: "In progress" },
   ];
   return (
     <section className="border-b border-app">
@@ -84,7 +84,7 @@ function Identity() {
               We don&rsquo;t bolt LLMs onto a quant stack. We use them to find
               strategies that didn&rsquo;t exist before.
             </p>
-            <Link href="/about" className="link-arrow !rounded-full mt-7 inline-flex">
+            <Link href="/about" className="btn-ghost !rounded-full mt-7 inline-flex">
               About the firm <ArrowUpRight className="h-3.5 w-3.5" />
             </Link>
           </div>
@@ -383,7 +383,7 @@ function Voices() {
     {
       q: "Causal inference on supply chains is the most underweighted edge in markets. The data has been there for years; the reasoning hasn\u2019t.",
       who: "Working note",
-      where: "AYVID Research · 2025",
+      where: "AYVID Research · 2026",
       tag: "Internal · Causal edge",
     },
   ];
@@ -518,7 +518,7 @@ function Engage() {
               </Link>
               <Link
                 href="/console"
-                className="inline-flex items-center gap-2 rounded-full border border-[hsl(var(--bg)/0.25)] px-5 py-3 text-[13px] font-medium opacity-90 hover:opacity-100"
+                className="inline-flex items-center gap-2 rounded-full border border-[hsl(var(--bg)/0.25)] px-5 py-3 text-[13px] font-medium opacity-90 transition-transform hover:-translate-y-0.5 hover:opacity-100"
               >
                 Operations console <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>
@@ -538,10 +538,10 @@ function Engage() {
               calibration, and walk-forward methodology. No live PnL.
             </p>
             <div className="mt-auto flex flex-wrap gap-2 pt-8">
-              <Link href="/research" className="btn-primary !rounded-full !px-5 !py-3">
+              <Link href="/research" className="btn-primary !rounded-full !px-5 !py-3 transition-transform hover:-translate-y-0.5">
                 Research notes <ArrowRight className="h-3.5 w-3.5" />
               </Link>
-              <Link href="/approach" className="btn-ghost !rounded-full !px-5 !py-3">
+              <Link href="/approach" className="btn-ghost !rounded-full !px-5 !py-3 transition-transform hover:-translate-y-0.5">
                 Architecture
               </Link>
             </div>

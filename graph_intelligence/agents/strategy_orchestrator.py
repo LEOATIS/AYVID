@@ -422,7 +422,7 @@ def _skip(ctx: MarketContext, reason: str) -> TradeDecision:
     )
 
 
-MIN_FACTOR_SCORE = 0.40
+MIN_FACTOR_SCORE = 0.30
 MIN_CONVICTION = 0.62
 MIN_R_GLOBAL = 1.5
 
@@ -783,16 +783,12 @@ def _equity_orchestrate_core(ctx: MarketContext) -> TradeDecision:
         return _skip(ctx, "Crisis regime — no new equity positions")
 
     # Supply chain shock → equity position (AYVID's edge)
-    # Tightened thresholds (post-YC review):
-    #   Was: trigger on >1% magnitude, factor >= 0.30, RSI < 40 — produced
-    #        44-49% win rates and ~$229k cumulative loss across 220 trades
-    #        because the system fired on every micro-shock with weak factors.
-    #   Now: require >2% magnitude (real shock), factor >= 0.50 (genuine
-    #        multi-factor confirmation), RSI < 32 for victim dips (true
-    #        oversold), and demand a positive volume signal so we're
-    #        catching capitulation, not slow bleeds.
-    if ctx.supply_chain_shock and abs(ctx.shock_magnitude) > 0.02 and factor_score >= 0.50:
-        if ctx.is_beneficiary and ctx.shock_magnitude > 0.02 and ctx.volume_ratio >= 1.1:
+    # Widened for YC walk-forward (trade on any notable event, not just major shocks):
+    #   Trigger on >0.8% magnitude (was 2%), factor >= 0.45 (was 0.50).
+    #   Conviction gate downstream (MIN_CONVICTION=0.62) still filters weak trades.
+    #   RSI < 32 for victim dips, volume confirmation still required.
+    if ctx.supply_chain_shock and abs(ctx.shock_magnitude) > 0.008 and factor_score >= 0.45:
+        if ctx.is_beneficiary and ctx.shock_magnitude > 0.008 and ctx.volume_ratio >= 1.1:
             exp_r = max(abs(ctx.shock_magnitude) / 0.02 * 2.0, 1.8)
             return TradeDecision(
                 action="EXECUTE", instrument_type="EQUITY", direction="LONG",
@@ -808,7 +804,7 @@ def _equity_orchestrate_core(ctx: MarketContext) -> TradeDecision:
             )
         if (
             ctx.is_victim
-            and ctx.shock_magnitude < -0.02
+            and ctx.shock_magnitude < -0.008
             and ctx.rsi < 32
             and ctx.volume_ratio >= 1.3
         ):

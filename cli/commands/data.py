@@ -2,6 +2,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
+
+# yfinance's curl_cffi backend picks up system proxy settings;
+# Yahoo Finance rejects the CONNECT tunnel with 403.
+for _pv in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY",
+            "ALL_PROXY", "all_proxy"):
+    os.environ.pop(_pv, None)
 
 import typer
 from rich.console import Console

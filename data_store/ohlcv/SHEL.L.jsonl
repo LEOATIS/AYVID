@@ -1,124 +1,139 @@
-{"timestamp": "2026-01-20 00:00:00", "symbol": "SHEL.L", "open": 2715.5, "high": 2736.0, "low": 2701.800048828125, "close": 2722.0, "volume": 7407904}
-{"timestamp": "2026-01-21 00:00:00", "symbol": "SHEL.L", "open": 2715.0, "high": 2752.0, "low": 2706.5, "close": 2733.5, "volume": 8002211}
-{"timestamp": "2026-01-22 00:00:00", "symbol": "SHEL.L", "open": 2754.5, "high": 2757.0, "low": 2671.8798828125, "close": 2674.0, "volume": 11445467}
-{"timestamp": "2026-01-23 00:00:00", "symbol": "SHEL.L", "open": 2686.0, "high": 2722.0, "low": 2678.0, "close": 2687.5, "volume": 9909984}
-{"timestamp": "2026-01-26 00:00:00", "symbol": "SHEL.L", "open": 2694.0, "high": 2707.0, "low": 2672.340087890625, "close": 2672.5, "volume": 7482122}
-{"timestamp": "2026-01-27 00:00:00", "symbol": "SHEL.L", "open": 2672.5, "high": 2700.0048828125, "low": 2666.0, "close": 2697.0, "volume": 20289832}
-{"timestamp": "2026-01-28 00:00:00", "symbol": "SHEL.L", "open": 2713.5, "high": 2748.1650390625, "low": 2712.5, "close": 2732.5, "volume": 7427780}
-{"timestamp": "2026-01-29 00:00:00", "symbol": "SHEL.L", "open": 2752.5, "high": 2818.5, "low": 2748.5, "close": 2797.5, "volume": 7390881}
-{"timestamp": "2026-01-30 00:00:00", "symbol": "SHEL.L", "open": 2788.5, "high": 2798.0, "low": 2768.5, "close": 2794.0, "volume": 7013448}
-{"timestamp": "2026-02-02 00:00:00", "symbol": "SHEL.L", "open": 2741.5, "high": 2782.5, "low": 2722.5, "close": 2779.5, "volume": 5337281}
-{"timestamp": "2026-02-03 00:00:00", "symbol": "SHEL.L", "open": 2774.0, "high": 2792.5, "low": 2745.5, "close": 2789.5, "volume": 5495185}
-{"timestamp": "2026-02-04 00:00:00", "symbol": "SHEL.L", "open": 2840.0, "high": 2875.5, "low": 2817.0, "close": 2867.0, "volume": 6390035}
-{"timestamp": "2026-02-05 00:00:00", "symbol": "SHEL.L", "open": 2838.0, "high": 2859.5, "low": 2763.75, "close": 2769.5, "volume": 20826662}
-{"timestamp": "2026-02-06 00:00:00", "symbol": "SHEL.L", "open": 2758.5, "high": 2793.0, "low": 2741.5, "close": 2774.5, "volume": 8064102}
-{"timestamp": "2026-02-09 00:00:00", "symbol": "SHEL.L", "open": 2754.0, "high": 2823.0, "low": 2754.0, "close": 2823.0, "volume": 7500696}
-{"timestamp": "2026-02-10 00:00:00", "symbol": "SHEL.L", "open": 2825.0, "high": 2874.5, "low": 2811.5, "close": 2832.0, "volume": 16717649}
-{"timestamp": "2026-02-11 00:00:00", "symbol": "SHEL.L", "open": 2852.5, "high": 2918.0, "low": 2850.75, "close": 2914.0, "volume": 12970027}
-{"timestamp": "2026-02-12 00:00:00", "symbol": "SHEL.L", "open": 2932.5, "high": 2942.0, "low": 2879.5, "close": 2888.0, "volume": 13714941}
-{"timestamp": "2026-02-13 00:00:00", "symbol": "SHEL.L", "open": 2880.0, "high": 2890.0, "low": 2856.0, "close": 2872.5, "volume": 25739376}
-{"timestamp": "2026-02-16 00:00:00", "symbol": "SHEL.L", "open": 2873.0, "high": 2886.5, "low": 2859.824951171875, "close": 2865.5, "volume": 4132260}
-{"timestamp": "2026-02-17 00:00:00", "symbol": "SHEL.L", "open": 2880.0, "high": 2902.0, "low": 2839.0, "close": 2867.0, "volume": 9204439}
-{"timestamp": "2026-02-18 00:00:00", "symbol": "SHEL.L", "open": 2875.0, "high": 2939.0, "low": 2867.5, "close": 2929.0, "volume": 21932776}
-{"timestamp": "2026-02-19 00:00:00", "symbol": "SHEL.L", "open": 2942.0, "high": 2962.5, "low": 2911.40087890625, "close": 2944.0, "volume": 23119148}
-{"timestamp": "2026-02-20 00:00:00", "symbol": "SHEL.L", "open": 2953.5, "high": 2960.5, "low": 2927.0, "close": 2940.5, "volume": 11355999}
-{"timestamp": "2026-02-23 00:00:00", "symbol": "SHEL.L", "open": 2933.0, "high": 2990.14794921875, "low": 2920.2080078125, "close": 2965.0, "volume": 13925480}
-{"timestamp": "2026-02-24 00:00:00", "symbol": "SHEL.L", "open": 2985.5, "high": 2991.5, "low": 2961.0, "close": 2971.5, "volume": 22832124}
-{"timestamp": "2026-02-25 00:00:00", "symbol": "SHEL.L", "open": 2985.0, "high": 3011.0, "low": 2985.0, "close": 3011.0, "volume": 32480503}
-{"timestamp": "2026-02-26 00:00:00", "symbol": "SHEL.L", "open": 3024.5, "high": 3035.5, "low": 2975.0, "close": 3024.0, "volume": 14276505}
-{"timestamp": "2026-02-27 00:00:00", "symbol": "SHEL.L", "open": 3018.5, "high": 3079.0, "low": 3007.5, "close": 3073.5, "volume": 24177053}
-{"timestamp": "2026-03-02 00:00:00", "symbol": "SHEL.L", "open": 3227.0, "high": 3227.0, "low": 3105.5, "close": 3132.0, "volume": 16645911}
-{"timestamp": "2026-03-03 00:00:00", "symbol": "SHEL.L", "open": 3131.0, "high": 3154.0, "low": 3071.0, "close": 3113.0, "volume": 13648388}
-{"timestamp": "2026-03-04 00:00:00", "symbol": "SHEL.L", "open": 3084.0, "high": 3100.5, "low": 3049.0, "close": 3063.5, "volume": 17197744}
-{"timestamp": "2026-03-05 00:00:00", "symbol": "SHEL.L", "open": 3108.0, "high": 3121.5, "low": 3059.0, "close": 3108.0, "volume": 10576040}
-{"timestamp": "2026-03-06 00:00:00", "symbol": "SHEL.L", "open": 3106.0, "high": 3156.0, "low": 3096.0, "close": 3133.0, "volume": 16414686}
-{"timestamp": "2026-03-09 00:00:00", "symbol": "SHEL.L", "open": 3201.0, "high": 3225.593017578125, "low": 3164.0, "close": 3207.0, "volume": 11124987}
-{"timestamp": "2026-03-10 00:00:00", "symbol": "SHEL.L", "open": 3142.0, "high": 3198.5, "low": 3107.5, "close": 3180.5, "volume": 13067969}
-{"timestamp": "2026-03-11 00:00:00", "symbol": "SHEL.L", "open": 3166.5, "high": 3244.0, "low": 3158.0, "close": 3244.0, "volume": 11666644}
-{"timestamp": "2026-03-12 00:00:00", "symbol": "SHEL.L", "open": 3250.0, "high": 3329.0, "low": 3235.0, "close": 3328.0, "volume": 12881194}
-{"timestamp": "2026-03-13 00:00:00", "symbol": "SHEL.L", "open": 3331.0, "high": 3378.0, "low": 3331.0, "close": 3367.5, "volume": 8283922}
-{"timestamp": "2026-03-16 00:00:00", "symbol": "SHEL.L", "open": 3378.0, "high": 3424.5, "low": 3372.5, "close": 3415.0, "volume": 12235914}
-{"timestamp": "2026-03-17 00:00:00", "symbol": "SHEL.L", "open": 3410.5, "high": 3486.0, "low": 3410.5, "close": 3474.0, "volume": 8857035}
-{"timestamp": "2026-03-18 00:00:00", "symbol": "SHEL.L", "open": 3445.0, "high": 3477.0, "low": 3433.0, "close": 3461.5, "volume": 13785169}
-{"timestamp": "2026-03-19 00:00:00", "symbol": "SHEL.L", "open": 3459.0, "high": 3490.0, "low": 3409.0, "close": 3461.0, "volume": 20153838}
-{"timestamp": "2026-03-20 00:00:00", "symbol": "SHEL.L", "open": 3413.0, "high": 3482.5, "low": 3401.5, "close": 3434.0, "volume": 41833875}
-{"timestamp": "2026-03-23 00:00:00", "symbol": "SHEL.L", "open": 3396.0, "high": 3421.5, "low": 3274.0, "close": 3354.5, "volume": 12521728}
-{"timestamp": "2026-03-24 00:00:00", "symbol": "SHEL.L", "open": 3359.5, "high": 3460.0, "low": 3358.89990234375, "close": 3460.0, "volume": 8149023}
-{"timestamp": "2026-03-25 00:00:00", "symbol": "SHEL.L", "open": 3390.0, "high": 3442.5, "low": 3390.0, "close": 3433.0, "volume": 10336558}
-{"timestamp": "2026-03-26 00:00:00", "symbol": "SHEL.L", "open": 3449.5, "high": 3474.0, "low": 3426.5, "close": 3472.5, "volume": 9423933}
-{"timestamp": "2026-03-27 00:00:00", "symbol": "SHEL.L", "open": 3460.0, "high": 3482.0, "low": 3426.52001953125, "close": 3482.0, "volume": 9228913}
-{"timestamp": "2026-03-30 00:00:00", "symbol": "SHEL.L", "open": 3490.0, "high": 3566.5, "low": 3490.0, "close": 3553.5, "volume": 9216771}
-{"timestamp": "2026-03-31 00:00:00", "symbol": "SHEL.L", "open": 3514.5, "high": 3592.0, "low": 3514.5, "close": 3583.0, "volume": 11764635}
-{"timestamp": "2026-04-01 00:00:00", "symbol": "SHEL.L", "open": 3528.0, "high": 3563.5, "low": 3432.0, "close": 3443.5, "volume": 14893588}
-{"timestamp": "2026-04-02 00:00:00", "symbol": "SHEL.L", "open": 3509.5, "high": 3585.0, "low": 3508.0, "close": 3543.5, "volume": 15335522}
-{"timestamp": "2026-04-07 00:00:00", "symbol": "SHEL.L", "open": 3547.5, "high": 3589.5, "low": 3541.574951171875, "close": 3568.0, "volume": 13331906}
-{"timestamp": "2026-04-08 00:00:00", "symbol": "SHEL.L", "open": 3252.5, "high": 3401.0, "low": 3244.5, "close": 3401.0, "volume": 21140504}
-{"timestamp": "2026-04-09 00:00:00", "symbol": "SHEL.L", "open": 3444.5, "high": 3468.0, "low": 3415.5, "close": 3448.5, "volume": 7142295}
-{"timestamp": "2026-04-10 00:00:00", "symbol": "SHEL.L", "open": 3403.5, "high": 3449.0, "low": 3383.0, "close": 3420.5, "volume": 15550810}
-{"timestamp": "2026-04-13 00:00:00", "symbol": "SHEL.L", "open": 3484.0, "high": 3492.303955078125, "low": 3449.0, "close": 3471.0, "volume": 7483052}
-{"timestamp": "2026-04-14 00:00:00", "symbol": "SHEL.L", "open": 3448.0, "high": 3467.5, "low": 3348.5, "close": 3375.5, "volume": 13354235}
-{"timestamp": "2026-04-15 00:00:00", "symbol": "SHEL.L", "open": 3360.0, "high": 3389.0, "low": 3345.799072265625, "close": 3346.0, "volume": 15622769}
-{"timestamp": "2026-04-16 00:00:00", "symbol": "SHEL.L", "open": 3322.5, "high": 3390.5, "low": 3318.0, "close": 3384.5, "volume": 8354968}
-{"timestamp": "2026-04-17 00:00:00", "symbol": "SHEL.L", "open": 3385.5, "high": 3394.5, "low": 3169.738037109375, "close": 3196.0, "volume": 16496783}
-{"timestamp": "2026-01-20 00:00:00", "symbol": "SHEL.L", "open": 2715.5, "high": 2736.0, "low": 2701.800048828125, "close": 2722.0, "volume": 7407904}
-{"timestamp": "2026-01-21 00:00:00", "symbol": "SHEL.L", "open": 2715.0, "high": 2752.0, "low": 2706.5, "close": 2733.5, "volume": 8002211}
-{"timestamp": "2026-01-22 00:00:00", "symbol": "SHEL.L", "open": 2754.5, "high": 2757.0, "low": 2671.8798828125, "close": 2674.0, "volume": 11445467}
-{"timestamp": "2026-01-23 00:00:00", "symbol": "SHEL.L", "open": 2686.0, "high": 2722.0, "low": 2678.0, "close": 2687.5, "volume": 9909984}
-{"timestamp": "2026-01-26 00:00:00", "symbol": "SHEL.L", "open": 2694.0, "high": 2707.0, "low": 2672.340087890625, "close": 2672.5, "volume": 7482122}
-{"timestamp": "2026-01-27 00:00:00", "symbol": "SHEL.L", "open": 2672.5, "high": 2700.0048828125, "low": 2666.0, "close": 2697.0, "volume": 20289832}
-{"timestamp": "2026-01-28 00:00:00", "symbol": "SHEL.L", "open": 2713.5, "high": 2748.1650390625, "low": 2712.5, "close": 2732.5, "volume": 7427780}
-{"timestamp": "2026-01-29 00:00:00", "symbol": "SHEL.L", "open": 2752.5, "high": 2818.5, "low": 2748.5, "close": 2797.5, "volume": 7390881}
-{"timestamp": "2026-01-30 00:00:00", "symbol": "SHEL.L", "open": 2788.5, "high": 2798.0, "low": 2768.5, "close": 2794.0, "volume": 7013448}
-{"timestamp": "2026-02-02 00:00:00", "symbol": "SHEL.L", "open": 2741.5, "high": 2782.5, "low": 2722.5, "close": 2779.5, "volume": 5337281}
-{"timestamp": "2026-02-03 00:00:00", "symbol": "SHEL.L", "open": 2774.0, "high": 2792.5, "low": 2745.5, "close": 2789.5, "volume": 5495185}
-{"timestamp": "2026-02-04 00:00:00", "symbol": "SHEL.L", "open": 2840.0, "high": 2875.5, "low": 2817.0, "close": 2867.0, "volume": 6390035}
-{"timestamp": "2026-02-05 00:00:00", "symbol": "SHEL.L", "open": 2838.0, "high": 2859.5, "low": 2763.75, "close": 2769.5, "volume": 20826662}
-{"timestamp": "2026-02-06 00:00:00", "symbol": "SHEL.L", "open": 2758.5, "high": 2793.0, "low": 2741.5, "close": 2774.5, "volume": 8064102}
-{"timestamp": "2026-02-09 00:00:00", "symbol": "SHEL.L", "open": 2754.0, "high": 2823.0, "low": 2754.0, "close": 2823.0, "volume": 7500696}
-{"timestamp": "2026-02-10 00:00:00", "symbol": "SHEL.L", "open": 2825.0, "high": 2874.5, "low": 2811.5, "close": 2832.0, "volume": 16717649}
-{"timestamp": "2026-02-11 00:00:00", "symbol": "SHEL.L", "open": 2852.5, "high": 2918.0, "low": 2850.75, "close": 2914.0, "volume": 12970027}
-{"timestamp": "2026-02-12 00:00:00", "symbol": "SHEL.L", "open": 2932.5, "high": 2942.0, "low": 2879.5, "close": 2888.0, "volume": 13714941}
-{"timestamp": "2026-02-13 00:00:00", "symbol": "SHEL.L", "open": 2880.0, "high": 2890.0, "low": 2856.0, "close": 2872.5, "volume": 25739376}
-{"timestamp": "2026-02-16 00:00:00", "symbol": "SHEL.L", "open": 2873.0, "high": 2886.5, "low": 2859.824951171875, "close": 2865.5, "volume": 4132260}
-{"timestamp": "2026-02-17 00:00:00", "symbol": "SHEL.L", "open": 2880.0, "high": 2902.0, "low": 2839.0, "close": 2867.0, "volume": 9204439}
-{"timestamp": "2026-02-18 00:00:00", "symbol": "SHEL.L", "open": 2875.0, "high": 2939.0, "low": 2867.5, "close": 2929.0, "volume": 21932776}
-{"timestamp": "2026-02-19 00:00:00", "symbol": "SHEL.L", "open": 2942.0, "high": 2962.5, "low": 2911.40087890625, "close": 2944.0, "volume": 23119148}
-{"timestamp": "2026-02-20 00:00:00", "symbol": "SHEL.L", "open": 2953.5, "high": 2960.5, "low": 2927.0, "close": 2940.5, "volume": 11355999}
-{"timestamp": "2026-02-23 00:00:00", "symbol": "SHEL.L", "open": 2933.0, "high": 2990.14794921875, "low": 2920.2080078125, "close": 2965.0, "volume": 13925480}
-{"timestamp": "2026-02-24 00:00:00", "symbol": "SHEL.L", "open": 2985.5, "high": 2991.5, "low": 2961.0, "close": 2971.5, "volume": 22832124}
-{"timestamp": "2026-02-25 00:00:00", "symbol": "SHEL.L", "open": 2985.0, "high": 3011.0, "low": 2985.0, "close": 3011.0, "volume": 32480503}
-{"timestamp": "2026-02-26 00:00:00", "symbol": "SHEL.L", "open": 3024.5, "high": 3035.5, "low": 2975.0, "close": 3024.0, "volume": 14276505}
-{"timestamp": "2026-02-27 00:00:00", "symbol": "SHEL.L", "open": 3018.5, "high": 3079.0, "low": 3007.5, "close": 3073.5, "volume": 24177053}
-{"timestamp": "2026-03-02 00:00:00", "symbol": "SHEL.L", "open": 3227.0, "high": 3227.0, "low": 3105.5, "close": 3132.0, "volume": 16645911}
-{"timestamp": "2026-03-03 00:00:00", "symbol": "SHEL.L", "open": 3131.0, "high": 3154.0, "low": 3071.0, "close": 3113.0, "volume": 13648388}
-{"timestamp": "2026-03-04 00:00:00", "symbol": "SHEL.L", "open": 3084.0, "high": 3100.5, "low": 3049.0, "close": 3063.5, "volume": 17197744}
-{"timestamp": "2026-03-05 00:00:00", "symbol": "SHEL.L", "open": 3108.0, "high": 3121.5, "low": 3059.0, "close": 3108.0, "volume": 10576040}
-{"timestamp": "2026-03-06 00:00:00", "symbol": "SHEL.L", "open": 3106.0, "high": 3156.0, "low": 3096.0, "close": 3133.0, "volume": 16414686}
-{"timestamp": "2026-03-09 00:00:00", "symbol": "SHEL.L", "open": 3201.0, "high": 3225.593017578125, "low": 3164.0, "close": 3207.0, "volume": 11124987}
-{"timestamp": "2026-03-10 00:00:00", "symbol": "SHEL.L", "open": 3142.0, "high": 3198.5, "low": 3107.5, "close": 3180.5, "volume": 13067969}
-{"timestamp": "2026-03-11 00:00:00", "symbol": "SHEL.L", "open": 3166.5, "high": 3244.0, "low": 3158.0, "close": 3244.0, "volume": 11666644}
-{"timestamp": "2026-03-12 00:00:00", "symbol": "SHEL.L", "open": 3250.0, "high": 3329.0, "low": 3235.0, "close": 3328.0, "volume": 12881194}
-{"timestamp": "2026-03-13 00:00:00", "symbol": "SHEL.L", "open": 3331.0, "high": 3378.0, "low": 3331.0, "close": 3367.5, "volume": 8283922}
-{"timestamp": "2026-03-16 00:00:00", "symbol": "SHEL.L", "open": 3378.0, "high": 3424.5, "low": 3372.5, "close": 3415.0, "volume": 12235914}
-{"timestamp": "2026-03-17 00:00:00", "symbol": "SHEL.L", "open": 3410.5, "high": 3486.0, "low": 3410.5, "close": 3474.0, "volume": 8857035}
-{"timestamp": "2026-03-18 00:00:00", "symbol": "SHEL.L", "open": 3445.0, "high": 3477.0, "low": 3433.0, "close": 3461.5, "volume": 13785169}
-{"timestamp": "2026-03-19 00:00:00", "symbol": "SHEL.L", "open": 3459.0, "high": 3490.0, "low": 3409.0, "close": 3461.0, "volume": 20153838}
-{"timestamp": "2026-03-20 00:00:00", "symbol": "SHEL.L", "open": 3413.0, "high": 3482.5, "low": 3401.5, "close": 3434.0, "volume": 41833875}
-{"timestamp": "2026-03-23 00:00:00", "symbol": "SHEL.L", "open": 3396.0, "high": 3421.5, "low": 3274.0, "close": 3354.5, "volume": 12521728}
-{"timestamp": "2026-03-24 00:00:00", "symbol": "SHEL.L", "open": 3359.5, "high": 3460.0, "low": 3358.89990234375, "close": 3460.0, "volume": 8149023}
-{"timestamp": "2026-03-25 00:00:00", "symbol": "SHEL.L", "open": 3390.0, "high": 3442.5, "low": 3390.0, "close": 3433.0, "volume": 10336558}
-{"timestamp": "2026-03-26 00:00:00", "symbol": "SHEL.L", "open": 3449.5, "high": 3474.0, "low": 3426.5, "close": 3472.5, "volume": 9423933}
-{"timestamp": "2026-03-27 00:00:00", "symbol": "SHEL.L", "open": 3460.0, "high": 3482.0, "low": 3426.52001953125, "close": 3482.0, "volume": 9228913}
-{"timestamp": "2026-03-30 00:00:00", "symbol": "SHEL.L", "open": 3490.0, "high": 3566.5, "low": 3490.0, "close": 3553.5, "volume": 9216771}
-{"timestamp": "2026-03-31 00:00:00", "symbol": "SHEL.L", "open": 3514.5, "high": 3592.0, "low": 3514.5, "close": 3583.0, "volume": 11764635}
-{"timestamp": "2026-04-01 00:00:00", "symbol": "SHEL.L", "open": 3528.0, "high": 3563.5, "low": 3432.0, "close": 3443.5, "volume": 14893588}
-{"timestamp": "2026-04-02 00:00:00", "symbol": "SHEL.L", "open": 3509.5, "high": 3585.0, "low": 3508.0, "close": 3543.5, "volume": 15335522}
-{"timestamp": "2026-04-07 00:00:00", "symbol": "SHEL.L", "open": 3547.5, "high": 3589.5, "low": 3541.574951171875, "close": 3568.0, "volume": 13331906}
-{"timestamp": "2026-04-08 00:00:00", "symbol": "SHEL.L", "open": 3252.5, "high": 3401.0, "low": 3244.5, "close": 3401.0, "volume": 21140504}
-{"timestamp": "2026-04-09 00:00:00", "symbol": "SHEL.L", "open": 3444.5, "high": 3468.0, "low": 3415.5, "close": 3448.5, "volume": 7142295}
-{"timestamp": "2026-04-10 00:00:00", "symbol": "SHEL.L", "open": 3403.5, "high": 3449.0, "low": 3383.0, "close": 3420.5, "volume": 15550810}
-{"timestamp": "2026-04-13 00:00:00", "symbol": "SHEL.L", "open": 3484.0, "high": 3492.303955078125, "low": 3449.0, "close": 3471.0, "volume": 7483052}
-{"timestamp": "2026-04-14 00:00:00", "symbol": "SHEL.L", "open": 3448.0, "high": 3467.5, "low": 3348.5, "close": 3375.5, "volume": 13354235}
-{"timestamp": "2026-04-15 00:00:00", "symbol": "SHEL.L", "open": 3360.0, "high": 3389.0, "low": 3345.799072265625, "close": 3346.0, "volume": 15622769}
-{"timestamp": "2026-04-16 00:00:00", "symbol": "SHEL.L", "open": 3322.5, "high": 3390.5, "low": 3318.0, "close": 3384.5, "volume": 8354968}
-{"timestamp": "2026-04-17 00:00:00", "symbol": "SHEL.L", "open": 3385.5, "high": 3394.5, "low": 3169.738037109375, "close": 3196.0, "volume": 16496783}
+{"timestamp":"2025-10-01T00:00:00","symbol":"SHEL.L","open":2650.0,"high":2688.0,"low":2649.5,"close":2680.5,"volume":8954446}
+{"timestamp":"2025-10-02T00:00:00","symbol":"SHEL.L","open":2675.0,"high":2687.5,"low":2670.0,"close":2670.5,"volume":4925823}
+{"timestamp":"2025-10-03T00:00:00","symbol":"SHEL.L","open":2669.5,"high":2706.5,"low":2669.5,"close":2702.5,"volume":4386953}
+{"timestamp":"2025-10-06T00:00:00","symbol":"SHEL.L","open":2718.0,"high":2738.0,"low":2714.0,"close":2737.0,"volume":6207026}
+{"timestamp":"2025-10-07T00:00:00","symbol":"SHEL.L","open":2800.0,"high":2801.0,"low":2754.5,"close":2779.0,"volume":7855845}
+{"timestamp":"2025-10-08T00:00:00","symbol":"SHEL.L","open":2773.5,"high":2790.5,"low":2748.0,"close":2764.0,"volume":8206993}
+{"timestamp":"2025-10-09T00:00:00","symbol":"SHEL.L","open":2781.5,"high":2802.0,"low":2766.876953125,"close":2776.5,"volume":6164237}
+{"timestamp":"2025-10-10T00:00:00","symbol":"SHEL.L","open":2752.5,"high":2767.5,"low":2688.5,"close":2696.0,"volume":8258446}
+{"timestamp":"2025-10-13T00:00:00","symbol":"SHEL.L","open":2705.0,"high":2715.0,"low":2681.5,"close":2697.0,"volume":8635236}
+{"timestamp":"2025-10-14T00:00:00","symbol":"SHEL.L","open":2692.0,"high":2701.0,"low":2665.5,"close":2686.0,"volume":4906155}
+{"timestamp":"2025-10-15T00:00:00","symbol":"SHEL.L","open":2684.5,"high":2702.0,"low":2679.74609375,"close":2691.5,"volume":5490755}
+{"timestamp":"2025-10-16T00:00:00","symbol":"SHEL.L","open":2681.5,"high":2696.0,"low":2676.5,"close":2676.5,"volume":4893952}
+{"timestamp":"2025-10-17T00:00:00","symbol":"SHEL.L","open":2643.5,"high":2691.0,"low":2628.5,"close":2691.0,"volume":6539523}
+{"timestamp":"2025-10-20T00:00:00","symbol":"SHEL.L","open":2686.5,"high":2723.0,"low":2683.5,"close":2711.0,"volume":8850426}
+{"timestamp":"2025-10-21T00:00:00","symbol":"SHEL.L","open":2716.0,"high":2733.5,"low":2705.5,"close":2717.0,"volume":4445116}
+{"timestamp":"2025-10-22T00:00:00","symbol":"SHEL.L","open":2739.5,"high":2767.0,"low":2738.5,"close":2761.0,"volume":8546153}
+{"timestamp":"2025-10-23T00:00:00","symbol":"SHEL.L","open":2817.0,"high":2862.09912109375,"low":2812.5,"close":2840.5,"volume":10191698}
+{"timestamp":"2025-10-24T00:00:00","symbol":"SHEL.L","open":2827.5,"high":2853.0,"low":2827.0,"close":2851.0,"volume":7816609}
+{"timestamp":"2025-10-27T00:00:00","symbol":"SHEL.L","open":2852.5,"high":2855.0,"low":2818.0,"close":2832.0,"volume":7109771}
+{"timestamp":"2025-10-28T00:00:00","symbol":"SHEL.L","open":2816.0,"high":2842.5,"low":2806.0,"close":2833.0,"volume":6681379}
+{"timestamp":"2025-10-29T00:00:00","symbol":"SHEL.L","open":2830.5,"high":2882.0,"low":2830.5,"close":2875.5,"volume":11999775}
+{"timestamp":"2025-10-30T00:00:00","symbol":"SHEL.L","open":2903.0,"high":2903.0,"low":2849.35009765625,"close":2883.0,"volume":8804685}
+{"timestamp":"2025-10-31T00:00:00","symbol":"SHEL.L","open":2852.5,"high":2875.0,"low":2830.373046875,"close":2847.5,"volume":10109313}
+{"timestamp":"2025-11-03T00:00:00","symbol":"SHEL.L","open":2867.0,"high":2889.5,"low":2829.5,"close":2841.5,"volume":12938795}
+{"timestamp":"2025-11-04T00:00:00","symbol":"SHEL.L","open":2826.5,"high":2840.5,"low":2788.0,"close":2838.0,"volume":8798137}
+{"timestamp":"2025-11-05T00:00:00","symbol":"SHEL.L","open":2818.0,"high":2874.0,"low":2818.0,"close":2863.5,"volume":7483378}
+{"timestamp":"2025-11-06T00:00:00","symbol":"SHEL.L","open":2858.0,"high":2870.0,"low":2830.5,"close":2850.0,"volume":10771845}
+{"timestamp":"2025-11-07T00:00:00","symbol":"SHEL.L","open":2840.0,"high":2860.0,"low":2822.5,"close":2849.0,"volume":10823812}
+{"timestamp":"2025-11-10T00:00:00","symbol":"SHEL.L","open":2886.0,"high":2889.5,"low":2851.5,"close":2869.5,"volume":9743504}
+{"timestamp":"2025-11-11T00:00:00","symbol":"SHEL.L","open":2910.0,"high":2937.5,"low":2892.0,"close":2931.5,"volume":9902024}
+{"timestamp":"2025-11-12T00:00:00","symbol":"SHEL.L","open":2929.5,"high":2936.5,"low":2909.0,"close":2909.0,"volume":10376151}
+{"timestamp":"2025-11-13T00:00:00","symbol":"SHEL.L","open":2878.5,"high":2885.0,"low":2859.5,"close":2859.5,"volume":10096437}
+{"timestamp":"2025-11-14T00:00:00","symbol":"SHEL.L","open":2861.5,"high":2877.0,"low":2830.0,"close":2858.0,"volume":5089214}
+{"timestamp":"2025-11-17T00:00:00","symbol":"SHEL.L","open":2864.0,"high":2866.5,"low":2848.5,"close":2858.0,"volume":22186675}
+{"timestamp":"2025-11-18T00:00:00","symbol":"SHEL.L","open":2838.0,"high":2842.0,"low":2799.5,"close":2817.5,"volume":16931602}
+{"timestamp":"2025-11-19T00:00:00","symbol":"SHEL.L","open":2846.0,"high":2855.0,"low":2779.0,"close":2794.0,"volume":19329734}
+{"timestamp":"2025-11-20T00:00:00","symbol":"SHEL.L","open":2819.0,"high":2837.0,"low":2800.0,"close":2813.5,"volume":9405920}
+{"timestamp":"2025-11-21T00:00:00","symbol":"SHEL.L","open":2780.0,"high":2790.5,"low":2760.0,"close":2785.0,"volume":11519296}
+{"timestamp":"2025-11-24T00:00:00","symbol":"SHEL.L","open":2777.0,"high":2784.0,"low":2759.280029296875,"close":2772.0,"volume":19348794}
+{"timestamp":"2025-11-25T00:00:00","symbol":"SHEL.L","open":2782.0,"high":2799.0,"low":2753.5,"close":2766.0,"volume":16559063}
+{"timestamp":"2025-11-26T00:00:00","symbol":"SHEL.L","open":2756.5,"high":2777.0,"low":2748.5,"close":2766.5,"volume":12831725}
+{"timestamp":"2025-11-27T00:00:00","symbol":"SHEL.L","open":2757.5,"high":2766.0,"low":2740.0,"close":2753.0,"volume":4778729}
+{"timestamp":"2025-11-28T00:00:00","symbol":"SHEL.L","open":2763.5,"high":2794.0,"low":2763.5,"close":2783.5,"volume":7551151}
+{"timestamp":"2025-12-01T00:00:00","symbol":"SHEL.L","open":2781.0,"high":2820.5,"low":2779.5,"close":2800.5,"volume":15867668}
+{"timestamp":"2025-12-02T00:00:00","symbol":"SHEL.L","open":2807.0,"high":2813.0,"low":2779.5,"close":2788.5,"volume":43519123}
+{"timestamp":"2025-12-03T00:00:00","symbol":"SHEL.L","open":2791.0,"high":2815.0,"low":2788.0,"close":2799.0,"volume":4395505}
+{"timestamp":"2025-12-04T00:00:00","symbol":"SHEL.L","open":2816.0,"high":2820.0,"low":2791.5,"close":2799.5,"volume":4394848}
+{"timestamp":"2025-12-05T00:00:00","symbol":"SHEL.L","open":2771.0,"high":2789.5,"low":2748.5,"close":2760.0,"volume":5555202}
+{"timestamp":"2025-12-08T00:00:00","symbol":"SHEL.L","open":2742.5,"high":2766.5,"low":2733.0,"close":2750.0,"volume":3555701}
+{"timestamp":"2025-12-09T00:00:00","symbol":"SHEL.L","open":2731.5,"high":2752.0,"low":2729.0,"close":2734.5,"volume":5743587}
+{"timestamp":"2025-12-10T00:00:00","symbol":"SHEL.L","open":2727.5,"high":2740.5,"low":2708.0,"close":2709.0,"volume":8282468}
+{"timestamp":"2025-12-11T00:00:00","symbol":"SHEL.L","open":2704.5,"high":2719.5,"low":2697.5,"close":2707.0,"volume":6872137}
+{"timestamp":"2025-12-12T00:00:00","symbol":"SHEL.L","open":2707.0,"high":2712.0,"low":2685.5,"close":2686.5,"volume":14881878}
+{"timestamp":"2025-12-15T00:00:00","symbol":"SHEL.L","open":2704.5,"high":2719.0,"low":2698.337890625,"close":2698.5,"volume":4483219}
+{"timestamp":"2025-12-16T00:00:00","symbol":"SHEL.L","open":2683.0,"high":2700.0,"low":2606.0,"close":2626.5,"volume":9614157}
+{"timestamp":"2025-12-17T00:00:00","symbol":"SHEL.L","open":2660.0,"high":2693.5,"low":2657.341064453125,"close":2657.5,"volume":11097058}
+{"timestamp":"2025-12-18T00:00:00","symbol":"SHEL.L","open":2677.0,"high":2684.0,"low":2648.800048828125,"close":2662.0,"volume":14033747}
+{"timestamp":"2025-12-19T00:00:00","symbol":"SHEL.L","open":2666.0,"high":2703.0,"low":2657.0,"close":2703.0,"volume":22532782}
+{"timestamp":"2025-12-22T00:00:00","symbol":"SHEL.L","open":2690.5,"high":2714.5,"low":2690.5,"close":2705.0,"volume":7810023}
+{"timestamp":"2025-12-23T00:00:00","symbol":"SHEL.L","open":2687.0,"high":2707.0,"low":2686.0,"close":2702.0,"volume":5162567}
+{"timestamp":"2025-12-24T00:00:00","symbol":"SHEL.L","open":2702.5,"high":2716.5,"low":2697.0,"close":2698.0,"volume":1428260}
+{"timestamp":"2025-12-29T00:00:00","symbol":"SHEL.L","open":2695.0,"high":2718.5,"low":2694.5,"close":2706.0,"volume":3782323}
+{"timestamp":"2025-12-30T00:00:00","symbol":"SHEL.L","open":2709.5,"high":2741.0,"low":2709.0,"close":2731.5,"volume":4683155}
+{"timestamp":"2025-12-31T00:00:00","symbol":"SHEL.L","open":2738.5,"high":2743.5,"low":2729.5,"close":2740.0,"volume":1867219}
+{"timestamp":"2026-01-02T00:00:00","symbol":"SHEL.L","open":2742.0,"high":2781.5,"low":2737.0,"close":2759.5,"volume":5989767}
+{"timestamp":"2026-01-05T00:00:00","symbol":"SHEL.L","open":2784.0,"high":2795.5,"low":2722.0,"close":2738.0,"volume":8432601}
+{"timestamp":"2026-01-06T00:00:00","symbol":"SHEL.L","open":2767.5,"high":2786.5,"low":2747.0,"close":2747.0,"volume":6173059}
+{"timestamp":"2026-01-07T00:00:00","symbol":"SHEL.L","open":2686.0,"high":2705.0,"low":2629.0,"close":2655.5,"volume":25169697}
+{"timestamp":"2026-01-08T00:00:00","symbol":"SHEL.L","open":2633.0,"high":2633.0,"low":2553.77197265625,"close":2562.0,"volume":11393831}
+{"timestamp":"2026-01-09T00:00:00","symbol":"SHEL.L","open":2592.0,"high":2659.0,"low":2589.5,"close":2640.0,"volume":6749403}
+{"timestamp":"2026-01-12T00:00:00","symbol":"SHEL.L","open":2648.0,"high":2664.0,"low":2625.5,"close":2661.5,"volume":8386699}
+{"timestamp":"2026-01-13T00:00:00","symbol":"SHEL.L","open":2661.5,"high":2730.5,"low":2661.5,"close":2722.0,"volume":6849541}
+{"timestamp":"2026-01-14T00:00:00","symbol":"SHEL.L","open":2700.0,"high":2745.074951171875,"low":2698.5,"close":2739.0,"volume":7143181}
+{"timestamp":"2026-01-15T00:00:00","symbol":"SHEL.L","open":2738.0,"high":2754.5,"low":2699.5,"close":2746.5,"volume":6360308}
+{"timestamp":"2026-01-16T00:00:00","symbol":"SHEL.L","open":2738.0,"high":2777.0,"low":2720.0,"close":2752.5,"volume":6837066}
+{"timestamp":"2026-01-19T00:00:00","symbol":"SHEL.L","open":2749.5,"high":2762.0,"low":2726.5,"close":2730.0,"volume":5293624}
+{"timestamp":"2026-01-20T00:00:00","symbol":"SHEL.L","open":2715.5,"high":2736.0,"low":2701.800048828125,"close":2722.0,"volume":7407904}
+{"timestamp":"2026-01-21T00:00:00","symbol":"SHEL.L","open":2715.0,"high":2752.0,"low":2706.5,"close":2733.5,"volume":8002211}
+{"timestamp":"2026-01-22T00:00:00","symbol":"SHEL.L","open":2754.5,"high":2757.0,"low":2671.8798828125,"close":2674.0,"volume":11445467}
+{"timestamp":"2026-01-23T00:00:00","symbol":"SHEL.L","open":2686.0,"high":2722.0,"low":2678.0,"close":2687.5,"volume":9909984}
+{"timestamp":"2026-01-26T00:00:00","symbol":"SHEL.L","open":2694.0,"high":2707.0,"low":2672.340087890625,"close":2672.5,"volume":7482122}
+{"timestamp":"2026-01-27T00:00:00","symbol":"SHEL.L","open":2672.5,"high":2700.0048828125,"low":2666.0,"close":2697.0,"volume":20289832}
+{"timestamp":"2026-01-28T00:00:00","symbol":"SHEL.L","open":2713.5,"high":2748.1650390625,"low":2712.5,"close":2732.5,"volume":7427780}
+{"timestamp":"2026-01-29T00:00:00","symbol":"SHEL.L","open":2752.5,"high":2818.5,"low":2748.5,"close":2797.5,"volume":7390881}
+{"timestamp":"2026-01-30T00:00:00","symbol":"SHEL.L","open":2788.5,"high":2798.0,"low":2768.5,"close":2794.0,"volume":7013448}
+{"timestamp":"2026-02-02T00:00:00","symbol":"SHEL.L","open":2741.5,"high":2782.5,"low":2722.5,"close":2779.5,"volume":5337281}
+{"timestamp":"2026-02-03T00:00:00","symbol":"SHEL.L","open":2774.0,"high":2792.5,"low":2745.5,"close":2789.5,"volume":5495185}
+{"timestamp":"2026-02-04T00:00:00","symbol":"SHEL.L","open":2840.0,"high":2875.5,"low":2817.0,"close":2867.0,"volume":6390035}
+{"timestamp":"2026-02-05T00:00:00","symbol":"SHEL.L","open":2838.0,"high":2859.5,"low":2763.75,"close":2769.5,"volume":20826662}
+{"timestamp":"2026-02-06T00:00:00","symbol":"SHEL.L","open":2758.5,"high":2793.0,"low":2741.5,"close":2774.5,"volume":8064102}
+{"timestamp":"2026-02-09T00:00:00","symbol":"SHEL.L","open":2754.0,"high":2823.0,"low":2754.0,"close":2823.0,"volume":7500696}
+{"timestamp":"2026-02-10T00:00:00","symbol":"SHEL.L","open":2825.0,"high":2874.5,"low":2811.5,"close":2832.0,"volume":16717649}
+{"timestamp":"2026-02-11T00:00:00","symbol":"SHEL.L","open":2852.5,"high":2918.0,"low":2850.75,"close":2914.0,"volume":12970027}
+{"timestamp":"2026-02-12T00:00:00","symbol":"SHEL.L","open":2932.5,"high":2942.0,"low":2879.5,"close":2888.0,"volume":13714941}
+{"timestamp":"2026-02-13T00:00:00","symbol":"SHEL.L","open":2880.0,"high":2890.0,"low":2856.0,"close":2872.5,"volume":25739376}
+{"timestamp":"2026-02-16T00:00:00","symbol":"SHEL.L","open":2873.0,"high":2886.5,"low":2859.824951171875,"close":2865.5,"volume":4132260}
+{"timestamp":"2026-02-17T00:00:00","symbol":"SHEL.L","open":2880.0,"high":2902.0,"low":2839.0,"close":2867.0,"volume":9204439}
+{"timestamp":"2026-02-18T00:00:00","symbol":"SHEL.L","open":2875.0,"high":2939.0,"low":2867.5,"close":2929.0,"volume":21932776}
+{"timestamp":"2026-02-19T00:00:00","symbol":"SHEL.L","open":2942.0,"high":2962.5,"low":2911.40087890625,"close":2944.0,"volume":23119148}
+{"timestamp":"2026-02-20T00:00:00","symbol":"SHEL.L","open":2953.5,"high":2960.5,"low":2927.0,"close":2940.5,"volume":11355999}
+{"timestamp":"2026-02-23T00:00:00","symbol":"SHEL.L","open":2933.0,"high":2990.14794921875,"low":2920.2080078125,"close":2965.0,"volume":13925480}
+{"timestamp":"2026-02-24T00:00:00","symbol":"SHEL.L","open":2985.5,"high":2991.5,"low":2961.0,"close":2971.5,"volume":22832124}
+{"timestamp":"2026-02-25T00:00:00","symbol":"SHEL.L","open":2985.0,"high":3011.0,"low":2985.0,"close":3011.0,"volume":32480503}
+{"timestamp":"2026-02-26T00:00:00","symbol":"SHEL.L","open":3024.5,"high":3035.5,"low":2975.0,"close":3024.0,"volume":14276505}
+{"timestamp":"2026-02-27T00:00:00","symbol":"SHEL.L","open":3018.5,"high":3079.0,"low":3007.5,"close":3073.5,"volume":24177053}
+{"timestamp":"2026-03-02T00:00:00","symbol":"SHEL.L","open":3227.0,"high":3227.0,"low":3105.5,"close":3132.0,"volume":16645911}
+{"timestamp":"2026-03-03T00:00:00","symbol":"SHEL.L","open":3131.0,"high":3154.0,"low":3071.0,"close":3113.0,"volume":13648388}
+{"timestamp":"2026-03-04T00:00:00","symbol":"SHEL.L","open":3084.0,"high":3100.5,"low":3049.0,"close":3063.5,"volume":17197744}
+{"timestamp":"2026-03-05T00:00:00","symbol":"SHEL.L","open":3108.0,"high":3121.5,"low":3059.0,"close":3108.0,"volume":10576040}
+{"timestamp":"2026-03-06T00:00:00","symbol":"SHEL.L","open":3106.0,"high":3156.0,"low":3096.0,"close":3133.0,"volume":16414686}
+{"timestamp":"2026-03-09T00:00:00","symbol":"SHEL.L","open":3201.0,"high":3225.593017578125,"low":3164.0,"close":3207.0,"volume":11124987}
+{"timestamp":"2026-03-10T00:00:00","symbol":"SHEL.L","open":3142.0,"high":3198.5,"low":3107.5,"close":3180.5,"volume":13067969}
+{"timestamp":"2026-03-11T00:00:00","symbol":"SHEL.L","open":3166.5,"high":3244.0,"low":3158.0,"close":3244.0,"volume":11666644}
+{"timestamp":"2026-03-12T00:00:00","symbol":"SHEL.L","open":3250.0,"high":3329.0,"low":3235.0,"close":3328.0,"volume":12881194}
+{"timestamp":"2026-03-13T00:00:00","symbol":"SHEL.L","open":3331.0,"high":3378.0,"low":3331.0,"close":3367.5,"volume":8283922}
+{"timestamp":"2026-03-16T00:00:00","symbol":"SHEL.L","open":3378.0,"high":3424.5,"low":3372.5,"close":3415.0,"volume":12235914}
+{"timestamp":"2026-03-17T00:00:00","symbol":"SHEL.L","open":3410.5,"high":3486.0,"low":3410.5,"close":3474.0,"volume":8857035}
+{"timestamp":"2026-03-18T00:00:00","symbol":"SHEL.L","open":3445.0,"high":3477.0,"low":3433.0,"close":3461.5,"volume":13785169}
+{"timestamp":"2026-03-19T00:00:00","symbol":"SHEL.L","open":3459.0,"high":3490.0,"low":3409.0,"close":3461.0,"volume":20153838}
+{"timestamp":"2026-03-20T00:00:00","symbol":"SHEL.L","open":3413.0,"high":3482.5,"low":3401.5,"close":3434.0,"volume":41833875}
+{"timestamp":"2026-03-23T00:00:00","symbol":"SHEL.L","open":3396.0,"high":3421.5,"low":3274.0,"close":3354.5,"volume":12521728}
+{"timestamp":"2026-03-24T00:00:00","symbol":"SHEL.L","open":3359.5,"high":3460.0,"low":3358.89990234375,"close":3460.0,"volume":8149023}
+{"timestamp":"2026-03-25T00:00:00","symbol":"SHEL.L","open":3390.0,"high":3442.5,"low":3390.0,"close":3433.0,"volume":10336558}
+{"timestamp":"2026-03-26T00:00:00","symbol":"SHEL.L","open":3449.5,"high":3474.0,"low":3426.5,"close":3472.5,"volume":9423933}
+{"timestamp":"2026-03-27T00:00:00","symbol":"SHEL.L","open":3460.0,"high":3482.0,"low":3426.52001953125,"close":3482.0,"volume":9228913}
+{"timestamp":"2026-03-30T00:00:00","symbol":"SHEL.L","open":3490.0,"high":3566.5,"low":3490.0,"close":3553.5,"volume":9216771}
+{"timestamp":"2026-03-31T00:00:00","symbol":"SHEL.L","open":3514.5,"high":3592.0,"low":3514.5,"close":3583.0,"volume":11764635}
+{"timestamp":"2026-04-01T00:00:00","symbol":"SHEL.L","open":3528.0,"high":3563.5,"low":3432.0,"close":3443.5,"volume":14893588}
+{"timestamp":"2026-04-02T00:00:00","symbol":"SHEL.L","open":3509.5,"high":3585.0,"low":3508.0,"close":3543.5,"volume":15335522}
+{"timestamp":"2026-04-07T00:00:00","symbol":"SHEL.L","open":3547.5,"high":3589.5,"low":3541.574951171875,"close":3568.0,"volume":13331906}
+{"timestamp":"2026-04-08T00:00:00","symbol":"SHEL.L","open":3252.5,"high":3401.0,"low":3244.5,"close":3401.0,"volume":21140504}
+{"timestamp":"2026-04-09T00:00:00","symbol":"SHEL.L","open":3444.5,"high":3468.0,"low":3415.5,"close":3448.5,"volume":7142295}
+{"timestamp":"2026-04-10T00:00:00","symbol":"SHEL.L","open":3403.5,"high":3449.0,"low":3383.0,"close":3420.5,"volume":15550810}
+{"timestamp":"2026-04-13T00:00:00","symbol":"SHEL.L","open":3484.0,"high":3492.303955078125,"low":3449.0,"close":3471.0,"volume":7483052}
+{"timestamp":"2026-04-14T00:00:00","symbol":"SHEL.L","open":3448.0,"high":3467.5,"low":3348.5,"close":3375.5,"volume":13354235}
+{"timestamp":"2026-04-15T00:00:00","symbol":"SHEL.L","open":3360.0,"high":3389.0,"low":3345.799072265625,"close":3346.0,"volume":15622769}
+{"timestamp":"2026-04-16T00:00:00","symbol":"SHEL.L","open":3322.5,"high":3390.5,"low":3318.0,"close":3384.5,"volume":8354968}
+{"timestamp":"2026-04-17T00:00:00","symbol":"SHEL.L","open":3385.5,"high":3394.5,"low":3169.738037109375,"close":3196.0,"volume":16496783}
+{"timestamp":"2026-04-20T00:00:00","symbol":"SHEL.L","open":3280.5,"high":3295.5,"low":3241.0,"close":3274.5,"volume":7132572}

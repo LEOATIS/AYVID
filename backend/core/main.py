@@ -30,11 +30,37 @@ def _register_api_keys() -> None:
         log.info("No API_KEY configured — running in dev mode (no auth)")
 
 
+def _log_trade_routing_banner() -> None:
+    """Print exactly where the next order will go. Read this first on every restart."""
+    acct = (settings.IB_ACCOUNT or "").strip() or "default"
+    is_paper_acct = acct.upper().startswith("DU")
+    if settings.PAPER_TRADING:
+        log.info(
+            f"[bold yellow]ORDER ROUTING:[/bold yellow] stub-only "
+            f"(PAPER_TRADING=true). Orders will NOT reach IB. "
+            f"auto_execute={settings.AUTO_EXECUTE}"
+        )
+    elif is_paper_acct:
+        log.info(
+            f"[bold green]ORDER ROUTING:[/bold green] IB Paper "
+            f"({settings.IB_HOST}:{settings.IB_PORT}, account={acct}). "
+            f"Zero real-money risk. auto_execute={settings.AUTO_EXECUTE}"
+        )
+    else:
+        log.warning(
+            f"[bold red]ORDER ROUTING:[/bold red] IB LIVE "
+            f"({settings.IB_HOST}:{settings.IB_PORT}, account={acct}). "
+            f"auto_execute={settings.AUTO_EXECUTE} "
+            f"— real money will move."
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _pipeline_task, _risk_writer_task
     log.info("AYVID Backend starting...")
     _register_api_keys()
+    _log_trade_routing_banner()
 
     from data_primitives.pipeline.continuous_worker import start_continuous_pipeline
     _pipeline_task = asyncio.create_task(

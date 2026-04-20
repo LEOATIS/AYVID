@@ -438,7 +438,7 @@ def _detect_shock_tickers(events: list[CausalEvent]) -> list[str]:
 
     ticker_scores: dict[str, float] = {}
     for event in events:
-        if event.event_type in shock_types and event.confidence > 0.5:
+        if event.event_type in shock_types and event.confidence > 0.35:
             ticker_scores[event.source_node] = (
                 ticker_scores.get(event.source_node, 0.0) + event.confidence
             )

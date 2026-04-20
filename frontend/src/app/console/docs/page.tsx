@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, BookOpen, Code2, FileText, Terminal } from "lucide-react";
+import { ArrowUpRight, Code2, FileText, Terminal } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 
 const SECTIONS: { title: string; description: string; links: { href: string; label: string }[] }[] = [
@@ -88,17 +88,6 @@ export default function DocsPage() {
         </div>
       </Card>
 
-      <Card>
-        <p className="flex items-start gap-3 text-[13px] text-muted">
-          <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
-          <span>
-            For the full architecture story, fund structure, and YC-S26 positioning,
-            see <span className="num text-fg">document/yc/COMPANY_POSITIONING.md</span> and{" "}
-            <span className="num text-fg">document/backtests/SHOCK_VS_NAIVE_COMPARISON.md</span>{" "}
-            in the repository.
-          </span>
-        </p>
-      </Card>
     </div>
   );
 }

@@ -204,6 +204,14 @@ async def _fetch_alternative_news(ticker: str) -> list:
     except Exception as exc:
         log.debug(f"Finnhub fetch skipped: {exc}")
 
+    # Fill in per-NewsItem sentiment for items that arrived unscored
+    # (Reddit, Finnhub). StockTwits items already carry ±1 from the API.
+    try:
+        from data_primitives.transformers.sentiment import score_news_items
+        await score_news_items(all_extra)
+    except Exception as exc:
+        log.debug(f"Per-item sentiment scoring skipped: {exc}")
+
     return all_extra
 
 

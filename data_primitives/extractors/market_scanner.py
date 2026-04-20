@@ -1,8 +1,9 @@
 """Global Market Scanner — real-time multi-asset shock detection.
 
 Scans across all asset classes and world markets to detect:
-- Abnormal price moves (> 2 sigma)
-- Volume spikes
+- Abnormal price moves (> 1.2 sigma default, supply-chain 1.0 sigma)
+- Volume spikes (> 1.8x average, supply-chain 1.5x)
+- Opening gaps (> 1.5%, supply-chain 1.0%)
 - Correlation breakdowns
 - Cross-asset contagion signals
 - Sector rotation shifts
@@ -60,7 +61,7 @@ class ScanResult:
 
 def detect_price_anomaly(
     bars: list[OHLCVBar],
-    sigma_threshold: float = 2.0,
+    sigma_threshold: float = 1.2,
     lookback: int = 20,
 ) -> ScanResult | None:
     """Detect abnormal price movement (> N sigma from rolling mean)."""
@@ -99,7 +100,7 @@ def detect_price_anomaly(
 
 def detect_volume_spike(
     bars: list[OHLCVBar],
-    volume_ratio_threshold: float = 3.0,
+    volume_ratio_threshold: float = 1.8,
     lookback: int = 20,
 ) -> ScanResult | None:
     """Detect abnormal volume (> Nx average daily volume)."""
@@ -131,7 +132,7 @@ def detect_volume_spike(
 
 def detect_gap(
     bars: list[OHLCVBar],
-    gap_threshold_pct: float = 3.0,
+    gap_threshold_pct: float = 1.5,
 ) -> ScanResult | None:
     """Detect opening gaps (gap up/down > threshold)."""
     if len(bars) < 2:
@@ -156,9 +157,9 @@ def detect_gap(
 
 async def scan_universe(
     price_data: dict[str, list[OHLCVBar]],
-    sigma_threshold: float = 2.0,
-    volume_threshold: float = 3.0,
-    gap_threshold: float = 3.0,
+    sigma_threshold: float = 1.2,
+    volume_threshold: float = 1.8,
+    gap_threshold: float = 1.5,
 ) -> list[ScanResult]:
     """Run all anomaly detectors across the entire universe.
 
@@ -207,9 +208,9 @@ async def scan_for_supply_chain_shocks(
 
     return await scan_universe(
         filtered,
-        sigma_threshold=1.5,
-        volume_threshold=2.5,
-        gap_threshold=2.0,
+        sigma_threshold=1.0,
+        volume_threshold=1.5,
+        gap_threshold=1.0,
     )
 
 
