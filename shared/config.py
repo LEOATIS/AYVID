@@ -226,6 +226,11 @@ class Settings(BaseSettings):
     # lifespan as the autopilot path. Override via env to talk to a
     # staging or production deployment.
     AYVID_BACKEND_URL: str = "http://127.0.0.1:8001"
+    # Optional shared live-artifact store. When set, the execution VM
+    # mirrors `live/*` artifacts into GCS and Cloud Run reads from the
+    # same location so dashboard state stays in sync across hosts.
+    AYVID_LIVE_GCS_BUCKET: str | None = None
+    AYVID_LIVE_GCS_PREFIX: str = "live_state"
 
     # --- Auth + CORS (P1-15) ---
     # When True, `verify_api_key` NEVER degrades to a dev-mode pass-

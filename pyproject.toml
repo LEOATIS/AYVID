@@ -41,6 +41,7 @@ dependencies = [
     "tenacity",
     "httpx",
     "aiofiles",
+    "google-cloud-storage",
 ]
 
 [project.optional-dependencies]

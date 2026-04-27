@@ -95,6 +95,14 @@ resource "google_cloud_run_v2_service" "backend" {
         name  = "SEC_EDGAR_EMAIL"
         value = "research@ayvid.ai"
       }
+      env {
+        name  = "AYVID_LIVE_GCS_BUCKET"
+        value = "${var.project_id}-tfstate"
+      }
+      env {
+        name  = "AYVID_LIVE_GCS_PREFIX"
+        value = "live_state"
+      }
 
       # P1-15 / P1-16: force strict auth in deployed environments.
       # Local dev and tests leave AYVID_REQUIRE_AUTH=false so they work

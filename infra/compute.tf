@@ -19,7 +19,7 @@ resource "google_service_account_iam_member" "vm_uses_sa" {
 }
 
 resource "google_compute_instance" "execution" {
-  name         = "ayvid-execution"
+  name = "ayvid-execution"
   # P1-deploy: switched from n2-standard-4 to e2-standard-4 because
   # n2 inventory in us-central1 was depleted at apply time. e2 is the
   # same vCPU/memory class (4/16) on a different hardware pool, costs
@@ -106,16 +106,66 @@ resource "google_compute_instance" "execution" {
         value=$(echo "$encoded" | base64 -d)
         printf '%s=%s\n' "$env_name" "$value" >> $SECRETS_FILE
     done
+    # Shared live-artifact location so VM writer + Cloud Run reader
+    # look at the same source of truth.
+    printf 'AYVID_LIVE_GCS_BUCKET=%s\n' "${var.project_id}-tfstate" >> $SECRETS_FILE
+    printf 'AYVID_LIVE_GCS_PREFIX=%s\n' "live_state" >> $SECRETS_FILE
     chmod 600 $SECRETS_FILE
 
+    # --- IB Gateway container ----------------------------------------------
+    # Uses gnzsnz/ib-gateway image:
+    #   https://github.com/gnzsnz/ib-gateway-docker/pkgs/container/ib-gateway
+    #
+    # We map host 127.0.0.1:7497 -> container 4002 (paper API port).
+    # AYVID runner then connects to IB_HOST/IB_PORT from secrets.
+    IBGW_IMAGE="ghcr.io/gnzsnz/ib-gateway:latest"
+    IBGW_USER=$(grep -E '^IB_GATEWAY_USERNAME=' "$SECRETS_FILE" | cut -d= -f2- || true)
+    IBGW_PASS=$(grep -E '^IB_GATEWAY_PASSWORD=' "$SECRETS_FILE" | cut -d= -f2- || true)
+    IBGW_MODE=$(grep -E '^IB_GATEWAY_TRADING_MODE=' "$SECRETS_FILE" | cut -d= -f2- || true)
+    [ -z "$IBGW_MODE" ] && IBGW_MODE="paper"
+
+    docker --config "$DOCKER_CONFIG" pull "$IBGW_IMAGE"
+    docker rm -f ib-gateway 2>/dev/null || true
+    if [ -n "$IBGW_USER" ] && [ -n "$IBGW_PASS" ] && [ "$IBGW_USER" != "placeholder" ] && [ "$IBGW_PASS" != "placeholder" ]; then
+        docker run -d --restart=always --name ib-gateway \
+            -e TWS_USERID="$IBGW_USER" \
+            -e TWS_PASSWORD="$IBGW_PASS" \
+            -e TRADING_MODE="$IBGW_MODE" \
+            -e READ_ONLY_API=no \
+            -e AUTO_RESTART_TIME="23:45" \
+            -p 127.0.0.1:7497:4002 \
+            "$IBGW_IMAGE"
+    else
+        echo "WARN: IB_GATEWAY_USERNAME/PASSWORD missing; IB gateway container not started."
+    fi
+
+    # Wait up to ~5 minutes for IB port readiness if gateway was started.
+    ib_ready=false
+    for _ in $(seq 1 60); do
+        if timeout 1 bash -c "echo > /dev/tcp/127.0.0.1/7497" >/dev/null 2>&1; then
+            ib_ready=true
+            break
+        fi
+        sleep 5
+    done
+
+    # --- AYVID runner container --------------------------------------------
     docker --config "$DOCKER_CONFIG" pull "$IMAGE"
     docker rm -f ayvid-execution 2>/dev/null || true
+
+    RUNNER_ARGS=(python -m cli.app trade paper-start --equity 1000000 --interval 60)
+    if [ "$ib_ready" != "true" ]; then
+        echo "WARN: IB gateway not ready on 127.0.0.1:7497; starting AYVID runner in --shadow mode."
+        RUNNER_ARGS=(python -m cli.app trade paper-start --shadow --equity 1000000 --interval 60)
+    fi
+
     docker run -d --restart=always --name ayvid-execution \
         --env-file $SECRETS_FILE \
         --cap-add=SYS_PTRACE \
         --tmpfs /tmp:exec,size=128m \
         -p 8001:8001 \
-        "$IMAGE"
+        "$IMAGE" \
+        "$${RUNNER_ARGS[@]}"
   EOT
 
   scheduling {

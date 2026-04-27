@@ -20,6 +20,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.core.security import verify_api_key
+from shared.config import settings
 from shared.logger import get_logger
 
 log = get_logger("api.live")
@@ -30,13 +31,46 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 LIVE_DIR = PROJECT_ROOT / "live"
 BACKTESTS_DIR = PROJECT_ROOT / "document" / "backtests"
 SIGNAL_BOOK = PROJECT_ROOT / "data_store" / "signal_book.json"
+_GCS_BUCKET = (getattr(settings, "AYVID_LIVE_GCS_BUCKET", None) or "").strip()
+_GCS_PREFIX = (getattr(settings, "AYVID_LIVE_GCS_PREFIX", "live_state") or "live_state").strip("/")
+_gcs_client: Any | None = None
+
+
+def _gcs_blob_name(path: Path) -> str:
+    rel = path.relative_to(PROJECT_ROOT).as_posix()
+    return f"{_GCS_PREFIX}/{rel}" if _GCS_PREFIX else rel
+
+
+def _read_text_any(path: Path) -> str | None:
+    """Read from local disk; if absent, fallback to GCS shared-live store."""
+    if path.exists():
+        try:
+            return path.read_text()
+        except OSError:
+            return None
+    if not _GCS_BUCKET:
+        return None
+    global _gcs_client
+    try:
+        if _gcs_client is None:
+            from google.cloud import storage
+
+            _gcs_client = storage.Client()
+        blob = _gcs_client.bucket(_GCS_BUCKET).blob(_gcs_blob_name(path))
+        if not blob.exists():
+            return None
+        return blob.download_as_text()
+    except Exception as exc:
+        log.warning(f"gcs read failed for {path}: {exc}")
+        return None
 
 
 def _read_jsonl(path: Path, limit: int | None = None, tail: bool = True) -> list[dict[str, Any]]:
-    if not path.exists():
+    text = _read_text_any(path)
+    if not text:
         return []
     rows: list[dict[str, Any]] = []
-    for line in path.read_text().splitlines():
+    for line in text.splitlines():
         line = line.strip()
         if not line:
             continue
@@ -90,10 +124,11 @@ async def equity_curve(
 
 def _read_meta() -> dict[str, Any] | None:
     meta_path = LIVE_DIR / "run_meta.json"
-    if not meta_path.exists():
+    text = _read_text_any(meta_path)
+    if not text:
         return None
     try:
-        return json.loads(meta_path.read_text())
+        return json.loads(text)
     except json.JSONDecodeError:
         return None
 
@@ -142,9 +177,10 @@ async def runner_status() -> dict[str, Any]:
 
 
 def _count_lines(path: Path) -> int:
-    if not path.exists():
+    text = _read_text_any(path)
+    if not text:
         return 0
-    return sum(1 for line in path.read_text().splitlines() if line.strip())
+    return sum(1 for line in text.splitlines() if line.strip())
 
 
 @router.get("/trades")
@@ -174,10 +210,11 @@ async def positions() -> dict[str, Any]:
     """
     path = LIVE_DIR / "positions.json"
     empty = {"positions": [], "count": 0, "as_of": None, "cash": None}
-    if not path.exists():
+    text = _read_text_any(path)
+    if not text:
         return empty
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(text)
     except json.JSONDecodeError:
         return empty
 

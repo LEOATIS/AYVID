@@ -166,6 +166,13 @@ locals {
     "hopsworks-api-key",
     # Broker
     "ib-account",
+    "ib-host",
+    "ib-port",
+    "paper-trading",
+    "auto-execute",
+    "ib-gateway-username",
+    "ib-gateway-password",
+    "ib-gateway-trading-mode",
     "ib-client-portal-cookie",
     # API gateway
     "api-key",

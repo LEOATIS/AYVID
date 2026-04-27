@@ -174,6 +174,13 @@ ENV_TO_SECRET=(
   "QDRANT_API_KEY:qdrant-api-key"
   "HOPSWORKS_API_KEY:hopsworks-api-key"
   "IB_ACCOUNT:ib-account"
+  "IB_HOST:ib-host"
+  "IB_PORT:ib-port"
+  "PAPER_TRADING:paper-trading"
+  "AUTO_EXECUTE:auto-execute"
+  "IB_GATEWAY_USERNAME:ib-gateway-username"
+  "IB_GATEWAY_PASSWORD:ib-gateway-password"
+  "IB_GATEWAY_TRADING_MODE:ib-gateway-trading-mode"
   "IB_CLIENT_PORTAL_COOKIE:ib-client-portal-cookie"
   "API_KEY:api-key"
 )

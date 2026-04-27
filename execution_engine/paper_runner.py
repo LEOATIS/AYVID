@@ -31,6 +31,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import json
+import os
 import signal
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -46,6 +47,9 @@ EQUITY_CURVE_PATH = LIVE_DIR / "equity_curve.jsonl"
 TRADES_PATH = LIVE_DIR / "trades.jsonl"
 POSITIONS_PATH = LIVE_DIR / "positions.json"
 RUN_META_PATH = LIVE_DIR / "run_meta.json"
+_GCS_BUCKET = (os.getenv("AYVID_LIVE_GCS_BUCKET") or "").strip()
+_GCS_PREFIX = (os.getenv("AYVID_LIVE_GCS_PREFIX") or "live_state").strip("/")
+_gcs_client: Any | None = None
 
 _stop_event: asyncio.Event | None = None
 
@@ -85,6 +89,33 @@ def _ensure_dirs() -> None:
 def _append_jsonl(path: Path, obj: dict[str, Any]) -> None:
     with path.open("a") as f:
         f.write(json.dumps(obj, default=str) + "\n")
+    _sync_path_to_gcs(path)
+
+
+def _blob_name(path: Path) -> str:
+    # Keep a stable key layout under prefix, e.g.:
+    #   live_state/live/equity_curve.jsonl
+    rel = path.as_posix()
+    return f"{_GCS_PREFIX}/{rel}" if _GCS_PREFIX else rel
+
+
+def _sync_path_to_gcs(path: Path) -> None:
+    if not _GCS_BUCKET:
+        return
+    if not path.exists():
+        return
+    global _gcs_client
+    try:
+        if _gcs_client is None:
+            from google.cloud import storage
+
+            _gcs_client = storage.Client()
+        bucket = _gcs_client.bucket(_GCS_BUCKET)
+        blob = bucket.blob(_blob_name(path))
+        blob.upload_from_filename(str(path), content_type="application/json")
+    except Exception as exc:
+        # Never let storage sync break the trading loop.
+        log.warning(f"gcs sync failed for {path}: {exc}")
 
 
 def _write_meta(mode: str, initial_equity: float, interval_seconds: int) -> None:
@@ -99,6 +130,7 @@ def _write_meta(mode: str, initial_equity: float, interval_seconds: int) -> None
         "paper_trading": settings.PAPER_TRADING,
     }
     RUN_META_PATH.write_text(json.dumps(meta, indent=2))
+    _sync_path_to_gcs(RUN_META_PATH)
 
 
 # ────────────────────────────────────────────────────────────────
@@ -503,6 +535,7 @@ async def _shadow_cycle(state: ShadowState) -> EquitySnapshot:
             default=str,
         )
     )
+    _sync_path_to_gcs(POSITIONS_PATH)
 
     equity = state.cash + position_value
     daily_pnl = equity - state.last_equity if state.last_equity > 0 else 0.0
