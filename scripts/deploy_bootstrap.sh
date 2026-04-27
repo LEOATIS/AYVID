@@ -33,6 +33,7 @@ AYVID_SA_NAME="${AYVID_SA_NAME:-ayvid-runtime}"
 AYVID_SA="${AYVID_SA_NAME}@${GCP_PROJECT}.iam.gserviceaccount.com"
 TFSTATE_BUCKET="${TFSTATE_BUCKET:-${GCP_PROJECT}-tfstate}"
 AYVID_INVOKER="${AYVID_INVOKER:-}"   # e.g. user:founders@ayvid.ai
+BACKEND_PUBLIC_INVOKER="${BACKEND_PUBLIC_INVOKER:-true}"
 PHASE="${1:-all}"
 
 # Resolve repo root regardless of where the script is invoked from.
@@ -306,8 +307,8 @@ phase_3() {
 phase_4() {
   log "Phase 4: terraform"
 
-  if [[ -z "${AYVID_INVOKER}" ]]; then
-    warn "AYVID_INVOKER not set — Cloud Run will be private with NO callers."
+  if [[ "${BACKEND_PUBLIC_INVOKER}" != "true" && -z "${AYVID_INVOKER}" ]]; then
+    warn "AYVID_INVOKER not set and BACKEND_PUBLIC_INVOKER=false — Cloud Run will be private with NO callers."
     warn "Set AYVID_INVOKER=user:you@ayvid.ai (or group:..., serviceAccount:...) to grant invoke."
   fi
 
@@ -335,6 +336,7 @@ phase_4() {
     -var "zone=${GCP_ZONE}" \
     -var "service_account_email=${AYVID_SA}" \
     -var "image_tag=${tag}" \
+    -var "backend_public_invoker=${BACKEND_PUBLIC_INVOKER}" \
     "${invoker_arg[@]}" \
     -var 'ssh_source_ranges=[]'
 

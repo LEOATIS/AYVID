@@ -73,7 +73,8 @@ resource "google_compute_instance" "execution" {
     METADATA_BASE="http://metadata.google.internal/computeMetadata/v1"
     ACCESS_TOKEN=$(curl -sf -H "$METADATA_HEADER" \
         "$METADATA_BASE/instance/service-accounts/default/token" \
-        | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+        | tr -d '\n' \
+        | sed -n 's/.*"access_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
     if [ -z "$ACCESS_TOKEN" ]; then
         echo "FATAL: could not obtain access token from metadata server" >&2
         exit 1
@@ -98,7 +99,8 @@ resource "google_compute_instance" "execution" {
         # `access` returns a JSON object with base64-encoded data; decode it.
         encoded=$(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" \
             "https://secretmanager.googleapis.com/v1/projects/$PROJECT/secrets/$secret_id/versions/latest:access" \
-            | sed -n 's/.*"data":"\([^"]*\)".*/\1/p')
+            | tr -d '\n' \
+            | sed -n 's/.*"data"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
         if [ -z "$encoded" ]; then
             echo "WARN: secret $secret_id returned empty payload" >&2
             continue

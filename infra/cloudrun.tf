@@ -50,11 +50,6 @@ resource "google_cloud_run_v2_service" "backend" {
       }
 
       env {
-        name  = "PAPER_TRADING"
-        value = "true"
-      }
-
-      env {
         name  = "LOG_LEVEL"
         value = "INFO"
       }

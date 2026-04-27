@@ -26,7 +26,8 @@ echo "[vm_redeploy] target image: ${IMAGE}"
 # Refresh docker auth — the token from boot may have expired.
 ACCESS_TOKEN=$(curl -sf -H "Metadata-Flavor: Google" \
     "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
-    | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+    | tr -d '\n' \
+    | sed -n 's/.*"access_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
 [ -n "$ACCESS_TOKEN" ] || { echo "FATAL: no metadata token" >&2; exit 1; }
 
 sudo mkdir -p "$DOCKER_CONFIG_DIR"
@@ -46,7 +47,8 @@ for secret_id in $(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" \
     env_name=$(echo "$secret_id" | sed 's/^ayvid-//' | tr '[:lower:]-' '[:upper:]_')
     encoded=$(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" \
         "https://secretmanager.googleapis.com/v1/projects/${PROJECT}/secrets/${secret_id}/versions/latest:access" \
-        | sed -n 's/.*"data":"\([^"]*\)".*/\1/p')
+        | tr -d '\n' \
+        | sed -n 's/.*"data"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
     [ -z "$encoded" ] && continue
     value=$(echo "$encoded" | base64 -d)
     printf '%s=%s\n' "$env_name" "$value" | sudo tee -a "$SECRETS_FILE" >/dev/null
