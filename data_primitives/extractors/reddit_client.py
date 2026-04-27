@@ -3,6 +3,7 @@
 Provides retail-sentiment signal as a complement to institutional data sources.
 No authentication required for read-only JSON endpoints.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -47,15 +48,17 @@ async def _search_subreddit(
         title = post.get("title")
         if not created_utc or not title:
             continue
-        items.append(NewsItem(
-            timestamp=dt.datetime.fromtimestamp(created_utc, tz=dt.timezone.utc),
-            title=title,
-            source=f"reddit/{subreddit}",
-            symbols=[ticker.upper()],
-            text=post.get("selftext") or None,
-            url=f"https://reddit.com{post.get('permalink', '')}",
-            sentiment=None,
-        ))
+        items.append(
+            NewsItem(
+                timestamp=dt.datetime.fromtimestamp(created_utc, tz=dt.UTC),
+                title=title,
+                source=f"reddit/{subreddit}",
+                symbols=[ticker.upper()],
+                text=post.get("selftext") or None,
+                url=f"https://reddit.com{post.get('permalink', '')}",
+                sentiment=None,
+            )
+        )
     return items
 
 
@@ -64,8 +67,7 @@ def _deduplicate_by_title(items: list[NewsItem], threshold: float = 0.85) -> lis
     unique: list[NewsItem] = []
     for item in items:
         is_dup = any(
-            SequenceMatcher(None, item.title.lower(), t).ratio() >= threshold
-            for t in seen_titles
+            SequenceMatcher(None, item.title.lower(), t).ratio() >= threshold for t in seen_titles
         )
         if not is_dup:
             seen_titles.append(item.title.lower())

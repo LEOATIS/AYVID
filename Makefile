@@ -1,4 +1,4 @@
-.PHONY: install dev verify status dashboard serve seed watchdog clean demo test backtest backtest-fresh pipeline
+.PHONY: install dev verify status dashboard serve seed watchdog clean demo test backtest backtest-fresh pipeline graph-init scan analyze ingest universe world-scan clean-data lint format
 
 # ── Setup ────────────────────────────────────────────────────
 
@@ -63,10 +63,29 @@ world-scan:
 
 # ── Kill Switch ──────────────────────────────────────────────
 
+# Compiles the production kill switch with libcurl so the independent
+# IB Client Portal REST flatten path is available (step-2 of the
+# watchdog contract: Python SIGKILL AND broker-side flatten).
+#
+# Falls back gracefully at compile time if libcurl is absent (step-2
+# is skipped at runtime; step-1 still fires).
 watchdog:
-	cd execution_engine/kill_switch && \
-	g++ -O2 -o watchdog watchdog.cpp && \
-	echo "Watchdog compiled: execution_engine/kill_switch/watchdog"
+	@if command -v curl-config >/dev/null 2>&1; then \
+		CFLAGS=$$(curl-config --cflags); \
+		LIBS=$$(curl-config --libs); \
+	else \
+		CFLAGS=""; LIBS="-lcurl"; \
+	fi; \
+	cd execution_engine/watchdog && \
+	g++ -O2 -std=c++17 $$CFLAGS -o kill_switch kill_switch.cpp $$LIBS -lpthread && \
+	echo "[OK] Production watchdog compiled: execution_engine/watchdog/kill_switch (libcurl=$$LIBS)"
+
+# P2-22: the `watchdog-legacy` target pointed at
+# `execution_engine/kill_switch/` which was deleted during the Phase-2
+# consolidation. Leaving a stale make target around tricks operators
+# into thinking there's a fallback path; removing it keeps the
+# contract honest — there is one canonical kill_switch and it lives
+# under `execution_engine/watchdog/`.
 
 # ── Demo & Test ──────────────────────────────────────────────
 

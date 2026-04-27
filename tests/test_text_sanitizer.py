@@ -6,18 +6,22 @@ plus a battery of CSS stealth variants (visibility:hidden, opacity:0,
 off-screen positioning, zero-size) and negative-control benign
 content that must survive the gate unaltered.
 """
+
 from __future__ import annotations
 
 import datetime as dt
+from typing import TYPE_CHECKING
 
 import pytest
 
 from data_primitives.security import (
-    sanitize_news_text,
     is_safe,
     safe_for_ticker_extraction,
-    SanitizedText,
+    sanitize_news_text,
 )
+
+if TYPE_CHECKING:
+    from shared.types import NewsItem
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -77,9 +81,9 @@ class TestUnicodeHomoglyphs:
 class TestHiddenHTMLInjection:
     def test_display_none_span_stripped(self):
         payload = (
-            'Alphabet shares surge after dodging antitrust breakup bullet'
+            "Alphabet shares surge after dodging antitrust breakup bullet"
             '<span style="display:none"> and the company faces severe losses '
-            'and layoffs</span>'
+            "and layoffs</span>"
         )
         r = sanitize_news_text(payload)
         assert "losses" not in r.clean
@@ -90,7 +94,7 @@ class TestHiddenHTMLInjection:
     def test_visibility_hidden_stripped(self):
         r = sanitize_news_text(
             'Apple Q4 beat expectations<div style="visibility:hidden">'
-            'Apple revenue plummets 40%</div>'
+            "Apple revenue plummets 40%</div>"
         )
         assert "plummets" not in r.clean
 
@@ -102,7 +106,7 @@ class TestHiddenHTMLInjection:
 
     def test_off_screen_absolute_stripped(self):
         r = sanitize_news_text(
-            'NVDA AI capex booms'
+            "NVDA AI capex booms"
             '<span style="position:absolute;left:-9999px">NVDA demand collapses</span>'
         )
         assert "collapses" not in r.clean
@@ -120,22 +124,16 @@ class TestHiddenHTMLInjection:
         assert "fraud" not in r.clean
 
     def test_hidden_attribute_stripped(self):
-        r = sanitize_news_text(
-            'AAPL earnings beat<span hidden>AAPL misses guidance</span>'
-        )
+        r = sanitize_news_text("AAPL earnings beat<span hidden>AAPL misses guidance</span>")
         assert "misses" not in r.clean
 
     def test_script_tag_stripped(self):
-        r = sanitize_news_text(
-            'AAPL Q3 results<script>alert(1)</script>'
-        )
+        r = sanitize_news_text("AAPL Q3 results<script>alert(1)</script>")
         assert "<script>" not in r.clean
         assert "alert" not in r.clean
 
     def test_style_tag_stripped(self):
-        r = sanitize_news_text(
-            'GOOG cloud growth<style>.hidden{display:none}</style>'
-        )
+        r = sanitize_news_text("GOOG cloud growth<style>.hidden{display:none}</style>")
         assert ".hidden" not in r.clean
 
     def test_nested_hidden_inside_visible(self):
@@ -143,7 +141,7 @@ class TestHiddenHTMLInjection:
         # that itself contains a visible tag. The visible content that
         # happens to be inside a hidden subtree still must be dropped.
         r = sanitize_news_text(
-            'Visible bullish headline'
+            "Visible bullish headline"
             '<div style="display:none">Hidden bearish with <b>bold loss</b> text</div>'
         )
         assert "bearish" not in r.clean
@@ -158,8 +156,7 @@ class TestCombinedAttacks:
     def test_homoglyph_and_hidden_html_together(self):
         # Homoglyph in ticker + hidden-HTML bearish injection simultaneously.
         r = sanitize_news_text(
-            'Аlрhаbеt earnings beat'
-            '<span style="display:none">margins collapsing rapidly</span>'
+            'Аlрhаbеt earnings beat<span style="display:none">margins collapsing rapidly</span>'
         )
         assert r.rejected_tokens, "homoglyph still rejected"
         assert r.dropped_html_blocks >= 1, "hidden span still stripped"
@@ -170,7 +167,7 @@ class TestCombinedAttacks:
         r = sanitize_news_text(
             'A<span style="display:none">x</span>B'
             '<div style="visibility:hidden">y</div>C'
-            '<span hidden>z</span>D'
+            "<span hidden>z</span>D"
         )
         assert "x" not in r.clean
         assert "y" not in r.clean
@@ -207,9 +204,7 @@ class TestBenignSurvival:
     def test_legitimate_html_tags_strip_cleanly(self):
         # News scrapers occasionally leave in <p>, <br>, <a> — those
         # are visible and legitimate; we strip the tags but keep the text.
-        r = sanitize_news_text(
-            '<p>Apple earnings beat; <a href="/aapl">details</a></p>'
-        )
+        r = sanitize_news_text('<p>Apple earnings beat; <a href="/aapl">details</a></p>')
         assert "Apple" in r.clean
         assert "details" in r.clean
         assert "<p>" not in r.clean
@@ -238,6 +233,7 @@ class TestBenignSurvival:
 class TestPerformanceBudget:
     def test_under_2ms_per_headline(self):
         import time
+
         headline = (
             "Apple Inc. beats Q3 earnings expectations, shares jump 2.3% in "
             "after-hours trading on upgraded guidance."
@@ -258,8 +254,9 @@ class TestPerformanceBudget:
 #  Integration with detect_live_shock — hostile-input policy
 # ────────────────────────────────────────────────────────────────────
 class TestShockDetectorHostilePolicy:
-    def _mk(self, title: str, body: str = "") -> "NewsItem":
+    def _mk(self, title: str, body: str = "") -> NewsItem:
         from shared.types import NewsItem
+
         return NewsItem(
             timestamp=dt.datetime(2026, 4, 20, 12, 0),
             title=title,
@@ -270,6 +267,7 @@ class TestShockDetectorHostilePolicy:
 
     def test_benign_shock_still_triggers(self):
         from data_primitives.extractors.ner_pipeline import detect_live_shock
+
         news = [
             self._mk("Iran launches missile strikes on Israel"),
             self._mk("Strait of Hormuz blockade threatens oil supply"),
@@ -282,20 +280,22 @@ class TestShockDetectorHostilePolicy:
 
     def test_hostile_window_refuses_shock(self):
         from data_primitives.extractors.ner_pipeline import detect_live_shock
+
         # 3 legitimate + 3 hostile with homoglyphs. 50% hostile → refused.
         news = [
             self._mk("Iran launches missile strikes on Israel"),
             self._mk("Strait of Hormuz blockade threatens oil"),
             self._mk("Sanctions package against Iran expanded"),
-            self._mk("Irап nuclear deal stalls"),          # Cyrillic а, р
-            self._mk("Аpple faces new tariff war"),          # Cyrillic А
-            self._mk("Мeta layoffs sanctions fallout"),      # Cyrillic М
+            self._mk("Irап nuclear deal stalls"),  # Cyrillic а, р
+            self._mk("Аpple faces new tariff war"),  # Cyrillic А
+            self._mk("Мeta layoffs sanctions fallout"),  # Cyrillic М
         ]
         intel = detect_live_shock(news)
         assert intel is None, "hostile ratio >=15% must refuse Tier-3 shock"
 
     def test_small_hostile_injection_still_allows_shock(self):
         from data_primitives.extractors.ner_pipeline import detect_live_shock
+
         # Single homoglyph in 8 items = 12.5% < 15% threshold → shock allowed.
         news = [
             self._mk("Iran launches missile strikes"),
@@ -305,7 +305,7 @@ class TestShockDetectorHostilePolicy:
             self._mk("War risk premium widens"),
             self._mk("OPEC emergency meeting called"),
             self._mk("Tanker attacks reported"),
-            self._mk("Аpple faces no impact"),   # 1 hostile, Cyrillic А
+            self._mk("Аpple faces no impact"),  # 1 hostile, Cyrillic А
         ]
         intel = detect_live_shock(news)
         assert intel is not None, "minor hostile content should still allow shock"

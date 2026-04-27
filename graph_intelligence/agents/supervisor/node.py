@@ -34,6 +34,7 @@ schema mismatch, missing priors file) degrades gracefully to an
 empty parameters dict, which simply triggers the Tier-2/3 fallbacks
 in the orchestrator. We never let a broken LLM kill the pipeline.
 """
+
 from __future__ import annotations
 
 import json
@@ -43,15 +44,10 @@ from typing import Any
 
 import numpy as np
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
 from pydantic import ValidationError
 
-from shared.config import settings
-from shared.logger import get_logger
 from graph_intelligence.agents.strategist.schema import (
     CANONICAL_STRATEGIES,
-    StrategyParameters,
     SupervisorDecision,
 )
 from graph_intelligence.agents.supervisor.prompts import (
@@ -60,6 +56,7 @@ from graph_intelligence.agents.supervisor.prompts import (
     render_priors_block,
 )
 from graph_intelligence.graph_state.state import CausalArbitrageState
+from shared.logger import get_logger
 
 log = get_logger("agent.supervisor")
 
@@ -72,18 +69,18 @@ _PRIORS_PATH: Path = Path("calibration/priors.json")
 _STRATEGY_BRACKET_RE = re.compile(r"^\s*\[([a-z0-9_]+)\]", re.IGNORECASE)
 
 _STRATEGY_KEYWORD_MAP: list[tuple[str, str]] = [
-    ("supply chain benef",   "supply_chain_beneficiary"),
-    ("supply chain capitu",  "supply_chain_oversold_dip"),
-    ("supply chain overso",  "supply_chain_oversold_dip"),
-    ("deep value",           "deep_value_investment"),
-    ("trend invest",         "trend_investment"),
-    ("mr bounce",            "mr_equity_bounce"),
-    ("shock-directed put",   "shock_directed_put"),
-    ("shock-directed call",  "shock_directed_call"),
-    ("crisis put",           "crisis_index_put"),
-    ("crisis capitulation",  "crisis_capitulation_bounce"),
-    ("bull call spread",     "idx_bull_spread"),
-    ("bear put spread",      "idx_bear_spread"),
+    ("supply chain benef", "supply_chain_beneficiary"),
+    ("supply chain capitu", "supply_chain_oversold_dip"),
+    ("supply chain overso", "supply_chain_oversold_dip"),
+    ("deep value", "deep_value_investment"),
+    ("trend invest", "trend_investment"),
+    ("mr bounce", "mr_equity_bounce"),
+    ("shock-directed put", "shock_directed_put"),
+    ("shock-directed call", "shock_directed_call"),
+    ("crisis put", "crisis_index_put"),
+    ("crisis capitulation", "crisis_capitulation_bounce"),
+    ("bull call spread", "idx_bull_spread"),
+    ("bear put spread", "idx_bear_spread"),
 ]
 
 
@@ -151,12 +148,14 @@ async def _compute_regime_for_target(target_ticker: str) -> tuple[str, str]:
             + 0.02
         )
         rs = classify_regime(
-            closes, highs, lows, volumes,
-            hurst=hurst, implied_vol=iv_proxy,
+            closes,
+            highs,
+            lows,
+            volumes,
+            hurst=hurst,
+            implied_vol=iv_proxy,
         )
-        ret_20d = (
-            float(closes[-1] / closes[-21] - 1) if len(closes) >= 21 else 0.0
-        )
+        ret_20d = float(closes[-1] / closes[-21] - 1) if len(closes) >= 21 else 0.0
 
         direction = ""
         trend = rs.trend_regime.value
@@ -210,9 +209,12 @@ def _infer_strategy_name(state: CausalArbitrageState) -> str:
         action = (state.get("proposed_action") or "").upper()
         if action == "LONG":
             long_biased = (
-                "supply_chain_beneficiary", "deep_value_investment",
-                "trend_investment", "mr_equity_bounce",
-                "idx_bull_spread", "idx_momentum",
+                "supply_chain_beneficiary",
+                "deep_value_investment",
+                "trend_investment",
+                "mr_equity_bounce",
+                "idx_bull_spread",
+                "idx_momentum",
             )
             for s in preferred:
                 if s in long_biased:
@@ -230,21 +232,12 @@ def _get_structured_llm():
     payload that Pydantic can validate — hallucinations outside the
     schema raise at the SDK boundary and are caught below.
     """
-    if settings.LLM_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
-        base = ChatAnthropic(
-            model=settings.ANTHROPIC_MODEL,
-            api_key=settings.ANTHROPIC_API_KEY,
-            temperature=0.05,
-            max_tokens=1500,
-        )
-    else:
-        base = ChatOpenAI(
-            model=settings.OPENAI_MODEL,
-            api_key=settings.OPENAI_API_KEY,
-            temperature=0.05,
-            max_tokens=1500,
-        )
-    return base.with_structured_output(SupervisorDecision)
+    from shared.llm_client import get_langchain_chat_model
+
+    return get_langchain_chat_model(
+        temperature=0.05,
+        max_tokens=1500,
+    ).with_structured_output(SupervisorDecision)
 
 
 # ── Prompt rendering helpers ─────────────────────────────────────────
@@ -312,8 +305,7 @@ async def supervisor_node(state: CausalArbitrageState) -> dict:
     strategy_name = _infer_strategy_name(state)
     if not strategy_name:
         log.info(
-            f"Supervisor: could not classify strategy for {target}; "
-            f"deferring to Tier-3 defaults"
+            f"Supervisor: could not classify strategy for {target}; deferring to Tier-3 defaults"
         )
         return {"strategy_parameters": {}}
 
@@ -355,10 +347,12 @@ async def supervisor_node(state: CausalArbitrageState) -> dict:
 
     try:
         llm = _get_structured_llm()
-        decision: SupervisorDecision = await llm.ainvoke([
-            SystemMessage(content=SUPERVISOR_SYSTEM),
-            HumanMessage(content=prompt),
-        ])
+        decision: SupervisorDecision = await llm.ainvoke(
+            [
+                SystemMessage(content=SUPERVISOR_SYSTEM),
+                HumanMessage(content=prompt),
+            ]
+        )
     except (ValidationError, ValueError, TypeError) as exc:
         log.warning(
             f"[SUPERVISOR] LLM output failed validation: {exc}; "
@@ -366,10 +360,7 @@ async def supervisor_node(state: CausalArbitrageState) -> dict:
         )
         return {"strategy_parameters": {}}
     except Exception as exc:
-        log.warning(
-            f"[SUPERVISOR] LLM invocation failed: {exc}; "
-            f"degrading to Tier-2/3 fallbacks"
-        )
+        log.warning(f"[SUPERVISOR] LLM invocation failed: {exc}; degrading to Tier-2/3 fallbacks")
         return {"strategy_parameters": {}}
 
     # 6. Post-validation — enforce schema invariants defensively.
@@ -382,8 +373,7 @@ async def supervisor_node(state: CausalArbitrageState) -> dict:
 
     if decision.strategy_name and decision.strategy_name not in CANONICAL_STRATEGIES:
         log.warning(
-            f"[SUPERVISOR] LLM emitted non-canonical strategy "
-            f"'{decision.strategy_name}'; ignoring"
+            f"[SUPERVISOR] LLM emitted non-canonical strategy '{decision.strategy_name}'; ignoring"
         )
         decision.strategy_name = strategy_name  # snap back to inferred
 
@@ -413,10 +403,24 @@ async def supervisor_node(state: CausalArbitrageState) -> dict:
         f"params={params}"
     )
 
-    merged_confidence = max(
-        float(decision.conviction or 0.0),
-        float(state.get("confidence") or 0.0),
-    )
+    # P1-K: conservative merge — both layers must agree for high
+    # conviction. The previous implementation used max(), which
+    # could only ratchet conviction UP: a hallucinated
+    # `decision.conviction = 0.99` would silently override a
+    # pipeline-side 0.4. Under min() the pipeline's consensus
+    # (analyst swarm + debate) still floors the outcome, so an
+    # over-confident supervisor cannot promote a weak upstream
+    # signal past ``SUPERVISOR_MIN_CONFIDENCE``.
+    pipeline_conf = float(state.get("confidence") or 0.0)
+    supervisor_conf = float(decision.conviction or 0.0)
+    merged_confidence = min(pipeline_conf, supervisor_conf)
+
+    if pipeline_conf > supervisor_conf:
+        log.info(
+            f"[SUPERVISOR] conviction floor: pipeline={pipeline_conf:.2f}, "
+            f"supervisor={supervisor_conf:.2f} → keeping supervisor "
+            f"(post-priors view is more conservative)"
+        )
 
     return {
         "strategy_parameters": params,

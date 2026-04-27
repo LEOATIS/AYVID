@@ -14,15 +14,16 @@ Batched in a single JSON-mode call to keep cost low. Failures are
 non-fatal: on any error the items keep ``sentiment=None`` so the rest
 of the pipeline continues unharmed.
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
-from typing import Sequence
+from collections.abc import Sequence
 
-from openai import AsyncOpenAI
-
+from data_primitives.security.text_sanitizer import sanitize_news_text
 from shared.config import settings
+from shared.llm_client import get_openai_client
 from shared.logger import get_logger
 from shared.types import NewsItem
 
@@ -58,13 +59,27 @@ def _truncate(text: str, n: int = _MAX_CHARS_PER_ITEM) -> str:
 
 
 def _build_user_payload(items: Sequence[NewsItem]) -> str:
+    """Render the batch as a numbered list of sanitised title + body blocks.
+
+    P1-P: every ``title`` / ``text`` value that reaches the LLM MUST
+    pass through ``sanitize_news_text`` — strips hidden HTML/CSS,
+    homoglyph-loaded tokens, NFKC-normalises, and redaction-marks
+    script-switched spans. Prior to this fix the module sent raw
+    title + body bytes into the OpenAI JSON-mode call, which is the
+    classic prompt-injection vector for adversarial news / social
+    posts replayed through the feed. The sentiment scoring task is
+    the most trivially-injectable LLM call in the system (single-
+    shot classification, no downstream validation), so sealing it is
+    the highest-ROI sanitisation point.
+    """
     lines: list[str] = []
     for idx, item in enumerate(items):
-        body = item.text or ""
+        body = sanitize_news_text(item.text or "")
+        title = sanitize_news_text(item.title or "")
         ticker_str = ",".join(item.symbols) if item.symbols else "?"
         lines.append(
             f"[{idx}] tickers={ticker_str} source={item.source}\n"
-            f"  title: {_truncate(item.title, 200)}\n"
+            f"  title: {_truncate(title, 200)}\n"
             f"  body:  {_truncate(body)}"
         )
     return "\n\n".join(lines)
@@ -81,7 +96,7 @@ def _clamp(x: float) -> float:
 
 
 async def _score_batch(
-    client: AsyncOpenAI,
+    client,
     items: list[NewsItem],
 ) -> None:
     """Score one batch in-place. Silent on failure."""
@@ -152,11 +167,10 @@ async def score_news_items(items: Sequence[NewsItem]) -> list[NewsItem]:
     if not to_score:
         return items_list
 
-    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+    client = get_openai_client()
 
     batches: list[list[NewsItem]] = [
-        to_score[i : i + _BATCH_SIZE]
-        for i in range(0, len(to_score), _BATCH_SIZE)
+        to_score[i : i + _BATCH_SIZE] for i in range(0, len(to_score), _BATCH_SIZE)
     ]
 
     sem = asyncio.Semaphore(_MAX_CONCURRENT_BATCHES)

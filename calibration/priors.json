@@ -1,8 +1,33 @@
 {
-  "_generated_at": "2026-04-20T21:08:28.389749+00:00",
+  "_generated_at": "2026-04-23T00:10:12.134133+00:00",
   "_min_samples": 5,
+  "_rebuild_cells_updated": 12,
+  "_rebuild_newly_blocked": 1,
+  "_rebuild_newly_unblocked": 0,
+  "_rebuild_rows": 512,
+  "_rebuild_source": "outcomes_log",
   "_schema_version": 1,
   "priors": {
+    "crisis_index_put": {
+      "STRONG_TREND_UP__LOW_VOL": {
+        "_block_reason": "Batch-1/A: VIX-LOW + index-STRONG_TREND_UP is the exact opposite of a crisis setup. Crisis-put premium-paying into this regime is the highest-cost-of-carry decision the system can make.",
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "STRONG_TREND_UP__NORMAL": {
+        "_block_reason": "Batch-1/A: no crisis evidence in a normal-vol uptrend \u2014 thesis is unsupported.",
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__LOW_VOL": {
+        "_block_reason": "Batch-1/A: crisis puts require crisis vol \u2014 a weak uptrend at LOW_VOL is the worst entry timing.",
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      }
+    },
     "deep_value_investment": {
       "CHOPPY__HIGH_VOL": {
         "best_sharpe_seen": 0.0,
@@ -79,6 +104,70 @@
         "n": 0
       }
     },
+    "idx_bear_spread": {
+      "STRONG_TREND_UP__LOW_VOL": {
+        "_block_reason": "Batch-1/A: shorting an index in a strong uptrend at low vol is the 2026-Q1 backtest's highest-expected-loss bucket. Five bear-spread variants showed 29% WR and -3.3% total PnL; the one that won (FCHI) hit in a different regime. No upside to let this through on 2026-like days.",
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "STRONG_TREND_UP__NORMAL": {
+        "_block_reason": "Batch-1/A: directional mismatch \u2014 shorting an index mid-uptrend at normal vol. Median R was -0.62 in this cell across 2026-Q1.",
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__LOW_VOL": {
+        "_block_reason": "Batch-1/A: weaker uptrend but still up, and low vol suppresses premium \u2014 bear spread decays faster than thesis plays out.",
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__NORMAL": {
+        "_block_reason": "Batch-1/A: directional mismatch in a mild uptrend.",
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      }
+    },
+    "idx_bear_spread_hsi": {
+      "CHOPPY__NORMAL": {
+        "mean_r": 0.0686,
+        "n": 14,
+        "sharpe": 0.2225,
+        "std_r": 1.1531,
+        "win_rate": 0.4286
+      }
+    },
+    "idx_decline_put": {
+      "STRONG_TREND_UP__LOW_VOL": {
+        "_block_reason": "Batch-1/A: paying premium to buy puts into a strong uptrend at low IV is negative-EV \u2014 premium decays, thesis doesn't play out. 2026-Q1: 1 trade, -1R.",
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "STRONG_TREND_UP__NORMAL": {
+        "_block_reason": "Batch-1/A: same directional mismatch, slightly better IV \u2014 still negative EV vs base rate.",
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      },
+      "WEAK_TREND_UP__LOW_VOL": {
+        "_block_reason": "Batch-1/A: buying puts in an uptrend with suppressed premium.",
+        "best_sharpe_seen": 0.0,
+        "blocked_by_regime": true,
+        "n": 0
+      }
+    },
+    "idx_decline_put_hsi": {
+      "CHOPPY__NORMAL": {
+        "mean_r": -0.2633,
+        "n": 3,
+        "sharpe": -0.4873,
+        "std_r": 0.9361,
+        "win_rate": 0.3333
+      }
+    },
     "shock_directed_call_es": {
       "CHOPPY__HIGH_VOL": {
         "best_sharpe_seen": 0.0,
@@ -102,7 +191,11 @@
       "CHOPPY__NORMAL": {
         "best_sharpe_seen": 0.0,
         "blocked_by_regime": true,
-        "n": 0
+        "mean_r": -0.2521,
+        "n": 48,
+        "sharpe": -1.0806,
+        "std_r": 1.6162,
+        "win_rate": 0.1875
       },
       "STRONG_TREND_DOWN__CRISIS": {
         "best_sharpe_seen": 0.0,
@@ -155,6 +248,62 @@
         "n": 0
       }
     },
+    "shock_directed_call_hsi": {
+      "CHOPPY__NORMAL": {
+        "mean_r": 1.9886,
+        "n": 7,
+        "sharpe": 2.2318,
+        "std_r": 2.3574,
+        "win_rate": 0.7143
+      }
+    },
+    "shock_directed_call_nq": {
+      "CHOPPY__NORMAL": {
+        "mean_r": 0.2538,
+        "n": 53,
+        "sharpe": 0.5114,
+        "std_r": 3.6123,
+        "win_rate": 0.1887
+      }
+    },
+    "shock_directed_put_es": {
+      "CHOPPY__NORMAL": {
+        "mean_r": 0.5459,
+        "n": 69,
+        "sharpe": 1.0264,
+        "std_r": 4.4185,
+        "win_rate": 0.2319
+      }
+    },
+    "shock_directed_put_hsi": {
+      "CHOPPY__NORMAL": {
+        "_block_reason": "auto-blocked from outcomes: n=9 sharpe=-1.60 (threshold -0.50)",
+        "blocked_by_regime": true,
+        "mean_r": -0.6156,
+        "n": 9,
+        "sharpe": -1.6012,
+        "std_r": 1.1533,
+        "win_rate": 0.1111
+      }
+    },
+    "shock_directed_put_nkd": {
+      "CHOPPY__NORMAL": {
+        "mean_r": 0.19,
+        "n": 7,
+        "sharpe": 0.1597,
+        "std_r": 3.1484,
+        "win_rate": 0.1429
+      }
+    },
+    "shock_directed_put_nq": {
+      "CHOPPY__NORMAL": {
+        "mean_r": 0.2954,
+        "n": 84,
+        "sharpe": 0.577,
+        "std_r": 4.6919,
+        "win_rate": 0.1905
+      }
+    },
     "shock_directed_put_z": {
       "CHOPPY__HIGH_VOL": {
         "best_sharpe_seen": 0.0,
@@ -168,8 +317,12 @@
       },
       "CHOPPY__NORMAL": {
         "best_sharpe_seen": 0.0,
-        "blocked_by_regime": true,
-        "n": 0
+        "blocked_by_regime": false,
+        "mean_r": 2.6485,
+        "n": 26,
+        "sharpe": 1.1256,
+        "std_r": 11.9979,
+        "win_rate": 0.3462
       },
       "STRONG_TREND_DOWN__CRISIS": {
         "best_sharpe_seen": 0.0,
@@ -243,9 +396,14 @@
         "win_rate": 0.778
       },
       "CHOPPY__NORMAL": {
+        "_block_reason": "auto-blocked from outcomes: n=125 sharpe=-1.67 (threshold -0.50)",
         "best_sharpe_seen": 0.0,
         "blocked_by_regime": true,
-        "n": 0
+        "mean_r": -0.0977,
+        "n": 125,
+        "sharpe": -1.6736,
+        "std_r": 0.6524,
+        "win_rate": 0.328
       },
       "STRONG_TREND_DOWN__CRISIS": {
         "best_sharpe_seen": 0.0,
@@ -338,8 +496,12 @@
       },
       "CHOPPY__NORMAL": {
         "best_sharpe_seen": 0.0,
-        "blocked_by_regime": true,
-        "n": 0
+        "blocked_by_regime": false,
+        "mean_r": -0.0034,
+        "n": 67,
+        "sharpe": -0.0433,
+        "std_r": 0.6488,
+        "win_rate": 0.5373
       },
       "STRONG_TREND_DOWN__CRISIS": {
         "best_sharpe_seen": 0.0,

@@ -13,6 +13,7 @@ This module implements a rolling compression pipeline:
 The compression ratio is typically 20:1 — a 90-day history of millions of
 tokens compresses into ~5K tokens while preserving every causal link.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -21,53 +22,25 @@ import json
 from collections import defaultdict
 from typing import Any
 
-from shared.config import settings
 from shared.logger import get_logger
 from shared.types import CausalEvent, NewsItem
 
 log = get_logger("compression.chrono")
 
-_openai_client = None
-_anthropic_client = None
-
 
 async def _llm_json_call(system: str, user: str) -> str:
-    """Dispatch JSON-mode LLM call to the configured provider."""
-    if settings.LLM_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
-        return await _anthropic_call(system, user)
-    return await _openai_call(system, user)
+    """Dispatch JSON-mode LLM call via the shared llm_client layer.
 
+    Local wrapper retained only to preserve the `"facts": []` fallback
+    string (callers expect an array-shaped JSON, not `{}`).
+    """
+    from shared.llm_client import json_call
 
-async def _openai_call(system: str, user: str) -> str:
-    global _openai_client
-    if _openai_client is None:
-        from openai import AsyncOpenAI
-        _openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-    response = await _openai_client.chat.completions.create(
-        model=settings.OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        temperature=0.0,
-        response_format={"type": "json_object"},
-    )
-    return response.choices[0].message.content or '{"facts": []}'
-
-
-async def _anthropic_call(system: str, user: str) -> str:
-    global _anthropic_client
-    if _anthropic_client is None:
-        from anthropic import AsyncAnthropic
-        _anthropic_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-    response = await _anthropic_client.messages.create(
-        model=settings.ANTHROPIC_MODEL,
-        max_tokens=1000,
-        system=system + "\n\nYou MUST respond with valid JSON only. No markdown, no explanation.",
-        messages=[{"role": "user", "content": user}],
-        temperature=0.0,
-    )
-    return response.content[0].text if response.content else '{"facts": []}'
+    try:
+        return await json_call(system, user, max_tokens=1000)
+    except Exception as exc:
+        log.warning(f"LLM json_call failed: {exc}")
+        return '{"facts": []}'
 
 
 _COMPRESSION_SYSTEM = """\
@@ -126,13 +99,15 @@ async def compress_daily_batch(
         return facts
     except Exception as exc:
         log.warning(f"Daily compression failed for {date}: {exc}")
-        return [{
-            "date": date.isoformat(),
-            "time": "all-day",
-            "entity": "UNKNOWN",
-            "fact": f"{len(news_items)} news items (compression failed)",
-            "type": "MACRO",
-        }]
+        return [
+            {
+                "date": date.isoformat(),
+                "time": "all-day",
+                "entity": "UNKNOWN",
+                "fact": f"{len(news_items)} news items (compression failed)",
+                "type": "MACRO",
+            }
+        ]
 
 
 async def build_compressed_timeline(
@@ -166,10 +141,7 @@ async def build_compressed_timeline(
     cutoff = dt.date.today() - dt.timedelta(days=lookback_days)
     filtered_dates = sorted(d for d in by_date if d >= cutoff)
 
-    tasks = [
-        compress_daily_batch(date, by_date[date])
-        for date in filtered_dates
-    ]
+    tasks = [compress_daily_batch(date, by_date[date]) for date in filtered_dates]
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -200,7 +172,8 @@ def format_timeline_for_llm(
     """
     if ticker_filter:
         timeline = [
-            f for f in timeline
+            f
+            for f in timeline
             if ticker_filter.upper() in (f.get("entity", "")).upper()
             or ticker_filter.upper() in str(f.get("fact", "")).upper()
         ]

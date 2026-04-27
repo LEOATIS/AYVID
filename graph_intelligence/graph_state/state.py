@@ -2,12 +2,13 @@
 
 The state object flows through the DAG maintaining strict chronological integrity.
 """
+
 from __future__ import annotations
 
 from typing import Annotated, TypedDict
 
-from langgraph.graph import add_messages
 from langchain_core.messages import BaseMessage
+from langgraph.graph import add_messages
 
 from shared.types import CausalEvent
 
@@ -33,6 +34,7 @@ class CausalArbitrageState(TypedDict):
         debate_result: Aggregated debate outcome (consensus, conviction, votes).
         quant_data: Serialized quantitative signal metrics (Hurst, OU, ATR, regime).
     """
+
     messages: Annotated[list[BaseMessage], add_messages]
     shock_ticker: str
     target_ticker: str

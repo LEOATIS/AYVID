@@ -73,11 +73,7 @@ class RiskMmapBridge:
             max_drawdown_pct,
             max_var_pct,
         )
-        frame = (
-            struct.pack(_SEQ_FORMAT, odd_seq)
-            + payload
-            + struct.pack(_SEQ_FORMAT, even_seq)
-        )
+        frame = struct.pack(_SEQ_FORMAT, odd_seq) + payload + struct.pack(_SEQ_FORMAT, even_seq)
         self._mm.seek(0)
         self._mm.write(frame)
         self._mm.flush()
@@ -99,9 +95,16 @@ class RiskMmapBridge:
             return {}
 
         (
-            dd, v95, v99, equity, peak,
-            ts_us, pid, armed,
-            max_dd, max_var,
+            dd,
+            v95,
+            v99,
+            equity,
+            peak,
+            ts_us,
+            pid,
+            armed,
+            max_dd,
+            max_var,
         ) = struct.unpack_from(_PAYLOAD_FORMAT, raw, _SEQ_SIZE)
         return {
             "drawdown_pct": dd,
@@ -132,21 +135,107 @@ class RiskMmapBridge:
         self.close()
 
 
+def _libcurl_available() -> bool:
+    """Best-effort probe for libcurl headers / library at compile time.
+
+    We try the canonical ``curl-config --libs`` route first, then fall
+    back to checking /usr/include/curl/curl.h (Linux) and the Homebrew
+    prefix on macOS. When libcurl is absent the C++ watchdog still
+    compiles (via the __has_include guard) but loses the step-2 IB REST
+    flatten path — it will SIGKILL Python only.
+    """
+    try:
+        rc = subprocess.run(
+            ["curl-config", "--libs"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        if rc.returncode == 0 and "-lcurl" in rc.stdout:
+            return True
+    except (FileNotFoundError, subprocess.SubprocessError):
+        pass
+    for probe in (
+        Path("/usr/include/curl/curl.h"),
+        Path("/usr/local/include/curl/curl.h"),
+        Path("/opt/homebrew/include/curl/curl.h"),
+    ):
+        if probe.exists():
+            return True
+    return False
+
+
 def _compile_if_needed() -> Path:
     if _CPP_BINARY.exists() and _CPP_BINARY.stat().st_mtime >= _CPP_SOURCE.stat().st_mtime:
         return _CPP_BINARY
-    log.info("[bold]compiling[/bold] kill_switch.cpp ...")
-    subprocess.check_call(
-        [
-            "g++", "-O2", "-std=c++17",
-            "-o", str(_CPP_BINARY),
-            str(_CPP_SOURCE),
-            "-lpthread",
-        ],
-        cwd=str(_CPP_SOURCE.parent),
+    have_curl = _libcurl_available()
+    log.info(
+        f"[bold]compiling[/bold] kill_switch.cpp (libcurl={'yes' if have_curl else 'NO — REST flatten disabled'}) ..."
     )
+    cmd = [
+        "g++",
+        "-O2",
+        "-std=c++17",
+        "-o",
+        str(_CPP_BINARY),
+        str(_CPP_SOURCE),
+    ]
+    if have_curl:
+        try:
+            curl_cflags = (
+                subprocess.run(
+                    ["curl-config", "--cflags"],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                )
+                .stdout.strip()
+                .split()
+            )
+            curl_libs = (
+                subprocess.run(
+                    ["curl-config", "--libs"],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                )
+                .stdout.strip()
+                .split()
+            )
+            cmd[1:1] = [f for f in curl_cflags if f]
+            cmd.extend(f for f in curl_libs if f)
+        except (FileNotFoundError, subprocess.SubprocessError):
+            cmd.append("-lcurl")
+    cmd.append("-lpthread")
+    subprocess.check_call(cmd, cwd=str(_CPP_SOURCE.parent))
     log.info(f"[bold]compiled[/bold] → {_CPP_BINARY}")
     return _CPP_BINARY
+
+
+def _ib_flatten_env() -> dict[str, str]:
+    """Build the env passed to the watchdog process so its REST flatten
+    knows where and how to reach IB Client Portal.
+
+    Shipped as env (not argv) because the cookie is a secret and argv is
+    visible to every UID on the machine.
+    """
+    from shared.config import settings
+
+    env = dict(os.environ)
+    gw_url = getattr(settings, "IB_CLIENT_PORTAL_URL", None) or os.environ.get(
+        "AYVID_IB_GATEWAY_URL",
+        "https://localhost:5000/v1/api",
+    )
+    env["AYVID_IB_GATEWAY_URL"] = gw_url
+    if settings.IB_ACCOUNT:
+        env["AYVID_IB_ACCOUNT_ID"] = settings.IB_ACCOUNT
+    cafile = getattr(settings, "IB_CLIENT_PORTAL_CAFILE", None)
+    if cafile:
+        env["AYVID_IB_CAFILE"] = cafile
+    cookie = getattr(settings, "IB_CLIENT_PORTAL_COOKIE", None)
+    if cookie:
+        env["AYVID_IB_SESSION_COOKIE"] = cookie
+    return env
 
 
 def start_watchdog(bridge: RiskMmapBridge) -> subprocess.Popen[bytes]:
@@ -155,6 +244,7 @@ def start_watchdog(bridge: RiskMmapBridge) -> subprocess.Popen[bytes]:
         [str(binary), str(bridge._path)],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
+        env=_ib_flatten_env(),
     )
     log.info(f"[bold]watchdog[/bold] started (PID {proc.pid})")
     return proc

@@ -2,6 +2,7 @@
 
 Usage: python -m scripts.demo   (or:  make demo)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -17,18 +18,26 @@ console = Console()
 
 async def run_demo() -> int:
     t0 = time.monotonic()
-    console.print(Panel.fit(
-        "[bold cyan]AYVID[/bold cyan]  —  Asymmetric Yield Via Intelligent Decisions\n"
-        "[dim]End-to-end demo: ingest → NER → graph → analysis → backtest[/dim]",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]AYVID[/bold cyan]  —  Asymmetric Yield Via Intelligent Decisions\n"
+            "[dim]End-to-end demo: ingest → NER → graph → analysis → backtest[/dim]",
+            border_style="cyan",
+        )
+    )
 
     # ── Step 1: System status ────────────────────────────────────
     console.print("\n[bold]1/5  Service connectivity[/bold]")
     from shared.config import settings
+
     checks: list[tuple[str, bool]] = []
     checks.append(("OpenAI API Key", bool(settings.OPENAI_API_KEY)))
-    checks.append(("Neo4j URI", settings.NEO4J_URI != "bolt://localhost:7687" or bool(settings.NEO4J_PASSWORD)))
+    checks.append(
+        (
+            "Neo4j URI",
+            settings.NEO4J_URI != "bolt://localhost:7687" or bool(settings.NEO4J_PASSWORD),
+        )
+    )
     checks.append(("Qdrant URL", bool(settings.QDRANT_URL)))
     checks.append(("Paper Trading", settings.PAPER_TRADING))
 
@@ -39,6 +48,7 @@ async def run_demo() -> int:
     # ── Step 2: Universe snapshot ────────────────────────────────
     console.print("\n[bold]2/5  Investment universe[/bold]")
     from data_primitives.extractors.universe_builder import build_full_universe
+
     snap = await build_full_universe()
     console.print(
         f"  {snap.total:,} instruments across {len(snap.exchanges)} exchanges, "
@@ -50,6 +60,7 @@ async def run_demo() -> int:
     demo_tickers = ["AAPL", "TSM", "NVDA", "ASML", "MSFT"]
     from data_primitives.extractors.openbb_client import fetch_ohlcv
     from data_primitives.loaders.questdb_writer import store_bars_local
+
     total_bars = 0
     for ticker in demo_tickers:
         try:
@@ -67,6 +78,7 @@ async def run_demo() -> int:
     # ── Step 4: Run backtest ─────────────────────────────────────
     console.print("\n[bold]4/5  Historical backtest (60 days)[/bold]")
     from backtesting.engine import run_backtest
+
     result = await run_backtest(tickers=demo_tickers, days=60, initial_equity=1_000_000.0)
 
     table = Table(border_style="green", show_header=False, pad_edge=False)
@@ -83,21 +95,26 @@ async def run_demo() -> int:
     # ── Step 5: Test run ─────────────────────────────────────────
     console.print("\n[bold]5/5  Test suite[/bold]")
     import subprocess
+
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", "tests/", "-q", "--tb=no"],
-        capture_output=True, text=True, cwd=".",
+        capture_output=True,
+        text=True,
+        cwd=".",
     )
     last_line = proc.stdout.strip().split("\n")[-1] if proc.stdout.strip() else "no output"
     icon = "[green]PASS[/green]" if proc.returncode == 0 else "[red]FAIL[/red]"
     console.print(f"  {icon}  {last_line}")
 
     elapsed = time.monotonic() - t0
-    console.print(Panel.fit(
-        f"[bold green]Demo complete[/bold green] in {elapsed:.1f}s\n"
-        f"[dim]{total_bars} bars ingested, {result.total_trades} trades simulated, "
-        f"tests {'passed' if proc.returncode == 0 else 'failed'}[/dim]",
-        border_style="green",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold green]Demo complete[/bold green] in {elapsed:.1f}s\n"
+            f"[dim]{total_bars} bars ingested, {result.total_trades} trades simulated, "
+            f"tests {'passed' if proc.returncode == 0 else 'failed'}[/dim]",
+            border_style="green",
+        )
+    )
     return 0
 
 

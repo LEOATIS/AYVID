@@ -8,6 +8,7 @@ Output formats:
 - Markdown (human-readable, for pitch appendices)
 - TXT  (concise terminal-friendly summary via ``generate_backtest_txt``)
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -19,13 +20,14 @@ from typing import Any
 import numpy as np
 
 from backtesting.engine import BacktestResult
-from shared.types import OHLCVBar
 from shared.logger import get_logger
+from shared.types import OHLCVBar
 
 log = get_logger("report")
 
 
 # ── Helpers ───────────────────────────────────────────────────
+
 
 def _format_fno_trade(ft: Any) -> dict[str, Any]:
     """Build a rich, option-chain-aware trade detail dict for a single F&O trade."""
@@ -115,6 +117,7 @@ def _max_consecutive(bools: list[bool]) -> int:
 
 # ── Buy-and-Hold Benchmark ────────────────────────────────────
 
+
 def compute_buy_and_hold(
     bars_by_ticker: dict[str, list[OHLCVBar]],
     start_date: str,
@@ -141,13 +144,15 @@ def compute_buy_and_hold(
             dd = (peak - c) / peak * 100
             max_dd = max(max_dd, dd)
 
-        per_ticker.append({
-            "ticker": ticker,
-            "return_pct": round(ret, 2),
-            "start_price": round(first_close, 2),
-            "end_price": round(last_close, 2),
-            "max_drawdown_pct": round(max_dd, 2),
-        })
+        per_ticker.append(
+            {
+                "ticker": ticker,
+                "return_pct": round(ret, 2),
+                "start_price": round(first_close, 2),
+                "end_price": round(last_close, 2),
+                "max_drawdown_pct": round(max_dd, 2),
+            }
+        )
 
     if not per_ticker:
         return {"portfolio_return_pct": 0.0, "per_ticker": [], "count": 0}
@@ -168,6 +173,7 @@ def compute_buy_and_hold(
 
 # ── Strategy Attribution ──────────────────────────────────────
 
+
 def _strategy_attribution(result: BacktestResult) -> list[dict[str, Any]]:
     """PnL breakdown by strategy name across both equity and F&O trades."""
     buckets: dict[str, dict[str, Any]] = defaultdict(
@@ -175,7 +181,11 @@ def _strategy_attribution(result: BacktestResult) -> list[dict[str, Any]]:
     )
 
     for trade in result.trades:
-        name = trade.signal.rationale.split("]")[0].lstrip("[") if trade.signal.rationale.startswith("[") else "equity_other"
+        name = (
+            trade.signal.rationale.split("]")[0].lstrip("[")
+            if trade.signal.rationale.startswith("[")
+            else "equity_other"
+        )
         b = buckets[name]
         b["pnl"] += trade.pnl
         b["trades"] += 1
@@ -198,17 +208,20 @@ def _strategy_attribution(result: BacktestResult) -> list[dict[str, Any]]:
     for name, data in sorted(buckets.items(), key=lambda x: x[1]["pnl"], reverse=True):
         wr = data["wins"] / data["trades"] * 100 if data["trades"] else 0
         avg_r = data["total_r"] / data["r_count"] if data["r_count"] else None
-        rows.append({
-            "strategy": name,
-            "pnl": _safe_round(data["pnl"]),
-            "trades": data["trades"],
-            "win_rate": _safe_round(wr, 1),
-            "avg_r": _safe_round(avg_r) if avg_r is not None else None,
-        })
+        rows.append(
+            {
+                "strategy": name,
+                "pnl": _safe_round(data["pnl"]),
+                "trades": data["trades"],
+                "win_rate": _safe_round(wr, 1),
+                "avg_r": _safe_round(avg_r) if avg_r is not None else None,
+            }
+        )
     return rows
 
 
 # ── Per-Index F&O Summary ─────────────────────────────────────
+
 
 def _per_index_summary(result: BacktestResult) -> list[dict[str, Any]]:
     """Aggregate F&O PnL per underlying index."""
@@ -233,22 +246,25 @@ def _per_index_summary(result: BacktestResult) -> list[dict[str, Any]]:
         spec = INDEX_FUTURES_SPECS.get(idx, {})
         wr = data["wins"] / data["trades"] * 100 if data["trades"] else 0
         roi = data["pnl"] / data["cost"] * 100 if data["cost"] else 0
-        rows.append({
-            "index": idx,
-            "name": spec.get("name", idx),
-            "country": spec.get("country", "?"),
-            "pnl": _safe_round(data["pnl"]),
-            "trades": data["trades"],
-            "wins": data["wins"],
-            "losses": data["losses"],
-            "win_rate": _safe_round(wr, 1),
-            "roi_pct": _safe_round(roi, 1),
-            "cost": _safe_round(data["cost"]),
-        })
+        rows.append(
+            {
+                "index": idx,
+                "name": spec.get("name", idx),
+                "country": spec.get("country", "?"),
+                "pnl": _safe_round(data["pnl"]),
+                "trades": data["trades"],
+                "wins": data["wins"],
+                "losses": data["losses"],
+                "win_rate": _safe_round(wr, 1),
+                "roi_pct": _safe_round(roi, 1),
+                "cost": _safe_round(data["cost"]),
+            }
+        )
     return rows
 
 
 # ── Advanced Risk Metrics ─────────────────────────────────────
+
 
 def _risk_metrics(result: BacktestResult) -> dict[str, Any]:
     """Calmar, Sortino, max consecutive losses, tail risk."""
@@ -283,6 +299,7 @@ def _risk_metrics(result: BacktestResult) -> dict[str, Any]:
 
 # ── Alpha Decomposition ──────────────────────────────────────
 
+
 def _alpha_decomposition(result: BacktestResult) -> dict[str, Any]:
     """Decompose return into equity vs F&O, and graph intelligence contribution."""
     eq_pnl = sum(t.pnl for t in result.trades)
@@ -292,15 +309,18 @@ def _alpha_decomposition(result: BacktestResult) -> dict[str, Any]:
 
     # Graph intelligence: equity trades with supply_chain rationale OR graph_intel tag
     sc_eq_pnl = sum(
-        t.pnl for t in result.trades
+        t.pnl
+        for t in result.trades
         if "supply_chain" in (t.signal.rationale or "").lower()
         or "shock" in (t.signal.rationale or "").lower()
     )
 
     # Graph intelligence: F&O trades tagged graph_intel or shock-directed strategies
     sc_fno_pnl = sum(
-        ft.pnl for ft in result.fno_trade_log
-        if ft.exit_date and (
+        ft.pnl
+        for ft in result.fno_trade_log
+        if ft.exit_date
+        and (
             (ft.details or {}).get("graph_intel", False)
             or "shock_directed" in (ft.strategy or "").lower()
             or "supply_chain" in (ft.strategy or "").lower()
@@ -309,12 +329,15 @@ def _alpha_decomposition(result: BacktestResult) -> dict[str, Any]:
     graph_pnl = sc_eq_pnl + sc_fno_pnl
 
     gi_trade_count = sum(
-        1 for t in result.trades
+        1
+        for t in result.trades
         if "supply_chain" in (t.signal.rationale or "").lower()
         or "shock" in (t.signal.rationale or "").lower()
     ) + sum(
-        1 for ft in result.fno_trade_log
-        if ft.exit_date and (
+        1
+        for ft in result.fno_trade_log
+        if ft.exit_date
+        and (
             (ft.details or {}).get("graph_intel", False)
             or "shock_directed" in (ft.strategy or "").lower()
             or "supply_chain" in (ft.strategy or "").lower()
@@ -336,6 +359,7 @@ def _alpha_decomposition(result: BacktestResult) -> dict[str, Any]:
 
 
 # ── R-Multiple Distribution ──────────────────────────────────
+
 
 def _r_distribution(result: BacktestResult) -> dict[str, Any]:
     """Extract R-multiple distribution from F&O trade details."""
@@ -380,6 +404,7 @@ def _r_distribution(result: BacktestResult) -> dict[str, Any]:
 
 # ── Executive Summary ────────────────────────────────────────
 
+
 def _build_executive_summary(result: BacktestResult) -> dict[str, Any]:
     """Core performance metrics."""
     return {
@@ -415,6 +440,7 @@ def _build_scenario_row(result: BacktestResult) -> dict[str, Any]:
 
 
 # ── Backtest TXT / JSON Report ────────────────────────────────
+
 
 def generate_backtest_report(
     result: BacktestResult,
@@ -477,11 +503,10 @@ def generate_backtest_report(
     # Top 10 F&O trades by absolute PnL
     fno_sorted = sorted(
         [ft for ft in result.fno_trade_log if ft.exit_date is not None],
-        key=lambda ft: abs(ft.pnl), reverse=True
+        key=lambda ft: abs(ft.pnl),
+        reverse=True,
     )[:10]
-    report_dict["top_fno_trades"] = [
-        _format_fno_trade(ft) for ft in fno_sorted
-    ]
+    report_dict["top_fno_trades"] = [_format_fno_trade(ft) for ft in fno_sorted]
 
     # Monthly equity curve (aggregated)
     monthly: dict[str, float] = {}
@@ -532,8 +557,10 @@ def _render_backtest_txt(report: dict[str, Any]) -> str:
     lines.append(f"  Max Drawdown:        {s.get('max_drawdown_pct', 0):.1f}%")
     lines.append(f"  Win Rate:            {s.get('win_rate', 0):.1f}%")
     lines.append(f"  Profit Factor:       {s.get('profit_factor', 0):.2f}")
-    lines.append(f"  Total Trades:        {s.get('total_trades', 0)} "
-                 f"(F&O: {s.get('fno_trades', 0)}, Equity: {s.get('equity_trades', 0)})")
+    lines.append(
+        f"  Total Trades:        {s.get('total_trades', 0)} "
+        f"(F&O: {s.get('fno_trades', 0)}, Equity: {s.get('equity_trades', 0)})"
+    )
     lines.append(f"  Avg Hold Days:       {s.get('avg_hold_days', 0):.1f}")
 
     rm = report.get("risk_metrics", {})
@@ -568,16 +595,22 @@ def _render_backtest_txt(report: dict[str, Any]) -> str:
         lines.append(f"\n{'─' * w}")
         lines.append("  ALPHA DECOMPOSITION")
         lines.append(f"{'─' * w}")
-        lines.append(f"  Equity PnL:          ${alpha.get('equity_pnl', 0):+,.0f}"
-                     f"  ({alpha.get('equity_return_pct', 0):+.2f}%)")
-        lines.append(f"  F&O PnL:             ${alpha.get('fno_pnl', 0):+,.0f}"
-                     f"  ({alpha.get('fno_return_pct', 0):+.2f}%)")
+        lines.append(
+            f"  Equity PnL:          ${alpha.get('equity_pnl', 0):+,.0f}"
+            f"  ({alpha.get('equity_return_pct', 0):+.2f}%)"
+        )
+        lines.append(
+            f"  F&O PnL:             ${alpha.get('fno_pnl', 0):+,.0f}"
+            f"  ({alpha.get('fno_return_pct', 0):+.2f}%)"
+        )
         lines.append(f"  Total PnL:           ${alpha.get('total_pnl', 0):+,.0f}")
         eq_pct = alpha.get("equity_contribution_pct", 0)
         fno_pct = alpha.get("fno_contribution_pct", 0)
         lines.append(f"  Contribution:        Equity {eq_pct:.0f}% / F&O {fno_pct:.0f}%")
-        lines.append(f"  Graph Intelligence:  ${alpha.get('graph_intelligence_pnl', 0):+,.0f}"
-                     f"  ({alpha.get('graph_intelligence_pct', 0):+.2f}%)")
+        lines.append(
+            f"  Graph Intelligence:  ${alpha.get('graph_intelligence_pnl', 0):+,.0f}"
+            f"  ({alpha.get('graph_intelligence_pct', 0):+.2f}%)"
+        )
 
     r = report.get("r_distribution", {})
     if r and r.get("count", 0) > 0:
@@ -630,7 +663,9 @@ def _render_backtest_txt(report: dict[str, Any]) -> str:
             conv = ft.get("conviction")
             conv_str = f"conv={conv:.2f}" if conv is not None else ""
 
-            line1 = f"  {ft['underlying']:<10} {ft['instrument']:<14} {ft['direction']:<6} [{mode}]"
+            line1 = (
+                f"  {ft['underlying']:<10} {ft['instrument']:<14} {ft['direction']:<6} [{mode}]"
+            )
             lines.append(line1)
 
             spot_e = ft.get("spot_entry")
@@ -682,7 +717,9 @@ def _render_backtest_txt(report: dict[str, Any]) -> str:
                 fx = ft.get("fut_exit")
                 pp = ft.get("pnl_pts")
                 lines.append(f"    {spot_str} | Fut: {fe:,.2f} → {fx:,.2f} ({pp:+,.2f} pts)")
-                lines.append(f"    Lots: {ft.get('lots', 1)} | Margin/lot: ${ft.get('margin_per_lot', 0):,.0f}")
+                lines.append(
+                    f"    Lots: {ft.get('lots', 1)} | Margin/lot: ${ft.get('margin_per_lot', 0):,.0f}"
+                )
 
             risk_usd = ft.get("risk_1R_usd")
             risk_str = f"1R=${risk_usd:,.0f}" if risk_usd else ""
@@ -708,10 +745,7 @@ def _render_backtest_txt(report: dict[str, Any]) -> str:
                 if exit_p is not None:
                     price_str += f" → ${exit_p:,.2f}"
             shares_str = f" | Shares: {shares}" if shares else ""
-            lines.append(
-                f"  {t['ticker']:<10} {direction:<6}"
-                + f" | {price_str}{shares_str}"
-            )
+            lines.append(f"  {t['ticker']:<10} {direction:<6}" + f" | {price_str}{shares_str}")
             lines.append(
                 f"    PnL: ${t['pnl']:>+,.0f} ({t['pnl_pct']:+.1f}%)"
                 + f" | {t['hold_days']}d | {t['strategy'][:50]}"
@@ -724,6 +758,7 @@ def _render_backtest_txt(report: dict[str, Any]) -> str:
 
 
 # ── YC Performance Report (multi-scenario) ────────────────────
+
 
 def generate_yc_report(
     results: list[BacktestResult],
@@ -760,20 +795,22 @@ def generate_yc_report(
         # Aggregate executive summary across all scenarios
         all_trades = sum(r.total_trades for r in results)
         all_wins = sum(
-            sum(1 for t in r.trades if t.pnl > 0) +
-            sum(1 for ft in r.fno_trade_log if ft.exit_date and ft.pnl > 0)
+            sum(1 for t in r.trades if t.pnl > 0)
+            + sum(1 for ft in r.fno_trade_log if ft.exit_date and ft.pnl > 0)
             for r in results
         )
         all_gross_profit = sum(
-            sum(t.pnl for t in r.trades if t.pnl > 0) +
-            sum(ft.pnl for ft in r.fno_trade_log if ft.exit_date and ft.pnl > 0)
+            sum(t.pnl for t in r.trades if t.pnl > 0)
+            + sum(ft.pnl for ft in r.fno_trade_log if ft.exit_date and ft.pnl > 0)
             for r in results
         )
-        all_gross_loss = abs(sum(
-            sum(t.pnl for t in r.trades if t.pnl < 0) +
-            sum(ft.pnl for ft in r.fno_trade_log if ft.exit_date and ft.pnl < 0)
-            for r in results
-        ))
+        all_gross_loss = abs(
+            sum(
+                sum(t.pnl for t in r.trades if t.pnl < 0)
+                + sum(ft.pnl for ft in r.fno_trade_log if ft.exit_date and ft.pnl < 0)
+                for r in results
+            )
+        )
 
         sharpes = [r.sharpe_ratio for r in results]
         returns = [r.total_return_pct for r in results]
@@ -789,13 +826,16 @@ def generate_yc_report(
             "final_equity": _safe_round(float(np.mean([r.final_equity for r in results]))),
             "total_return_pct": _safe_round(float(np.mean(returns))),
             "annualized_return_pct": _safe_round(
-                float(np.mean(returns)) * 365.25
+                float(np.mean(returns))
+                * 365.25
                 / max(float(np.mean([(r.end_date - r.start_date).days for r in results])), 1)
             ),
             "sharpe_ratio": _safe_round(float(np.mean(sharpes))),
             "max_drawdown_pct": _safe_round(float(np.max(dds))),
             "win_rate": _safe_round(all_wins / all_trades * 100 if all_trades else 0),
-            "profit_factor": _safe_round(all_gross_profit / all_gross_loss if all_gross_loss > 0 else 0),
+            "profit_factor": _safe_round(
+                all_gross_profit / all_gross_loss if all_gross_loss > 0 else 0
+            ),
             "total_trades": all_trades,
             "fno_trades": sum(fno_counts),
             "equity_trades": sum(eq_counts),
@@ -807,13 +847,25 @@ def generate_yc_report(
         risk_list = [rm for rm in risk_list if rm]
         if risk_list:
             report["risk_metrics"] = {
-                "sortino_ratio": _safe_round(float(np.mean([rm.get("sortino_ratio", 0) for rm in risk_list]))),
-                "calmar_ratio": _safe_round(float(np.mean([rm.get("calmar_ratio", 0) for rm in risk_list]))),
-                "max_consecutive_losses": max(rm.get("max_consecutive_losses", 0) for rm in risk_list),
+                "sortino_ratio": _safe_round(
+                    float(np.mean([rm.get("sortino_ratio", 0) for rm in risk_list]))
+                ),
+                "calmar_ratio": _safe_round(
+                    float(np.mean([rm.get("calmar_ratio", 0) for rm in risk_list]))
+                ),
+                "max_consecutive_losses": max(
+                    rm.get("max_consecutive_losses", 0) for rm in risk_list
+                ),
                 "max_consecutive_wins": max(rm.get("max_consecutive_wins", 0) for rm in risk_list),
-                "var_5pct_daily": _safe_round(float(np.min([rm.get("var_5pct_daily", 0) for rm in risk_list])), 3),
-                "best_day_pct": _safe_round(float(np.max([rm.get("best_day_pct", 0) for rm in risk_list])), 2),
-                "worst_day_pct": _safe_round(float(np.min([rm.get("worst_day_pct", 0) for rm in risk_list])), 2),
+                "var_5pct_daily": _safe_round(
+                    float(np.min([rm.get("var_5pct_daily", 0) for rm in risk_list])), 3
+                ),
+                "best_day_pct": _safe_round(
+                    float(np.max([rm.get("best_day_pct", 0) for rm in risk_list])), 2
+                ),
+                "worst_day_pct": _safe_round(
+                    float(np.min([rm.get("worst_day_pct", 0) for rm in risk_list])), 2
+                ),
             }
         else:
             report["risk_metrics"] = {}
@@ -835,8 +887,12 @@ def generate_yc_report(
             "graph_intelligence_pnl": _safe_round(total_gi_pnl),
             "graph_intelligence_pct": _safe_round(total_gi_pnl / init * 100) if init else 0,
             "graph_intelligence_trades": total_gi_trades,
-            "equity_contribution_pct": _safe_round(total_eq_pnl / total_pnl * 100, 1) if total_pnl else 0,
-            "fno_contribution_pct": _safe_round(total_fno_pnl / total_pnl * 100, 1) if total_pnl else 0,
+            "equity_contribution_pct": _safe_round(total_eq_pnl / total_pnl * 100, 1)
+            if total_pnl
+            else 0,
+            "fno_contribution_pct": _safe_round(total_fno_pnl / total_pnl * 100, 1)
+            if total_pnl
+            else 0,
         }
 
         # Aggregate R distribution
@@ -872,16 +928,22 @@ def generate_yc_report(
                 b["pnl"] += st["pnl"]
                 b["trades"] += st["trades"]
                 b["wins"] += int(st["win_rate"] * st["trades"] / 100) if st["trades"] else 0
-        report["strategy_attribution"] = sorted([
-            {
-                "strategy": name,
-                "pnl": _safe_round(d["pnl"]),
-                "trades": d["trades"],
-                "win_rate": _safe_round(d["wins"] / d["trades"] * 100, 1) if d["trades"] else 0,
-                "avg_r": None,
-            }
-            for name, d in merged_strats.items()
-        ], key=lambda x: x["pnl"], reverse=True)
+        report["strategy_attribution"] = sorted(
+            [
+                {
+                    "strategy": name,
+                    "pnl": _safe_round(d["pnl"]),
+                    "trades": d["trades"],
+                    "win_rate": _safe_round(d["wins"] / d["trades"] * 100, 1)
+                    if d["trades"]
+                    else 0,
+                    "avg_r": None,
+                }
+                for name, d in merged_strats.items()
+            ],
+            key=lambda x: x["pnl"],
+            reverse=True,
+        )
 
         # Merge per-index summary across scenarios
         merged_idx: dict[str, dict[str, Any]] = defaultdict(
@@ -897,20 +959,28 @@ def generate_yc_report(
                 b["cost"] += ix.get("cost", 0.0)
                 b["name"] = ix["name"]
                 b["country"] = ix["country"]
-        report["per_index_fno"] = sorted([
-            {
-                "index": idx,
-                "name": d.get("name", idx),
-                "country": d.get("country", "?"),
-                "pnl": _safe_round(d["pnl"]),
-                "trades": d["trades"],
-                "wins": d["wins"],
-                "losses": d["losses"],
-                "win_rate": _safe_round(d["wins"] / d["trades"] * 100, 1) if d["trades"] else 0,
-                "roi_pct": _safe_round(d["pnl"] / d["cost"] * 100, 1) if d.get("cost", 0) > 0 else 0,
-            }
-            for idx, d in merged_idx.items()
-        ], key=lambda x: x["pnl"], reverse=True)
+        report["per_index_fno"] = sorted(
+            [
+                {
+                    "index": idx,
+                    "name": d.get("name", idx),
+                    "country": d.get("country", "?"),
+                    "pnl": _safe_round(d["pnl"]),
+                    "trades": d["trades"],
+                    "wins": d["wins"],
+                    "losses": d["losses"],
+                    "win_rate": _safe_round(d["wins"] / d["trades"] * 100, 1)
+                    if d["trades"]
+                    else 0,
+                    "roi_pct": _safe_round(d["pnl"] / d["cost"] * 100, 1)
+                    if d.get("cost", 0) > 0
+                    else 0,
+                }
+                for idx, d in merged_idx.items()
+            ],
+            key=lambda x: x["pnl"],
+            reverse=True,
+        )
 
         report["aggregate"] = {
             "num_scenarios": len(results),
@@ -923,7 +993,9 @@ def generate_yc_report(
             "worst_drawdown_pct": _safe_round(float(np.max(dds))),
             "total_trades": all_trades,
             "pooled_win_rate": _safe_round(all_wins / all_trades * 100 if all_trades else 0),
-            "pooled_profit_factor": _safe_round(all_gross_profit / all_gross_loss if all_gross_loss > 0 else 0),
+            "pooled_profit_factor": _safe_round(
+                all_gross_profit / all_gross_loss if all_gross_loss > 0 else 0
+            ),
         }
 
     if baseline_results:
@@ -964,16 +1036,18 @@ def generate_yc_report(
                 ai_dd = results[i].max_drawdown_pct
                 bh_dd = bh.get("avg_max_drawdown_pct", 0.0)
                 meta = results[i].metadata or {}
-                bh_deltas.append({
-                    "scenario": meta.get("scenario", f"scenario_{i}"),
-                    "scenario_name": meta.get("scenario_name", ""),
-                    "ayvid_return_pct": _safe_round(ai_ret),
-                    "buy_hold_return_pct": _safe_round(bh_ret),
-                    "alpha_pct": _safe_round(ai_ret - bh_ret),
-                    "ayvid_max_dd_pct": _safe_round(ai_dd),
-                    "buy_hold_max_dd_pct": _safe_round(bh_dd),
-                    "tickers_held": bh.get("count", 0),
-                })
+                bh_deltas.append(
+                    {
+                        "scenario": meta.get("scenario", f"scenario_{i}"),
+                        "scenario_name": meta.get("scenario_name", ""),
+                        "ayvid_return_pct": _safe_round(ai_ret),
+                        "buy_hold_return_pct": _safe_round(bh_ret),
+                        "alpha_pct": _safe_round(ai_ret - bh_ret),
+                        "ayvid_max_dd_pct": _safe_round(ai_dd),
+                        "buy_hold_max_dd_pct": _safe_round(bh_dd),
+                        "tickers_held": bh.get("count", 0),
+                    }
+                )
         if bh_deltas:
             avg_alpha = float(np.mean([d["alpha_pct"] for d in bh_deltas]))
             report["vs_buy_and_hold"] = {
@@ -1020,7 +1094,9 @@ def _render_markdown(report: dict[str, Any]) -> str:
         lines.append(f"| Max Drawdown | {summary.get('max_drawdown_pct', 0):.1f}% |")
         lines.append(f"| Win Rate | {summary.get('win_rate', 0):.0f}% |")
         lines.append(f"| Profit Factor | {summary.get('profit_factor', 0):.2f} |")
-        lines.append(f"| Total Trades | {summary.get('total_trades', 0)} (F&O: {summary.get('fno_trades', 0)}, Equity: {summary.get('equity_trades', 0)}) |")
+        lines.append(
+            f"| Total Trades | {summary.get('total_trades', 0)} (F&O: {summary.get('fno_trades', 0)}, Equity: {summary.get('equity_trades', 0)}) |"
+        )
         lines.append("")
 
     tx = report.get("transaction_costs", {})
@@ -1037,7 +1113,9 @@ def _render_markdown(report: dict[str, Any]) -> str:
         lines.append(f"| Cost Drag | {tx.get('cost_drag_pct', 0):.3f}% of initial equity |")
         lines.append(f"| Round-trips | {tx.get('round_trip_count', 0)} |")
         lines.append("")
-        lines.append("> All Sharpe, return, win-rate, and R-multiple metrics in this report are net of these costs.")
+        lines.append(
+            "> All Sharpe, return, win-rate, and R-multiple metrics in this report are net of these costs."
+        )
         lines.append("")
 
     rm = report.get("risk_metrics", {})
@@ -1061,10 +1139,16 @@ def _render_markdown(report: dict[str, Any]) -> str:
         lines.append("")
         lines.append("| Source | PnL | Return | Contribution |")
         lines.append("|--------|-----|--------|-------------|")
-        lines.append(f"| Equity | ${alpha.get('equity_pnl', 0):+,.0f} | {alpha.get('equity_return_pct', 0):+.2f}% | {alpha.get('equity_contribution_pct', 0):.0f}% |")
-        lines.append(f"| F&O | ${alpha.get('fno_pnl', 0):+,.0f} | {alpha.get('fno_return_pct', 0):+.2f}% | {alpha.get('fno_contribution_pct', 0):.0f}% |")
+        lines.append(
+            f"| Equity | ${alpha.get('equity_pnl', 0):+,.0f} | {alpha.get('equity_return_pct', 0):+.2f}% | {alpha.get('equity_contribution_pct', 0):.0f}% |"
+        )
+        lines.append(
+            f"| F&O | ${alpha.get('fno_pnl', 0):+,.0f} | {alpha.get('fno_return_pct', 0):+.2f}% | {alpha.get('fno_contribution_pct', 0):.0f}% |"
+        )
         gi_trades = alpha.get("graph_intelligence_trades", 0)
-        lines.append(f"| **Graph Intelligence** | **${alpha.get('graph_intelligence_pnl', 0):+,.0f}** | **{alpha.get('graph_intelligence_pct', 0):+.2f}%** | {gi_trades} trades |")
+        lines.append(
+            f"| **Graph Intelligence** | **${alpha.get('graph_intelligence_pnl', 0):+,.0f}** | **{alpha.get('graph_intelligence_pct', 0):+.2f}%** | {gi_trades} trades |"
+        )
         lines.append("")
 
     r_dist = report.get("r_distribution", {})
@@ -1087,7 +1171,9 @@ def _render_markdown(report: dict[str, Any]) -> str:
         lines.append("| Strategy | PnL | Trades | Win Rate |")
         lines.append("|----------|-----|--------|----------|")
         for st in strats:
-            lines.append(f"| {st['strategy']} | ${st['pnl']:+,.0f} | {st['trades']} | {st['win_rate']:.0f}% |")
+            lines.append(
+                f"| {st['strategy']} | ${st['pnl']:+,.0f} | {st['trades']} | {st['win_rate']:.0f}% |"
+            )
         lines.append("")
 
     idx_rows = report.get("per_index_fno", [])
@@ -1113,7 +1199,9 @@ def _render_markdown(report: dict[str, Any]) -> str:
         lines.append(f"| Best Return | {agg.get('best_return_pct', 0):+.2f}% |")
         lines.append(f"| Worst Return | {agg.get('worst_return_pct', 0):+.2f}% |")
         lines.append(f"| Avg Sharpe | {agg.get('avg_sharpe', 0):.2f} |")
-        lines.append(f"| Min/Max Sharpe | {agg.get('min_sharpe', 0):.2f} / {agg.get('max_sharpe', 0):.2f} |")
+        lines.append(
+            f"| Min/Max Sharpe | {agg.get('min_sharpe', 0):.2f} / {agg.get('max_sharpe', 0):.2f} |"
+        )
         lines.append(f"| Worst Drawdown | {agg.get('worst_drawdown_pct', 0):.1f}% |")
         lines.append(f"| Total Trades | {agg.get('total_trades', 0)} |")
         lines.append(f"| Pooled Win Rate | {agg.get('pooled_win_rate', 0):.1f}% |")

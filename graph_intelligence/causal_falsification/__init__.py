@@ -11,12 +11,13 @@ for Causal Discovery* (ICLR 2026 submission #19725).
 Runs offline (weekly cron / ``ayvid graph refine``) — never in the
 hot decision path.
 """
+
 from graph_intelligence.causal_falsification.falsification_tests import (
     FalsificationReport,
-    test_conditional_independence,
-    test_causal_minimality,
     random_graph_benchmark,
     run_all_tests,
+    test_causal_minimality,
+    test_conditional_independence,
 )
 from graph_intelligence.causal_falsification.refinery import (
     EdgeProposal,

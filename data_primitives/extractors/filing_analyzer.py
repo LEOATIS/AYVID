@@ -3,6 +3,7 @@
 Extracts supply chain intelligence, risk factors, revenue segments,
 and management guidance from 10-K/10-Q/8-K filings and earnings calls.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -10,14 +11,10 @@ import json
 import re
 from typing import Any
 
-from shared.config import settings
 from shared.exceptions import LLMProviderError, OpenBBFetchError
 from shared.logger import get_logger
 
 log = get_logger("data.filings")
-
-_openai_client = None
-_anthropic_client = None
 
 
 def _strip_json_fences(text: str) -> str:
@@ -27,49 +24,19 @@ def _strip_json_fences(text: str) -> str:
     return cleaned.strip()
 
 
-async def _llm_json_call(system: str, user: str) -> str:
-    """Dispatch JSON-mode LLM call to the configured provider."""
-    if settings.LLM_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
-        return await _anthropic_call(system, user)
-    return await _openai_call(system, user)
-
-
-async def _openai_call(system: str, user: str) -> str:
-    global _openai_client
-    if _openai_client is None:
-        from openai import AsyncOpenAI
-        _openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-    response = await _openai_client.chat.completions.create(
-        model=settings.OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        temperature=0.1,
-        response_format={"type": "json_object"},
-    )
-    return response.choices[0].message.content or "{}"
-
-
-async def _anthropic_call(system: str, user: str) -> str:
-    global _anthropic_client
-    if _anthropic_client is None:
-        from anthropic import AsyncAnthropic
-        _anthropic_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-    response = await _anthropic_client.messages.create(
-        model=settings.ANTHROPIC_MODEL,
-        max_tokens=1500,
-        system=system + "\n\nYou MUST respond with valid JSON only. No markdown, no explanation.",
-        messages=[{"role": "user", "content": user}],
-        temperature=0.1,
-    )
-    return response.content[0].text if response.content else "{}"
-
-
 async def _chat_json(system_prompt: str, user_prompt: str) -> dict[str, Any]:
-    """Send a prompt pair to the configured LLM and parse the JSON response."""
+    """Send a prompt pair to the shared LLM dispatch and parse the JSON
+    response. Keeps this module's temperature=0.1 contract (filings need
+    a touch more creativity than the default zero-temperature path)."""
+    from shared.llm_client import json_call
+
     try:
-        raw = await _llm_json_call(system_prompt, user_prompt)
+        raw = await json_call(
+            system_prompt,
+            user_prompt,
+            max_tokens=1500,
+            temperature=0.1,
+        )
         return json.loads(_strip_json_fences(raw))
     except json.JSONDecodeError as exc:
         log.error(f"Failed to parse LLM JSON: {exc}")
@@ -179,8 +146,7 @@ async def analyze_earnings_transcript(symbol: str) -> dict[str, Any]:
 
     earnings_keywords = {"earnings", "revenue", "profit", "guidance", "eps", "quarterly"}
     earnings_news = [
-        n for n in news_items
-        if any(kw in n.title.lower() for kw in earnings_keywords)
+        n for n in news_items if any(kw in n.title.lower() for kw in earnings_keywords)
     ]
     if not earnings_news:
         earnings_news = news_items[:5]
@@ -201,6 +167,7 @@ async def analyze_earnings_transcript(symbol: str) -> dict[str, Any]:
 
 # ── Comprehensive Fundamental Profile ─────────────────────────
 
+
 async def build_fundamental_profile(symbol: str) -> dict[str, Any]:
     """Combine SEC filing analysis, earnings synthesis, and financial ratios
     into a comprehensive fundamental profile for the LLM agents.
@@ -212,7 +179,9 @@ async def build_fundamental_profile(symbol: str) -> dict[str, Any]:
     ratios_task = asyncio.create_task(fetch_financial_ratios(symbol))
 
     filing_analysis, earnings_analysis, ratios = await asyncio.gather(
-        filing_task, earnings_task, ratios_task,
+        filing_task,
+        earnings_task,
+        ratios_task,
         return_exceptions=True,
     )
 

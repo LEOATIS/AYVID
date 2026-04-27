@@ -1,4 +1,5 @@
 """Data ingestion CLI commands."""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,15 +7,14 @@ import os
 
 # yfinance's curl_cffi backend picks up system proxy settings;
 # Yahoo Finance rejects the CONNECT tunnel with 403.
-for _pv in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY",
-            "ALL_PROXY", "all_proxy"):
+for _pv in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "all_proxy"):
     os.environ.pop(_pv, None)
 
 import typer
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
-from rich.table import Table
 from rich.panel import Panel
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+from rich.table import Table
 
 console = Console()
 data_app = typer.Typer(
@@ -29,9 +29,11 @@ data_app = typer.Typer(
 
 # ── Universe Commands ─────────────────────────────────────────
 
+
 @data_app.command("universe")
 def universe():
     """Build and display the full global investment universe."""
+
     async def _run():
         from data_primitives.extractors.universe_builder import build_full_universe
 
@@ -60,6 +62,7 @@ def universe():
 @data_app.command("refresh-universe")
 def refresh_universe():
     """Discover and expand the investment universe from live data sources (S&P 500, FMP screener)."""
+
     async def _run():
         from data_primitives.extractors.universe_builder import build_full_universe
 
@@ -88,24 +91,28 @@ def refresh_universe():
 @data_app.command("world-scan")
 def world_scan(
     tickers: list[str] = typer.Argument(
-        default=None,
-        help="Tickers to scan (omit for supply-chain-critical universe)"
+        default=None, help="Tickers to scan (omit for supply-chain-critical universe)"
     ),
     sigma: float = typer.Option(2.0, help="Sigma threshold for anomaly detection"),
     days: int = typer.Option(30, help="Lookback window"),
 ):
     """Scan global markets for anomalies: price shocks, volume spikes, gaps."""
+
     async def _run():
-        from data_primitives.extractors.openbb_client import fetch_multi_ohlcv
         from data_primitives.extractors.market_scanner import scan_universe
+        from data_primitives.extractors.openbb_client import fetch_multi_ohlcv
         from data_primitives.extractors.universe_builder import get_supply_chain_critical_tickers
 
         scan_tickers = tickers or get_supply_chain_critical_tickers()
-        console.print(f"\n[bold]Scanning {len(scan_tickers)} instruments for anomalies...[/bold]\n")
+        console.print(
+            f"\n[bold]Scanning {len(scan_tickers)} instruments for anomalies...[/bold]\n"
+        )
 
         with Progress(
-            SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
-            BarColumn(), console=console,
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            console=console,
         ) as progress:
             task = progress.add_task("Fetching price data...", total=None)
             data = await fetch_multi_ohlcv(scan_tickers, days=days)
@@ -142,6 +149,7 @@ def indices(
     days: int = typer.Option(10, help="Lookback days"),
 ):
     """Show performance of major world market indices."""
+
     async def _run():
         from data_primitives.extractors.openbb_client import fetch_index_historical
         from data_primitives.extractors.universe_builder import WORLD_INDICES
@@ -167,7 +175,9 @@ def indices(
                     change = (valid[-1].close / valid[0].close - 1) * 100
                     chg_style = "green" if change >= 0 else "red"
                     table.add_row(
-                        symbol, name[:35], country,
+                        symbol,
+                        name[:35],
+                        country,
                         f"{last:,.2f}",
                         f"[{chg_style}]{change:+.2f}%[/{chg_style}]",
                     )
@@ -184,10 +194,21 @@ def indices(
 @data_app.command("fx")
 def fx():
     """Show major FX pair rates."""
+
     async def _run():
         from data_primitives.extractors.openbb_client import fetch_fx_historical
 
-        major_pairs = ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD", "NZDUSD", "USDCNY", "USDINR"]
+        major_pairs = [
+            "EURUSD",
+            "GBPUSD",
+            "USDJPY",
+            "USDCHF",
+            "AUDUSD",
+            "USDCAD",
+            "NZDUSD",
+            "USDCNY",
+            "USDINR",
+        ]
         console.print(f"\n[bold]Fetching {len(major_pairs)} FX pairs...[/bold]\n")
 
         table = Table(title="Major FX Pairs", border_style="blue")
@@ -205,7 +226,9 @@ def fx():
                     rate = valid[-1].close
                     change = (valid[-1].close / valid[-2].close - 1) * 100
                     chg_style = "green" if change >= 0 else "red"
-                    table.add_row(pair, f"{rate:.4f}", f"[{chg_style}]{change:+.3f}%[/{chg_style}]")
+                    table.add_row(
+                        pair, f"{rate:.4f}", f"[{chg_style}]{change:+.3f}%[/{chg_style}]"
+                    )
                 else:
                     table.add_row(pair, "-", "-")
             except Exception:
@@ -219,6 +242,7 @@ def fx():
 @data_app.command("crypto")
 def crypto():
     """Show top crypto asset prices."""
+
     async def _run():
         from data_primitives.extractors.openbb_client import fetch_crypto_historical
 
@@ -237,7 +261,9 @@ def crypto():
                     price = bars[-1].close
                     change = (bars[-1].close / bars[-2].close - 1) * 100
                     chg_style = "green" if change >= 0 else "red"
-                    table.add_row(symbol, f"${price:,.2f}", f"[{chg_style}]{change:+.2f}%[/{chg_style}]")
+                    table.add_row(
+                        symbol, f"${price:,.2f}", f"[{chg_style}]{change:+.2f}%[/{chg_style}]"
+                    )
             except Exception:
                 table.add_row(symbol, "-", "-")
 
@@ -249,13 +275,20 @@ def crypto():
 @data_app.command("commodities")
 def commodities():
     """Show major commodity futures prices."""
+
     async def _run():
         from data_primitives.extractors.openbb_client import fetch_commodity_historical
 
         commodities_list = [
-            ("CL", "Crude Oil WTI"), ("BZ", "Brent Crude"), ("NG", "Natural Gas"),
-            ("GC", "Gold"), ("SI", "Silver"), ("HG", "Copper"),
-            ("ZC", "Corn"), ("ZS", "Soybeans"), ("ZW", "Wheat"),
+            ("CL", "Crude Oil WTI"),
+            ("BZ", "Brent Crude"),
+            ("NG", "Natural Gas"),
+            ("GC", "Gold"),
+            ("SI", "Silver"),
+            ("HG", "Copper"),
+            ("ZC", "Corn"),
+            ("ZS", "Soybeans"),
+            ("ZW", "Wheat"),
         ]
         console.print(f"\n[bold]Fetching {len(commodities_list)} commodity futures...[/bold]\n")
 
@@ -272,7 +305,12 @@ def commodities():
                     price = bars[-1].close
                     change = (bars[-1].close / bars[-2].close - 1) * 100
                     chg_style = "green" if change >= 0 else "red"
-                    table.add_row(symbol, name, f"${price:,.2f}", f"[{chg_style}]{change:+.2f}%[/{chg_style}]")
+                    table.add_row(
+                        symbol,
+                        name,
+                        f"${price:,.2f}",
+                        f"[{chg_style}]{change:+.2f}%[/{chg_style}]",
+                    )
             except Exception:
                 table.add_row(symbol, name, "-", "-")
 
@@ -284,6 +322,7 @@ def commodities():
 @data_app.command("earnings")
 def earnings():
     """Show upcoming earnings announcements."""
+
     async def _run():
         from data_primitives.extractors.openbb_client import fetch_earnings_calendar
 
@@ -334,6 +373,7 @@ def earnings():
 @data_app.command("sectors")
 def sectors():
     """Show US sector performance."""
+
     async def _run():
         from data_primitives.extractors.openbb_client import fetch_sector_performance
 
@@ -373,8 +413,10 @@ def ingest(
     days: int = typer.Option(90, help="Number of days of history to fetch"),
 ):
     """Ingest OHLCV data, news, and features for the given tickers."""
+
     async def _run():
         from backend.services.orchestrator import ingest_market_data
+
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -388,7 +430,9 @@ def ingest(
                 status = f"[green]{count} bars[/green]" if count > 0 else "[red]failed[/red]"
                 console.print(f"  {ticker}: {status}")
 
-        console.print(f"\n[bold green]Ingestion complete.[/bold green] {sum(results.values())} total bars stored.")
+        console.print(
+            f"\n[bold green]Ingestion complete.[/bold green] {sum(results.values())} total bars stored."
+        )
 
     asyncio.run(_run())
 
@@ -399,6 +443,7 @@ def prices(
     days: int = typer.Option(30, help="Number of days"),
 ):
     """Fetch and display recent OHLCV prices for a ticker."""
+
     async def _run():
         from data_primitives.extractors.openbb_client import fetch_ohlcv
 
@@ -431,19 +476,21 @@ def news(
     limit: int = typer.Option(10, help="Number of articles"),
 ):
     """Fetch and display recent news for a ticker."""
+
     async def _run():
         from data_primitives.extractors.openbb_client import fetch_company_news
 
         items = await fetch_company_news(ticker, limit=limit)
         for item in items:
             style = "yellow" if "shock" in item.title.lower() else "white"
-            console.print(Panel(
-                f"[dim]{item.timestamp.strftime('%Y-%m-%d %H:%M')}[/dim]\n"
-                f"[{style}]{item.title}[/{style}]\n"
-                f"[dim]{item.source}[/dim]"
-                + (f"\n[dim]{item.url}[/dim]" if item.url else ""),
-                border_style="dim",
-            ))
+            console.print(
+                Panel(
+                    f"[dim]{item.timestamp.strftime('%Y-%m-%d %H:%M')}[/dim]\n"
+                    f"[{style}]{item.title}[/{style}]\n"
+                    f"[dim]{item.source}[/dim]" + (f"\n[dim]{item.url}[/dim]" if item.url else ""),
+                    border_style="dim",
+                )
+            )
 
     asyncio.run(_run())
 
@@ -451,6 +498,7 @@ def news(
 @data_app.command("verify")
 def verify():
     """Verify all data source connections (OpenBB, QuestDB, etc.)."""
+
     async def _run():
         console.print("\n[bold]Data Primitive Verification Suite[/bold]\n")
 
@@ -459,6 +507,7 @@ def verify():
         # OpenBB / YFinance
         try:
             from data_primitives.extractors.openbb_client import fetch_ohlcv
+
             bars = await fetch_ohlcv("AAPL", days=5)
             checks.append(("OpenBB OHLCV (YFinance)", True, f"{len(bars)} bars"))
         except Exception as e:
@@ -467,6 +516,7 @@ def verify():
         # OpenBB News
         try:
             from data_primitives.extractors.openbb_client import fetch_company_news
+
             news = await fetch_company_news("AAPL", limit=2)
             checks.append(("OpenBB News", True, f"{len(news)} articles"))
         except Exception as e:
@@ -475,6 +525,7 @@ def verify():
         # SEC Filings (FMP)
         try:
             from data_primitives.extractors.openbb_client import fetch_sec_filings
+
             filings = await fetch_sec_filings("AAPL", limit=2)
             checks.append(("SEC Filings (FMP)", True, f"{len(filings)} filings"))
         except Exception as e:
@@ -496,6 +547,7 @@ def verify():
 @data_app.command("calendar")
 def calendar():
     """Show upcoming macroeconomic events."""
+
     async def _run():
         from data_primitives.extractors.openbb_client import fetch_economic_calendar
 
@@ -522,9 +574,11 @@ def calendar():
 
 # ── SEC Filings & Fundamentals ────────────────────────────────
 
+
 @data_app.command("filings")
 def filings(symbol: str = typer.Argument(..., help="Ticker to analyze")):
     """Analyze SEC filings for supply chain intelligence (GPT-4o powered)."""
+
     async def _run():
         from data_primitives.extractors.filing_analyzer import analyze_sec_filing
 
@@ -568,6 +622,7 @@ def filings(symbol: str = typer.Argument(..., help="Ticker to analyze")):
 @data_app.command("profile")
 def build_profile(symbol: str = typer.Argument(..., help="Ticker to profile")):
     """Build comprehensive fundamental profile (filings + earnings + ratios)."""
+
     async def _run():
         from data_primitives.extractors.filing_analyzer import build_fundamental_profile
 
@@ -578,7 +633,7 @@ def build_profile(symbol: str = typer.Argument(..., help="Ticker to profile")):
         if fa and not fa.get("error"):
             deps = fa.get("supply_chain_dependencies", [])
             dep_text = "\n".join(
-                f"  {d.get('supplier','?')} -> {d.get('component','?')} [{d.get('criticality','?')}]"
+                f"  {d.get('supplier', '?')} -> {d.get('component', '?')} [{d.get('criticality', '?')}]"
                 for d in deps[:5]
             )
             console.print(Panel(dep_text or "No data", title="Supply Chain", border_style="green"))
@@ -589,9 +644,9 @@ def build_profile(symbol: str = typer.Argument(..., help="Ticker to profile")):
             guid = ea.get("guidance_changes", {})
             sent = ea.get("sentiment", {})
             text = (
-                f"Revenue: {rev.get('beat_or_miss','?')} ({rev.get('magnitude','')})\n"
-                f"Guidance: {guid.get('direction','?')}\n"
-                f"Sentiment: {sent.get('overall','?')}"
+                f"Revenue: {rev.get('beat_or_miss', '?')} ({rev.get('magnitude', '')})\n"
+                f"Guidance: {guid.get('direction', '?')}\n"
+                f"Sentiment: {sent.get('overall', '?')}"
             )
             console.print(Panel(text, title="Earnings", border_style="yellow"))
 
@@ -604,7 +659,9 @@ def build_profile(symbol: str = typer.Argument(..., help="Ticker to profile")):
 
         sc = result.get("supply_chain_summary", {})
         if sc.get("dependencies"):
-            console.print(f"\n[bold green]Supply Chain Dependencies:[/bold green] {sc['dependency_count']}")
+            console.print(
+                f"\n[bold green]Supply Chain Dependencies:[/bold green] {sc['dependency_count']}"
+            )
 
     asyncio.run(_run())
 
@@ -616,12 +673,15 @@ def ingest_intraday(
     days: int = typer.Option(5, help="Number of days of intraday history"),
 ):
     """Fetch and store intraday (M1/M5/M15) OHLCV data for the given tickers."""
+
     async def _run():
-        import json
         from pathlib import Path
+
         from data_primitives.extractors.openbb_client import fetch_intraday_batch
 
-        console.print(f"\n[bold]Fetching {interval} intraday data for {len(tickers)} tickers ({days}d)...[/bold]\n")
+        console.print(
+            f"\n[bold]Fetching {interval} intraday data for {len(tickers)} tickers ({days}d)...[/bold]\n"
+        )
         data = await fetch_intraday_batch(tickers, interval=interval, days=days)
 
         intraday_dir = Path("data_store/intraday")
@@ -638,7 +698,9 @@ def ingest_intraday(
             total_bars += len(bars)
             console.print(f"  {sym}: [green]{len(bars)} bars[/green] -> {path}")
 
-        console.print(f"\n[bold green]Done.[/bold green] {total_bars} total bars stored for {len(data)} tickers.")
+        console.print(
+            f"\n[bold green]Done.[/bold green] {total_bars} total bars stored for {len(data)} tickers."
+        )
 
     asyncio.run(_run())
 
@@ -646,6 +708,7 @@ def ingest_intraday(
 @data_app.command("pipeline")
 def run_pipeline():
     """Run one full ingestion cycle (news -> NER -> graph -> analysis)."""
+
     async def _run():
         from data_primitives.pipeline.continuous_worker import run_ingestion_cycle
 
@@ -709,19 +772,25 @@ def backtest(
         help="Ticker universe: auto (local data), us_mega, global, supply_chain, etfs, or comma-separated tickers",
     ),
     fresh: bool = typer.Option(
-        False, "--fresh", "-f",
+        False,
+        "--fresh",
+        "-f",
         help="Refresh ALL data before backtesting: fetch fresh indices, screen best equities, update OHLCV",
     ),
     start_date: str = typer.Option(
-        None, "--start-date",
+        None,
+        "--start-date",
         help="Explicit start date (ISO format: 2021-03-20). Overrides --days.",
     ),
     end_date: str = typer.Option(
-        None, "--end-date",
+        None,
+        "--end-date",
         help="Explicit end date (ISO format: 2021-04-15). Defaults to today.",
     ),
     scenario: str = typer.Option(
-        None, "--scenario", "-s",
+        None,
+        "--scenario",
+        "-s",
         help="Named shock scenario (e.g. suez_canal_2021). Use 'ayvid data scenarios' to list.",
     ),
 ):
@@ -737,6 +806,7 @@ def backtest(
     Use --start-date / --end-date for arbitrary date ranges.
     Use --scenario for named historical shock scenarios.
     """
+
     async def _run():
         from pathlib import Path
 
@@ -745,7 +815,8 @@ def backtest(
         ticker_list: list[str] | None = None
 
         if scenario:
-            from backtesting.engine import run_scenario_backtest, SHOCK_SCENARIOS
+            from backtesting.engine import SHOCK_SCENARIOS, run_scenario_backtest
+
             if scenario not in SHOCK_SCENARIOS:
                 console.print(f"[red]Unknown scenario '{scenario}'[/red]")
                 console.print(f"Available: {', '.join(SHOCK_SCENARIOS.keys())}")
@@ -769,6 +840,7 @@ def backtest(
 
             if universe != "auto":
                 from data_primitives.extractors.universe_builder import GLOBAL_EQUITY_SCREENS
+
                 presets = {
                     "us_mega": GLOBAL_EQUITY_SCREENS.get("US_MEGA_CAP", []),
                     "us_large": GLOBAL_EQUITY_SCREENS.get("US_LARGE_CAP", []),
@@ -777,19 +849,23 @@ def backtest(
                     "emerging": GLOBAL_EQUITY_SCREENS.get("EMERGING", []),
                     "supply_chain": GLOBAL_EQUITY_SCREENS.get("SUPPLY_CHAIN_CRITICAL", []),
                     "etfs": GLOBAL_EQUITY_SCREENS.get("MAJOR_ETFS", []),
-                    "global": sorted(set(
-                        t for region in GLOBAL_EQUITY_SCREENS.values() for t in region
-                    )),
+                    "global": sorted(
+                        set(t for region in GLOBAL_EQUITY_SCREENS.values() for t in region)
+                    ),
                 }
                 if universe in presets:
                     ticker_list = presets[universe]
-                    console.print(f"[bold]Universe: {universe.upper()} ({len(ticker_list)} tickers)[/bold]")
+                    console.print(
+                        f"[bold]Universe: {universe.upper()} ({len(ticker_list)} tickers)[/bold]"
+                    )
                 else:
                     ticker_list = [t.strip() for t in universe.split(",") if t.strip()]
                     console.print(f"[bold]Custom tickers: {len(ticker_list)}[/bold]")
 
             if fresh:
-                console.print("\n[bold cyan]Refreshing all market data (indices + equities)...[/bold cyan]\n")
+                console.print(
+                    "\n[bold cyan]Refreshing all market data (indices + equities)...[/bold cyan]\n"
+                )
 
             if bt_start_date:
                 console.print(
@@ -817,7 +893,9 @@ def backtest(
         if result.metadata and result.metadata.get("scenario_name"):
             scenario_label = f" — {result.metadata['scenario_name']}"
 
-        table = Table(title=f"Index F&O + Equity Investment Results{scenario_label}", border_style="green")
+        table = Table(
+            title=f"Index F&O + Equity Investment Results{scenario_label}", border_style="green"
+        )
         table.add_column("Metric", style="bold")
         table.add_column("Value", justify="right", style="bold cyan")
 
@@ -826,8 +904,12 @@ def backtest(
         table.add_row("Final Equity", f"${result.final_equity:,.0f}")
 
         ret_style = "green" if result.total_return_pct >= 0 else "red"
-        table.add_row("Total Return", f"[{ret_style}]{result.total_return_pct:+.2f}%[/{ret_style}]")
-        table.add_row("Annualized Return", f"[{ret_style}]{result.annualized_return_pct:+.2f}%[/{ret_style}]")
+        table.add_row(
+            "Total Return", f"[{ret_style}]{result.total_return_pct:+.2f}%[/{ret_style}]"
+        )
+        table.add_row(
+            "Annualized Return", f"[{ret_style}]{result.annualized_return_pct:+.2f}%[/{ret_style}]"
+        )
         table.add_row("Sharpe Ratio", f"{result.sharpe_ratio:.2f}")
         table.add_row("Max Drawdown", f"[red]{result.max_drawdown_pct:.1f}%[/red]")
         table.add_row("Total Trades", str(result.total_trades))
@@ -837,9 +919,13 @@ def backtest(
 
         indices_traded = result.extra_stats.get("indices_traded", [])
         index_countries = result.extra_stats.get("index_countries", {})
-        idx_display = ", ".join(
-            f"{idx_sym} ({index_countries.get(idx_sym, '?')})" for idx_sym in indices_traded
-        ) if indices_traded else "None"
+        idx_display = (
+            ", ".join(
+                f"{idx_sym} ({index_countries.get(idx_sym, '?')})" for idx_sym in indices_traded
+            )
+            if indices_traded
+            else "None"
+        )
         table.add_row("Indices Traded (F&O)", idx_display[:80])
         table.add_row("Index F&O Trades", str(result.extra_stats.get("fno_trades", 0)))
         table.add_row("Equity Investments", str(result.extra_stats.get("equity_trades", 0)))
@@ -852,7 +938,9 @@ def backtest(
         # R-multiple distribution panel
         r_stats = result.extra_stats.get("r_distribution", {})
         if r_stats:
-            r_table = Table(title="R-Multiple Distribution (Institutional Quality)", border_style="blue")
+            r_table = Table(
+                title="R-Multiple Distribution (Institutional Quality)", border_style="blue"
+            )
             r_table.add_column("Metric", style="bold")
             r_table.add_column("Value", justify="right", style="bold cyan")
 
@@ -861,7 +949,9 @@ def backtest(
             r_table.add_row("F&O PnL", f"${result.extra_stats.get('fno_pnl', 0):+,.0f}")
             r_table.add_row("", "")
             r_table.add_row("Trades Accepted (R >= min)", str(r_stats.get("trades_accepted", 0)))
-            r_table.add_row("Trades Rejected (low R)", str(r_stats.get("trades_rejected_low_r", 0)))
+            r_table.add_row(
+                "Trades Rejected (low R)", str(r_stats.get("trades_rejected_low_r", 0))
+            )
             r_table.add_row("Avg Expected R", f"{r_stats.get('avg_expected_r', 0):.2f}")
             r_table.add_row("Avg Realized R", f"{r_stats.get('avg_realized_r', 0):.2f}")
             r_table.add_row("Median Realized R", f"{r_stats.get('median_realized_r', 0):.2f}")
@@ -875,7 +965,9 @@ def backtest(
             console.print(r_table)
 
         if result.trades:
-            trade_table = Table(title=f"Equity Trade Log ({len(result.trades)} trades)", border_style="dim")
+            trade_table = Table(
+                title=f"Equity Trade Log ({len(result.trades)} trades)", border_style="dim"
+            )
             trade_table.add_column("Ticker", style="bold")
             trade_table.add_column("Action", justify="center")
             trade_table.add_column("Entry", justify="right")
@@ -902,7 +994,9 @@ def backtest(
 
         # ── Index F&O Trade Log ──
         if fno_log:
-            fno_table = Table(title=f"Index F&O Trade Log ({len(fno_log)} trades)", border_style="magenta")
+            fno_table = Table(
+                title=f"Index F&O Trade Log ({len(fno_log)} trades)", border_style="magenta"
+            )
             fno_table.add_column("Contract", style="bold")
             fno_table.add_column("Cty", justify="center")
             fno_table.add_column("Dir", justify="center")
@@ -931,7 +1025,9 @@ def backtest(
                     entry_str = f"F:{det.get('fut_entry', 0):,.1f}"
                     exit_str = f"F:{det.get('fut_exit', 0):,.1f}"
                 elif ft.instrument in ("INDEX_CALL", "INDEX_PUT"):
-                    entry_str = f"K{det.get('strike', 0):,.0f} P:{det.get('entry_premium', 0):,.1f}"
+                    entry_str = (
+                        f"K{det.get('strike', 0):,.0f} P:{det.get('entry_premium', 0):,.1f}"
+                    )
                     exit_str = f"P:{det.get('exit_premium', 0):,.1f}"
                 elif ft.instrument == "INDEX_SPREAD":
                     entry_str = f"D:{det.get('net_debit', 0):,.2f}"
@@ -958,6 +1054,7 @@ def backtest(
             console.print("[dim]No index F&O trades executed.[/dim]")
 
         from backtesting.report_generator import generate_backtest_report
+
         paths = generate_backtest_report(result, output_dir=Path("."))
         console.print(f"\n[dim]→ Wrote {paths['json']}[/dim]")
         console.print(f"[dim]→ Wrote {paths['txt']}[/dim]\n")
@@ -984,13 +1081,18 @@ def bulk_ingest(
     Example:
         ayvid data bulk-ingest --start 2018-01-01
     """
+
     async def _run():
         import datetime as dt
+
         from backtesting.engine import (
-            _DATA_DIR, _save_equity_bars, _save_index_bars,
+            _DATA_DIR,
+            _save_equity_bars,
+            _save_index_bars,
         )
         from data_primitives.extractors.openbb_client import (
-            fetch_ohlcv, fetch_index_historical,
+            fetch_index_historical,
+            fetch_ohlcv,
         )
         from graph_intelligence.agents.strategy_orchestrator import (
             TRADEABLE_INDEX_SYMBOLS,
@@ -1041,7 +1143,9 @@ def bulk_ingest(
                 for sym in index_tickers:
                     try:
                         bars = await fetch_index_historical(
-                            sym, start_date=start, end_date=end_iso,
+                            sym,
+                            start_date=start,
+                            end_date=end_iso,
                         )
                         if bars:
                             _save_index_bars(sym, bars)
@@ -1065,7 +1169,8 @@ def bulk_ingest(
 @data_app.command("calibrate")
 def calibrate(
     mode: str = typer.Option(
-        "quick", help="Grid size: quick | medium | full",
+        "quick",
+        help="Grid size: quick | medium | full",
     ),
     concurrency: int = typer.Option(4, help="Parallel backtests (3-8 typical)"),
     scenarios: str = typer.Option(
@@ -1076,7 +1181,8 @@ def calibrate(
         help="Path to write the empirical priors JSON",
     ),
     equity: float = typer.Option(
-        1_000_000.0, help="Initial equity per sweep run ($)",
+        1_000_000.0,
+        help="Initial equity per sweep run ($)",
     ),
 ):
     """Run the empirical calibration harness → write `priors.json`.
@@ -1100,18 +1206,15 @@ def calibrate(
         ayvid data calibrate --mode full --concurrency 6
         ayvid data calibrate --mode medium --scenarios svb_collapse_2023,covid_crash_2020
     """
+
     async def _run():
-        import asyncio
         from pathlib import Path
+
         from backtesting.calibrate import calibrate as run_calibration
 
-        scen_list = (
-            [s.strip() for s in scenarios.split(",") if s.strip()]
-            if scenarios else None
-        )
+        scen_list = [s.strip() for s in scenarios.split(",") if s.strip()] if scenarios else None
         console.print(
-            f"\n[bold]AYVID calibration[/bold] — mode={mode}, "
-            f"concurrency={concurrency}\n"
+            f"\n[bold]AYVID calibration[/bold] — mode={mode}, concurrency={concurrency}\n"
         )
         priors = await run_calibration(
             mode=mode,
@@ -1137,6 +1240,7 @@ def calibrate(
         )
 
     import asyncio
+
     asyncio.run(_run())
 
 
@@ -1174,8 +1278,10 @@ def walkforward(
     Example:
         ayvid data walkforward --start 2018-01-01 --window-months 6 --step-months 3
     """
+
     async def _run():
         from pathlib import Path
+
         from backtesting.walkforward import run_walk_forward
 
         console.print(
@@ -1233,11 +1339,44 @@ def shock_walkforward(
     min_conviction: float = typer.Option(
         0.55, help="Minimum conviction threshold for accepting signals"
     ),
-    name: str = typer.Option(
-        "shock_driven_report", help="Output filename stem"
-    ),
+    name: str = typer.Option("shock_driven_report", help="Output filename stem"),
     only: str = typer.Option(
-        None, help="Comma-separated scenario IDs to restrict to (e.g. 'suez_canal_2021,covid_crash_2020')"
+        None,
+        help="Comma-separated scenario IDs to restrict to (e.g. 'suez_canal_2021,covid_crash_2020')",
+    ),
+    ingest: bool = typer.Option(
+        False,
+        "--ingest",
+        help="Pre-flight: run `bulk_ingest` over the [start, end] span "
+        "before the walkforward so the backtest reads from a fresh "
+        "data_store/ snapshot instead of per-window OpenBB fetches.",
+    ),
+    precalibrate: bool = typer.Option(
+        False,
+        "--precalibrate",
+        help="Pre-flight: run the offline grid-sweep calibrator "
+        "(`backtesting.calibrate`) in quick mode before the "
+        "walkforward so priors.json reflects a fresh statistical "
+        "anchor. Use together with --recalibrate for the full "
+        "priors → decisions → outcomes → priors loop.",
+    ),
+    calibrate_mode: str = typer.Option(
+        "quick",
+        help="Grid size for --precalibrate: quick | medium | full",
+    ),
+    recalibrate: bool = typer.Option(
+        False,
+        "--recalibrate",
+        help="Rebuild calibration/priors.json from this run's trade "
+        "outcomes after the walkforward finishes. Mutates priors "
+        "in-place — use when you want the supervisor to see the "
+        "freshest evidence on its next invocation.",
+    ),
+    reset_outcomes: bool = typer.Option(
+        False,
+        "--reset-outcomes",
+        help="Clear calibration/trade_outcomes.jsonl before the run so "
+        "the recalibrated priors reflect ONLY this run's trades.",
     ),
 ):
     """AYVID's actual operating mode — selective, event-driven backtest.
@@ -1252,21 +1391,104 @@ def shock_walkforward(
     layer would have detected a real shock, and only on the tickers the
     graph would have surfaced.
 
-    Example:
-        ayvid data shock-walkforward --start 2018-01-01 --end 2025-12-31
+    ── Pipeline flags ────────────────────────────────────────────────
+    The full priors → decisions → outcomes → priors feedback loop is
+    assembled from optional pre/post stages on this one command:
+
+        # 1. End-to-end (fresh benchmark) — ingest + precalibrate +
+        #    walkforward + recalibrate, priors stay fresh:
+        ayvid data shock-walkforward --ingest --precalibrate --recalibrate \\
+            --reset-outcomes --start 2018-01-01 --end 2025-12-31
+
+        # 2. Fast re-run (reuse data_store/, reuse priors) — just run
+        #    the backtest and update priors from outcomes:
+        ayvid data shock-walkforward --recalibrate
+
+        # 3. Baseline (the numbers you copy into the investor deck) —
+        #    no mutation, priors unchanged, outcomes log untouched:
+        ayvid data shock-walkforward
     """
+
     async def _run():
+        import datetime as dt_mod
         from pathlib import Path
+
+        from backtesting.trade_outcomes import (
+            DEFAULT_OUTCOMES_PATH,
+            rebuild_priors_from_outcomes,
+        )
         from backtesting.walkforward import run_shock_driven_walkforward
 
         only_list = [s.strip() for s in only.split(",")] if only else None
+        end_iso = end or dt_mod.date.today().isoformat()
+
+        # ── Pre-flight 1: bulk OHLCV ingest ──────────────────────────
+        if ingest:
+            console.print(f"\n[bold]Stage 0a — bulk ingest[/bold]  ({start} → {end_iso})")
+            from backtesting.engine import (
+                _DATA_DIR,
+                _save_equity_bars,
+                _save_index_bars,
+            )
+            from data_primitives.extractors.openbb_client import (
+                fetch_index_historical,
+                fetch_ohlcv,
+            )
+            from graph_intelligence.agents.strategy_orchestrator import (
+                TRADEABLE_INDEX_SYMBOLS,
+            )
+
+            equity_tickers = sorted(p.stem for p in _DATA_DIR.glob("*.jsonl"))
+            index_tickers = list(TRADEABLE_INDEX_SYMBOLS)
+            console.print(f"  equities: {len(equity_tickers)} | indices: {len(index_tickers)}")
+            eq_ok = eq_skip = ix_ok = ix_skip = 0
+            for sym in equity_tickers:
+                try:
+                    bars = await fetch_ohlcv(sym, start_date=start, end_date=end_iso)
+                    if bars:
+                        _save_equity_bars(sym, bars)
+                        eq_ok += 1
+                    else:
+                        eq_skip += 1
+                except Exception:
+                    eq_skip += 1
+            for sym in index_tickers:
+                try:
+                    bars = await fetch_index_historical(sym, start_date=start, end_date=end_iso)
+                    if bars:
+                        _save_index_bars(sym, bars)
+                        ix_ok += 1
+                    else:
+                        ix_skip += 1
+                except Exception:
+                    ix_skip += 1
+            console.print(
+                f"  [green]✓[/green] equities: {eq_ok} ok / {eq_skip} skipped, "
+                f"indices: {ix_ok} ok / {ix_skip} skipped"
+            )
+
+        # ── Pre-flight 2: offline grid-sweep calibration ─────────────
+        if precalibrate:
+            console.print(
+                f"\n[bold]Stage 0b — offline calibration[/bold]  (mode={calibrate_mode})"
+            )
+            from backtesting.calibrate import calibrate as run_calibration
+
+            await run_calibration(mode=calibrate_mode, concurrency=4)
+            console.print("  [green]✓[/green] priors.json populated")
+
+        # ── Optional: clear the outcomes log before the run ──────────
+        if reset_outcomes and DEFAULT_OUTCOMES_PATH.exists():
+            DEFAULT_OUTCOMES_PATH.unlink()
+            console.print(f"[yellow]Cleared {DEFAULT_OUTCOMES_PATH} (--reset-outcomes)[/yellow]")
 
         console.print(
             f"\n[bold]Shock-driven walk-forward backtest[/bold]\n"
-            f"  Span: {start} → {end or 'today'}\n"
+            f"  Span: {start} → {end_iso}\n"
             f"  Equity per scenario: ${equity:,.0f}\n"
             f"  Min conviction: {min_conviction:.2f}\n"
             f"  Report stem: {name}\n"
+            f"  Recalibrate priors after run: {recalibrate}\n"
             + (f"  Restricting to: {', '.join(only_list)}\n" if only_list else "")
         )
         summary = await run_shock_driven_walkforward(
@@ -1303,6 +1525,20 @@ def shock_walkforward(
         console.print(f"\n[dim]→ wrote {output_dir}/{name}.json[/dim]")
         console.print(f"[dim]→ wrote {output_dir}/{name}.md[/dim]\n")
 
+        # Feedback loop: rebuild priors.json from the fresh outcomes
+        # log so the supervisor reads updated statistics on its next
+        # invocation. Opt-in via --recalibrate so the default
+        # behaviour stays idempotent.
+        if recalibrate:
+            payload = rebuild_priors_from_outcomes()
+            console.print(
+                f"[green]✓[/green] Recalibrated priors.json — "
+                f"{payload.get('_rebuild_cells_updated', 0)} cells updated, "
+                f"+{payload.get('_rebuild_newly_blocked', 0)} auto-blocked, "
+                f"-{payload.get('_rebuild_newly_unblocked', 0)} auto-unblocked, "
+                f"from {payload.get('_rebuild_rows', 0)} outcome rows.\n"
+            )
+
     asyncio.run(_run())
 
 
@@ -1311,18 +1547,22 @@ def backtest_fno(
     days: int = typer.Option(60, help="Number of days to backtest"),
 ):
     """[Deprecated] Use 'backtest' instead — it now includes F&O strategies automatically."""
-    console.print("[yellow]Note: backtest-fno is deprecated. The unified 'backtest' command now handles F&O.[/yellow]")
+    console.print(
+        "[yellow]Note: backtest-fno is deprecated. The unified 'backtest' command now handles F&O.[/yellow]"
+    )
     backtest(days=days)
 
 
 @data_app.command("report")
 def report(
     scenarios: str = typer.Option(
-        None, "--scenarios",
+        None,
+        "--scenarios",
         help="Comma-separated scenario keys or 'all' to run every named shock scenario.",
     ),
     compare_baseline: bool = typer.Option(
-        False, "--compare-baseline",
+        False,
+        "--compare-baseline",
         help="Run a baseline backtest (no causal intelligence) alongside for alpha delta analysis.",
     ),
     equity: float = typer.Option(1_000_000.0, help="Initial equity ($)"),
@@ -1338,6 +1578,7 @@ def report(
         ayvid data report --scenarios all --compare-baseline
     """
     import resource
+
     soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
     target = min(hard, 4096)
     if soft < target:
@@ -1348,9 +1589,9 @@ def report(
 
     async def _run():
         import gc
-        import sqlite3
         from pathlib import Path
-        from backtesting.engine import SHOCK_SCENARIOS, run_scenario_backtest, run_backtest
+
+        from backtesting.engine import SHOCK_SCENARIOS, run_scenario_backtest
         from backtesting.report_generator import generate_yc_report
 
         if scenarios == "all":
@@ -1394,7 +1635,7 @@ def report(
                 continue
 
             if compare_baseline:
-                console.print(f"    Running baseline (naive quant, no causal intelligence)...")
+                console.print("    Running baseline (naive quant, no causal intelligence)...")
                 try:
                     base = await run_scenario_backtest(
                         key,
@@ -1451,7 +1692,7 @@ def report(
             output_dir=Path("."),
         )
 
-        console.print(f"\n[bold green]Report generated:[/bold green]")
+        console.print("\n[bold green]Report generated:[/bold green]")
         for fmt, path in output_files.items():
             console.print(f"  → {fmt}: {path}")
         console.print("")

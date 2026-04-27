@@ -11,6 +11,7 @@ Discovers and catalogs every tradeable instrument across world markets:
 
 Data sources: OpenBB SDK, YFinance, FMP, and IB reference data.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -20,7 +21,6 @@ from typing import Any
 import pandas as pd
 from openbb import obb
 
-from shared.config import settings
 from shared.logger import get_logger
 from shared.types import (
     AssetClass,
@@ -83,19 +83,42 @@ WORLD_INDICES = {
 
 # Major FX pairs covering every liquid cross
 MAJOR_FX_PAIRS = [
-    ("EURUSD", "EUR", "USD"), ("GBPUSD", "GBP", "USD"), ("USDJPY", "USD", "JPY"),
-    ("USDCHF", "USD", "CHF"), ("AUDUSD", "AUD", "USD"), ("USDCAD", "USD", "CAD"),
-    ("NZDUSD", "NZD", "USD"), ("EURGBP", "EUR", "GBP"), ("EURJPY", "EUR", "JPY"),
-    ("GBPJPY", "GBP", "JPY"), ("AUDJPY", "AUD", "JPY"), ("EURAUD", "EUR", "AUD"),
-    ("EURCHF", "EUR", "CHF"), ("GBPCHF", "GBP", "CHF"), ("CADJPY", "CAD", "JPY"),
-    ("AUDCAD", "AUD", "CAD"), ("AUDNZD", "AUD", "NZD"), ("NZDJPY", "NZD", "JPY"),
+    ("EURUSD", "EUR", "USD"),
+    ("GBPUSD", "GBP", "USD"),
+    ("USDJPY", "USD", "JPY"),
+    ("USDCHF", "USD", "CHF"),
+    ("AUDUSD", "AUD", "USD"),
+    ("USDCAD", "USD", "CAD"),
+    ("NZDUSD", "NZD", "USD"),
+    ("EURGBP", "EUR", "GBP"),
+    ("EURJPY", "EUR", "JPY"),
+    ("GBPJPY", "GBP", "JPY"),
+    ("AUDJPY", "AUD", "JPY"),
+    ("EURAUD", "EUR", "AUD"),
+    ("EURCHF", "EUR", "CHF"),
+    ("GBPCHF", "GBP", "CHF"),
+    ("CADJPY", "CAD", "JPY"),
+    ("AUDCAD", "AUD", "CAD"),
+    ("AUDNZD", "AUD", "NZD"),
+    ("NZDJPY", "NZD", "JPY"),
     # Emerging market pairs
-    ("USDMXN", "USD", "MXN"), ("USDZAR", "USD", "ZAR"), ("USDTRY", "USD", "TRY"),
-    ("USDBRL", "USD", "BRL"), ("USDINR", "USD", "INR"), ("USDCNY", "USD", "CNY"),
-    ("USDSGD", "USD", "SGD"), ("USDHKD", "USD", "HKD"), ("USDKRW", "USD", "KRW"),
-    ("USDTWD", "USD", "TWD"), ("USDTHB", "USD", "THB"), ("USDIDR", "USD", "IDR"),
-    ("USDPLN", "USD", "PLN"), ("USDCZK", "USD", "CZK"), ("USDSEK", "USD", "SEK"),
-    ("USDNOK", "USD", "NOK"), ("USDDKK", "USD", "DKK"),
+    ("USDMXN", "USD", "MXN"),
+    ("USDZAR", "USD", "ZAR"),
+    ("USDTRY", "USD", "TRY"),
+    ("USDBRL", "USD", "BRL"),
+    ("USDINR", "USD", "INR"),
+    ("USDCNY", "USD", "CNY"),
+    ("USDSGD", "USD", "SGD"),
+    ("USDHKD", "USD", "HKD"),
+    ("USDKRW", "USD", "KRW"),
+    ("USDTWD", "USD", "TWD"),
+    ("USDTHB", "USD", "THB"),
+    ("USDIDR", "USD", "IDR"),
+    ("USDPLN", "USD", "PLN"),
+    ("USDCZK", "USD", "CZK"),
+    ("USDSEK", "USD", "SEK"),
+    ("USDNOK", "USD", "NOK"),
+    ("USDDKK", "USD", "DKK"),
 ]
 
 # Major commodity futures
@@ -142,63 +165,258 @@ RATE_FUTURES = [
 ]
 
 CRYPTO_ASSETS = [
-    "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "AVAX",
-    "DOT", "POL", "LINK", "UNI", "ATOM", "LTC", "BCH",
-    "NEAR", "APT", "ARB", "OP", "FIL", "ICP", "IMX",
+    "BTC",
+    "ETH",
+    "BNB",
+    "SOL",
+    "XRP",
+    "ADA",
+    "DOGE",
+    "AVAX",
+    "DOT",
+    "POL",
+    "LINK",
+    "UNI",
+    "ATOM",
+    "LTC",
+    "BCH",
+    "NEAR",
+    "APT",
+    "ARB",
+    "OP",
+    "FIL",
+    "ICP",
+    "IMX",
 ]
 
 # Major global equities by region — core supply chain nodes
 GLOBAL_EQUITY_SCREENS = {
     "US_MEGA_CAP": [
-        "AAPL", "MSFT", "AMZN", "NVDA", "GOOG", "GOOGL", "META", "BRK.B",
-        "LLY", "TSM", "AVGO", "JPM", "V", "UNH", "MA", "XOM",
-        "JNJ", "PG", "HD", "COST", "ABBV", "MRK", "ADBE", "CRM",
-        "AMD", "NFLX", "INTC", "CSCO", "ORCL", "QCOM", "TXN", "AMAT",
-        "LRCX", "MU", "KLAC", "ASML",
+        "AAPL",
+        "MSFT",
+        "AMZN",
+        "NVDA",
+        "GOOG",
+        "GOOGL",
+        "META",
+        "BRK.B",
+        "LLY",
+        "TSM",
+        "AVGO",
+        "JPM",
+        "V",
+        "UNH",
+        "MA",
+        "XOM",
+        "JNJ",
+        "PG",
+        "HD",
+        "COST",
+        "ABBV",
+        "MRK",
+        "ADBE",
+        "CRM",
+        "AMD",
+        "NFLX",
+        "INTC",
+        "CSCO",
+        "ORCL",
+        "QCOM",
+        "TXN",
+        "AMAT",
+        "LRCX",
+        "MU",
+        "KLAC",
+        "ASML",
     ],
     "US_LARGE_CAP": [
-        "TSLA", "WMT", "DIS", "PFE", "BMY", "AMGN", "GILD", "BA",
-        "CAT", "DE", "MMM", "HON", "GE", "RTX", "LMT", "NOC",
-        "UPS", "FDX", "DAL", "UAL", "AAL", "F", "GM", "TM",
-        "DELL", "HPQ", "IBM", "NOW", "SNOW", "PLTR", "NET", "CRWD",
-        "PANW", "ZS", "DDOG", "MDB", "SQ", "PYPL", "COIN", "RIVN",
+        "TSLA",
+        "WMT",
+        "DIS",
+        "PFE",
+        "BMY",
+        "AMGN",
+        "GILD",
+        "BA",
+        "CAT",
+        "DE",
+        "MMM",
+        "HON",
+        "GE",
+        "RTX",
+        "LMT",
+        "NOC",
+        "UPS",
+        "FDX",
+        "DAL",
+        "UAL",
+        "AAL",
+        "F",
+        "GM",
+        "TM",
+        "DELL",
+        "HPQ",
+        "IBM",
+        "NOW",
+        "SNOW",
+        "PLTR",
+        "NET",
+        "CRWD",
+        "PANW",
+        "ZS",
+        "DDOG",
+        "MDB",
+        "SQ",
+        "PYPL",
+        "COIN",
+        "RIVN",
     ],
     "EUROPE": [
-        "NESN.SW", "ROG.SW", "NOVN.SW", "MC.PA", "OR.PA", "SAN.PA",
-        "AIR.PA", "SIE.DE", "SAP.DE", "ALV.DE", "BAS.DE", "BMW.DE",
-        "DAI.DE", "VOW3.DE", "ADS.DE", "SHEL.L", "AZN.L", "HSBA.L",
-        "ULVR.L", "BP.L", "GSK.L", "RIO.L", "BHP.L", "GLEN.L",
-        "ASML.AS", "PHIA.AS", "INGA.AS", "ABN.AS",
+        "NESN.SW",
+        "ROG.SW",
+        "NOVN.SW",
+        "MC.PA",
+        "OR.PA",
+        "SAN.PA",
+        "AIR.PA",
+        "SIE.DE",
+        "SAP.DE",
+        "ALV.DE",
+        "BAS.DE",
+        "BMW.DE",
+        "DAI.DE",
+        "VOW3.DE",
+        "ADS.DE",
+        "SHEL.L",
+        "AZN.L",
+        "HSBA.L",
+        "ULVR.L",
+        "BP.L",
+        "GSK.L",
+        "RIO.L",
+        "BHP.L",
+        "GLEN.L",
+        "ASML.AS",
+        "PHIA.AS",
+        "INGA.AS",
+        "ABN.AS",
     ],
     "ASIA": [
-        "9984.T", "7203.T", "6758.T", "6861.T", "9433.T",
-        "0700.HK", "9988.HK", "9618.HK", "1299.HK", "0005.HK",
-        "005930.KS", "000660.KS", "005380.KS",
-        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS",
-        "2330.TW", "2317.TW", "2454.TW",
+        "9984.T",
+        "7203.T",
+        "6758.T",
+        "6861.T",
+        "9433.T",
+        "0700.HK",
+        "9988.HK",
+        "9618.HK",
+        "1299.HK",
+        "0005.HK",
+        "005930.KS",
+        "000660.KS",
+        "005380.KS",
+        "RELIANCE.NS",
+        "TCS.NS",
+        "INFY.NS",
+        "HDFCBANK.NS",
+        "2330.TW",
+        "2317.TW",
+        "2454.TW",
     ],
     "EMERGING": [
-        "VALE3.SA", "PETR4.SA", "ITUB4.SA", "BABA", "JD", "PDD",
-        "BIDU", "NIO", "XPEV", "LI", "GRAB", "SE", "MELI",
+        "VALE3.SA",
+        "PETR4.SA",
+        "ITUB4.SA",
+        "BABA",
+        "JD",
+        "PDD",
+        "BIDU",
+        "NIO",
+        "XPEV",
+        "LI",
+        "GRAB",
+        "SE",
+        "MELI",
     ],
     "SUPPLY_CHAIN_CRITICAL": [
-        "TSM", "ASML", "AMAT", "LRCX", "KLAC", "ENTG", "MKSI",
-        "TER", "ONTO", "CRUS", "SWKS", "QRVO", "MCHP", "NXPI",
-        "ON", "STM", "IFNNY", "RNECY", "UMC", "GFS",
-        "2317.TW", "HON", "APH", "TEL", "FLEX", "JBL",
-        "FDX", "UPS", "AMKBY", "ZIM", "MATX", "XPO",
+        "TSM",
+        "ASML",
+        "AMAT",
+        "LRCX",
+        "KLAC",
+        "ENTG",
+        "MKSI",
+        "TER",
+        "ONTO",
+        "CRUS",
+        "SWKS",
+        "QRVO",
+        "MCHP",
+        "NXPI",
+        "ON",
+        "STM",
+        "IFNNY",
+        "RNECY",
+        "UMC",
+        "GFS",
+        "2317.TW",
+        "HON",
+        "APH",
+        "TEL",
+        "FLEX",
+        "JBL",
+        "FDX",
+        "UPS",
+        "AMKBY",
+        "ZIM",
+        "MATX",
+        "XPO",
     ],
     "MAJOR_ETFS": [
-        "SPY", "QQQ", "IWM", "DIA", "EFA", "EEM", "VWO", "VEA",
-        "GLD", "SLV", "USO", "UNG", "TLT", "IEF", "HYG", "LQD",
-        "XLF", "XLK", "XLE", "XLV", "XLI", "XLP", "XLU", "XLB",
-        "ARKK", "ARKG", "SOXX", "SMH", "XBI", "IBB",
-        "VGK", "FXI", "EWJ", "EWZ", "EWG", "EWU", "INDA", "KWEB",
+        "SPY",
+        "QQQ",
+        "IWM",
+        "DIA",
+        "EFA",
+        "EEM",
+        "VWO",
+        "VEA",
+        "GLD",
+        "SLV",
+        "USO",
+        "UNG",
+        "TLT",
+        "IEF",
+        "HYG",
+        "LQD",
+        "XLF",
+        "XLK",
+        "XLE",
+        "XLV",
+        "XLI",
+        "XLP",
+        "XLU",
+        "XLB",
+        "ARKK",
+        "ARKG",
+        "SOXX",
+        "SMH",
+        "XBI",
+        "IBB",
+        "VGK",
+        "FXI",
+        "EWJ",
+        "EWZ",
+        "EWG",
+        "EWU",
+        "INDA",
+        "KWEB",
     ],
 }
 
 
 # ── Universe Build Functions ──────────────────────────────────
+
 
 async def build_equity_universe() -> dict[str, Instrument]:
     """Build the global equity universe from all regional screens."""
@@ -244,7 +462,9 @@ async def build_equity_universe() -> dict[str, Instrument]:
                 country=country,
             )
 
-    log.info(f"Built equity universe: {len(instruments)} instruments across {len(GLOBAL_EQUITY_SCREENS)} regions")
+    log.info(
+        f"Built equity universe: {len(instruments)} instruments across {len(GLOBAL_EQUITY_SCREENS)} regions"
+    )
     return instruments
 
 
@@ -324,12 +544,11 @@ async def _fetch_sp500_from_wikipedia() -> list[str]:
 async def discover_sp500_constituents() -> list[str]:
     """Fetch live S&P 500 constituents (tries FMP API, falls back to Wikipedia)."""
     from data_primitives.extractors.openbb_client import _ensure_credentials
+
     _ensure_credentials()
 
     try:
-        result = await asyncio.to_thread(
-            obb.index.constituents, symbol="sp500", provider="fmp"
-        )
+        result = await asyncio.to_thread(obb.index.constituents, symbol="sp500", provider="fmp")
         df = result.to_df()
         tickers = df["symbol"].tolist() if "symbol" in df.columns else []
         if tickers:
@@ -355,6 +574,7 @@ async def discover_global_equities_via_screen(
 ) -> list[dict[str, Any]]:
     """Discover global equities via stock screener (tries FMP, falls back to yfinance)."""
     from data_primitives.extractors.openbb_client import _ensure_credentials
+
     _ensure_credentials()
 
     providers = ["fmp", "yfinance"]
@@ -370,7 +590,7 @@ async def discover_global_equities_via_screen(
             if records:
                 log.info(
                     f"Screener discovered {len(records)} equities via {provider} "
-                    f"(mkt cap > ${market_cap_min/1e9:.0f}B)"
+                    f"(mkt cap > ${market_cap_min / 1e9:.0f}B)"
                 )
                 return records
         except Exception as exc:
@@ -382,6 +602,7 @@ async def discover_global_equities_via_screen(
 
 
 # ── Full Universe Assembly ────────────────────────────────────
+
 
 async def refresh_universe_with_discovery() -> list[str]:
     """Dynamically discover and merge new tickers into the equity universe.
@@ -405,13 +626,16 @@ async def refresh_universe_with_discovery() -> list[str]:
 
     screened = await discover_global_equities_via_screen(market_cap_min=5e9, limit=300)
     screened_tickers = [
-        r.get("symbol", "") for r in screened
+        r.get("symbol", "")
+        for r in screened
         if r.get("symbol") and r.get("symbol") not in existing and r.get("symbol") not in new_sp500
     ]
     if screened_tickers:
         GLOBAL_EQUITY_SCREENS.setdefault("SCREENER_DISCOVERED", []).extend(screened_tickers[:200])
         discovered.extend(screened_tickers[:200])
-        log.info(f"Discovery: added {len(screened_tickers[:200])} screened equities (mkt cap > $5B)")
+        log.info(
+            f"Discovery: added {len(screened_tickers[:200])} screened equities (mkt cap > $5B)"
+        )
 
     return discovered
 
@@ -511,10 +735,43 @@ def build_options_universe() -> list[dict]:
     options plays.
     """
     liquid_underlyings = [
-        "SPY", "QQQ", "IWM", "DIA", "EEM", "TLT", "GLD", "SLV", "XLF", "XLE",
-        "AAPL", "MSFT", "AMZN", "GOOG", "META", "NVDA", "TSLA", "AMD", "NFLX",
-        "JPM", "GS", "BAC", "XOM", "CVX", "BA", "CAT", "JNJ", "PFE", "MRK",
-        "CRM", "ORCL", "NOW", "SHOP", "SNAP", "COIN", "MARA", "SQ",
+        "SPY",
+        "QQQ",
+        "IWM",
+        "DIA",
+        "EEM",
+        "TLT",
+        "GLD",
+        "SLV",
+        "XLF",
+        "XLE",
+        "AAPL",
+        "MSFT",
+        "AMZN",
+        "GOOG",
+        "META",
+        "NVDA",
+        "TSLA",
+        "AMD",
+        "NFLX",
+        "JPM",
+        "GS",
+        "BAC",
+        "XOM",
+        "CVX",
+        "BA",
+        "CAT",
+        "JNJ",
+        "PFE",
+        "MRK",
+        "CRM",
+        "ORCL",
+        "NOW",
+        "SHOP",
+        "SNAP",
+        "COIN",
+        "MARA",
+        "SQ",
     ]
     return [
         {

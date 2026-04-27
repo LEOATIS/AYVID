@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Play, RefreshCw, ChevronDown, AlertTriangle } from "lucide-react";
 import { ShockEventCard } from "@/components/ShockEvent";
 import { GraphPropagation } from "@/components/GraphPropagation";
+import { ForceGraph } from "@/components/ForceGraph";
 import { SignalsList } from "@/components/SignalsList";
 import { TradesList } from "@/components/TradesList";
 import { Card } from "@/components/ui/Card";
@@ -29,6 +30,10 @@ export default function LiveShockPage() {
   const [stage, setStage] = useState(0);
   const [tick, setTick] = useState(0);
   const [selectedId, setSelectedId] = useState<string>("");
+  // SVG is the primary view — it's the premium narrative renderer and
+  // matches the rest of the design language. The force-directed
+  // option is kept as a power-user toggle for inspecting topology.
+  const [graphRenderer, setGraphRenderer] = useState<"svg" | "force">("svg");
 
   const { data: scenariosData, isLoading: scenLoading } = useScenarios();
   const { data: signalsData } = useSignals();
@@ -132,7 +137,50 @@ export default function LiveShockPage() {
           <div
             className={`transition-opacity duration-500 ${stage >= 2 ? "opacity-100" : "opacity-30"}`}
           >
-            <GraphPropagation nodes={graph.nodes} edges={graph.edges} />
+            <div className="mb-2 flex items-center justify-end gap-2 text-[11px]">
+              <span className="text-muted">Renderer:</span>
+              <button
+                type="button"
+                onClick={() => setGraphRenderer("svg")}
+                className={`rounded-md border px-2 py-1 transition ${
+                  graphRenderer === "svg"
+                    ? "border-strong bg-fg/5 text-fg"
+                    : "border-app text-muted hover:text-fg"
+                }`}
+              >
+                SVG · narrative
+              </button>
+              <button
+                type="button"
+                onClick={() => setGraphRenderer("force")}
+                className={`rounded-md border px-2 py-1 transition ${
+                  graphRenderer === "force"
+                    ? "border-strong bg-fg/5 text-fg"
+                    : "border-app text-muted hover:text-fg"
+                }`}
+              >
+                Force · topology
+              </button>
+            </div>
+            {graphRenderer === "force" ? (
+              <ForceGraph
+                nodes={graph.nodes}
+                edges={graph.edges}
+                // Synchronise the graph propagation with the pipeline
+                // stage bar. Stage 2 = Graph walk → hop 1 traveling;
+                // stage 3 = Signals generated → hop 2 highlights
+                // (tier-2 companies just activated); stage 4 = Orders
+                // routed → hop 3 (broad index bias) lights up.
+                activeHop={
+                  stage <= 1 ? 0
+                    : stage === 2 ? 1
+                    : stage === 3 ? 2
+                    : 3
+                }
+              />
+            ) : (
+              <GraphPropagation nodes={graph.nodes} edges={graph.edges} />
+            )}
           </div>
 
           <div className="grid gap-5 lg:grid-cols-2">
@@ -172,8 +220,19 @@ export default function LiveShockPage() {
 
 function PipelineBar({ stage }: { stage: number }) {
   return (
-    <div className="card p-4">
-      <ol className="flex flex-1 items-center gap-2">
+    <div className="card relative overflow-hidden p-4">
+      {/* Ambient sweep — a soft brand-coloured highlight slides across
+          the bar on each tick, so even when no stage is changing the
+          pipeline still reads as "live". */}
+      <div
+        aria-hidden
+        className="pipeline-sweep pointer-events-none absolute inset-y-0 -left-1/3 w-1/3"
+        style={{
+          background:
+            "linear-gradient(90deg, transparent, hsl(var(--brand) / 0.10), transparent)",
+        }}
+      />
+      <ol className="relative flex flex-1 items-center gap-2">
         {STAGES.map((s, i) => {
           const idx = i + 1;
           const reached = stage >= idx;
@@ -181,29 +240,47 @@ function PipelineBar({ stage }: { stage: number }) {
           return (
             <li key={s.id} className="flex flex-1 items-center gap-2 first:pl-0">
               <div
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-medium transition-all ${
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold transition-all duration-300 ${
                   reached
                     ? "border-[hsl(var(--brand))] bg-[hsl(var(--brand)/0.15)] text-brand"
                     : "border-app bg-[hsl(var(--bg-sunken))] text-subtle"
-                } ${active ? "ring-2 ring-[hsl(var(--brand)/0.4)]" : ""}`}
+                } ${
+                  active
+                    ? "scale-110 ring-2 ring-[hsl(var(--brand)/0.45)] shadow-[0_0_16px_hsl(var(--brand)/0.35)]"
+                    : ""
+                }`}
               >
-                {idx}
+                {reached && !active ? (
+                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                    <path d="M2.5 6.2 L5 8.5 L9.5 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                ) : (
+                  idx
+                )}
               </div>
               <span
-                className={`text-[11.5px] font-medium ${
+                className={`text-[12px] font-medium transition-colors duration-300 ${
                   reached ? "text-fg" : "text-subtle"
                 }`}
               >
                 {s.label}
               </span>
               {idx < STAGES.length && (
-                <div
-                  className={`h-px flex-1 ${
-                    stage > idx
-                      ? "bg-[hsl(var(--brand)/0.6)]"
-                      : "bg-[hsl(var(--border))]"
-                  }`}
-                />
+                <div className="relative h-px flex-1 overflow-hidden bg-[hsl(var(--border))]">
+                  <div
+                    className="absolute inset-y-0 left-0 bg-[hsl(var(--brand)/0.7)] transition-[width] duration-500 ease-out"
+                    style={{ width: stage > idx ? "100%" : "0%" }}
+                  />
+                  {stage === idx && (
+                    <div
+                      className="pipeline-flow absolute inset-y-0 h-full w-12"
+                      style={{
+                        background:
+                          "linear-gradient(90deg, transparent, hsl(var(--brand)), transparent)",
+                      }}
+                    />
+                  )}
+                </div>
               )}
             </li>
           );

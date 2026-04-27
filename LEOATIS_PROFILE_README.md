@@ -65,7 +65,7 @@ Plus: FastAPI REST+SSE backend · Typer+Rich CLI with 40 commands and a live das
 
 ### Validated post-cost, walk-forward, with a published negative control
 
-Every PnL number in AYVID is **post-cost** (IBKR-Tiered commissions + symbol-aware slippage via `backtesting/cost_model.py`) and every backtest is **walk-forward** — no cherry-picked windows, no in-sample overfit. Two backtests are published in the repo, both run on the same 2018→2025 cached OHLCV with the same cost model:
+Every PnL number in AYVID is **post-cost** (IBKR-Tiered commissions + symbol-aware slippage via `shared/cost_model.py`) and every backtest is **walk-forward** — no cherry-picked windows, no in-sample overfit. Two backtests are published in the repo, both run on the same 2018→2025 cached OHLCV with the same cost model:
 
 | Mode | Compounded 2018→2025 | Trades | Avg cost drag | % Sharpe > 1.0 | Best outcome |
 |---|---:|---:|---:|---:|---:|

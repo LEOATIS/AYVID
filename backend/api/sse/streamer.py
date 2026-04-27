@@ -6,20 +6,27 @@ as specified in the architecture doc for lighter concurrency footprint.
 Implements broadcast semantics: every connected client receives every
 event via per-client queues managed by a subscriber registry.
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
+from backend.core.security import verify_api_key
 from shared.logger import get_logger
 
 log = get_logger("api.sse")
 
-router = APIRouter()
+# P1-15: the SSE stream publishes position updates and trade signals —
+# operational data a competitor or attacker could use to front-run or
+# reverse-engineer the strategy. In dev (AYVID_REQUIRE_AUTH=False with
+# no keys registered) the dependency passes through; in production it
+# requires a valid X-API-Key header.
+router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 _subscribers: set[asyncio.Queue[dict]] = set()
 
@@ -53,7 +60,7 @@ async def _event_generator() -> AsyncGenerator[str, None]:
             try:
                 event = await asyncio.wait_for(q.get(), timeout=30.0)
                 yield f"event: {event['type']}\ndata: {json.dumps(event['data'])}\n\n"
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 yield f"event: heartbeat\ndata: {json.dumps({'status': 'alive'})}\n\n"
     finally:
         _subscribers.discard(q)

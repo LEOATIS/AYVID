@@ -9,6 +9,7 @@ Classifies markets into discrete regimes using observable features:
 The regime filter is the single most important component for accuracy:
 a mean-reversion strategy in a trending regime loses money, and vice versa.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -46,6 +47,7 @@ class CompositeRegime(str, Enum):
 @dataclass
 class RegimeState:
     """Complete regime classification for a market or instrument."""
+
     volatility_regime: VolatilityRegime
     trend_regime: TrendRegime
     composite_regime: CompositeRegime
@@ -77,11 +79,10 @@ class RegimeState:
 
 
 def compute_realized_volatility(returns: np.ndarray, window: int = 20) -> float:
-    """Annualized realized volatility (Parkinson-like estimator)."""
-    if len(returns) < window:
-        return float(np.std(returns) * np.sqrt(252)) if len(returns) > 1 else 0.2
-    recent = returns[-window:]
-    return float(np.std(recent, ddof=1) * np.sqrt(252))
+    """Annualized realized volatility. Delegates to the canonical primitive."""
+    from execution_engine.math._primitives import compute_realized_vol
+
+    return compute_realized_vol(returns, window=window)
 
 
 def compute_vrp(implied_vol: float | None, realized_vol: float) -> float:
@@ -101,7 +102,9 @@ def compute_vrp(implied_vol: float | None, realized_vol: float) -> float:
 
 
 def compute_vol_windows(
-    returns: np.ndarray, short: int = 20, long: int = 60,
+    returns: np.ndarray,
+    short: int = 20,
+    long: int = 60,
 ) -> tuple[float, float, float]:
     """Realized-vol at two horizons + compression ratio.
 
@@ -156,7 +159,8 @@ def is_grind_up_regime(
 
 
 def classify_volatility(
-    returns: np.ndarray, lookback: int = 60,
+    returns: np.ndarray,
+    lookback: int = 60,
 ) -> tuple[VolatilityRegime, float, float]:
     """Classify volatility regime using percentile ranking.
 
@@ -235,7 +239,10 @@ def _wilder_ema(arr: np.ndarray, period: int) -> np.ndarray:
 
 
 def compute_adx(
-    highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 14,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    closes: np.ndarray,
+    period: int = 14,
 ) -> float:
     """Average Directional Index — quantifies trend strength, bounded [0, 100].
 
@@ -302,8 +309,11 @@ def compute_adx(
 
 
 def classify_trend(
-    highs: np.ndarray, lows: np.ndarray, closes: np.ndarray,
-    hurst: float = 0.5, period: int = 14,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    closes: np.ndarray,
+    hurst: float = 0.5,
+    period: int = 14,
 ) -> tuple[TrendRegime, float]:
     """Classify trend regime using ADX + Hurst exponent.
 
@@ -344,7 +354,7 @@ def classify_regime(
 
     corr = 0.0
     if spy_returns is not None and len(spy_returns) >= len(returns) and len(returns) > 5:
-        aligned_spy = spy_returns[-len(returns):]
+        aligned_spy = spy_returns[-len(returns) :]
         corr_matrix = np.corrcoef(returns, aligned_spy)
         corr = float(corr_matrix[0, 1]) if not np.isnan(corr_matrix[0, 1]) else 0.0
 

@@ -31,6 +31,7 @@ better-calibrated forecasts than any single expert. The new insight from
 information theory: *coherent disagreement is stronger evidence of
 truth than coincident agreement on different premises.*
 """
+
 from __future__ import annotations
 
 import itertools
@@ -47,6 +48,7 @@ log = get_logger("debate")
 @dataclass
 class DebateResult:
     """Outcome of the multi-agent debate protocol."""
+
     consensus_direction: str
     consensus_confidence: float
     bayesian_conviction: float
@@ -76,9 +78,9 @@ class DebateResult:
 _ANALYST_WEIGHTS = {
     "Supply Chain": 1.4,
     "Fundamentals": 1.2,
-    "Pattern":      1.1,   # Phase 5 — chart-geometry vision specialist
-    "Technicals":   1.0,
-    "Macro":        0.9,
+    "Pattern": 1.1,  # Phase 5 — chart-geometry vision specialist
+    "Technicals": 1.0,
+    "Macro": 0.9,
 }
 
 # ── Tier-1 agentic gating (Step 4 — over-trading suppression) ──────
@@ -86,11 +88,13 @@ _ANALYST_WEIGHTS = {
 # supermajority. The old logic allowed 2-1-1 splits through with a
 # size discount — we now ABORT on any non-supermajority or any
 # bull/bear cross-direction disagreement.
-_CONSENSUS_THRESHOLD = 0.75          # was 0.50
-_SUPERMAJORITY_RATIO = 0.75          # ≥75% agreement required
-_UNANIMOUS_RATIO = 1.00              # 4-of-4 agreement
-_MIN_CONVICTION_TO_TRADE = 0.72      # was 0.62 (unanimous path)
-_MIN_CONVICTION_SUPERMAJORITY = 0.78  # 3-of-4: higher Bayesian bar
+_CONSENSUS_THRESHOLD = 0.75  # was 0.50
+_SUPERMAJORITY_RATIO = 0.75  # ≥75% agreement required
+_UNANIMOUS_RATIO = 1.00  # 4-of-4 agreement
+from shared.config import settings as _settings
+
+_MIN_CONVICTION_TO_TRADE: float = _settings.MIN_CONVICTION_AUDITOR
+_MIN_CONVICTION_SUPERMAJORITY: float = _settings.MIN_CONVICTION_SUPERMAJORITY
 
 # ── Phase 4: Jensen-Shannon epistemic coherence threshold ──
 # τ = 0.25 on the log2-normalised JSD scale [0, 1].
@@ -126,7 +130,7 @@ _MIN_CONVICTION_SUPERMAJORITY = 0.78  # 3-of-4: higher Bayesian bar
 # Future work: per-regime JSD calibration via
 #     ayvid data calibrate --jsd-sweep
 # (not yet implemented; regime-conditional τ is a candidate for Phase 4b).
-_EPISTEMIC_DIVERGENCE_THRESHOLD: float = 0.25
+_EPISTEMIC_DIVERGENCE_THRESHOLD: float = _settings.EPISTEMIC_DIVERGENCE_THRESHOLD
 _EPISTEMIC_CONVICTION_MULTIPLIER: float = 0.50  # halve conviction on trigger
 
 # Ordered label vector for the analyst pmf. Changing this breaks the
@@ -228,10 +232,7 @@ def opinion_to_pmf(opinion: dict) -> list[float]:
 
 def _kl_divergence_log2(p: list[float], q: list[float]) -> float:
     """KL(P || Q) in bits (log2). Non-symmetric. Requires q > 0 everywhere."""
-    return float(sum(
-        pi * math.log2(pi / qi) if pi > _PMF_EPS else 0.0
-        for pi, qi in zip(p, q)
-    ))
+    return float(sum(pi * math.log2(pi / qi) if pi > _PMF_EPS else 0.0 for pi, qi in zip(p, q)))
 
 
 def js_divergence(p: list[float], q: list[float]) -> float:
@@ -267,9 +268,7 @@ def compute_epistemic_divergence(opinions: list[dict]) -> float:
     if len(opinions) < 2:
         return 0.0
     pmfs = [opinion_to_pmf(o) for o in opinions]
-    divergences = [
-        js_divergence(a, b) for a, b in itertools.combinations(pmfs, 2)
-    ]
+    divergences = [js_divergence(a, b) for a, b in itertools.combinations(pmfs, 2)]
     if not divergences:
         return 0.0
     return float(sum(divergences) / len(divergences))
@@ -368,8 +367,12 @@ def run_debate(
             consensus_direction="HOLD",
             consensus_confidence=0.0,
             bayesian_conviction=0.0,
-            votes_long=0, votes_short=0, votes_hold=0,
-            has_consensus=False, supermajority=False, should_trade=False,
+            votes_long=0,
+            votes_short=0,
+            votes_hold=0,
+            has_consensus=False,
+            supermajority=False,
+            should_trade=False,
         )
 
     best_direction = max(votes, key=lambda k: votes[k])
@@ -419,19 +422,17 @@ def run_debate(
     elif pattern == _PATTERN_UNANIMOUS:
         conviction = min(conviction * 1.15, 0.95)
         conviction_threshold = _MIN_CONVICTION_TO_TRADE
-        should_trade = (
-            conviction >= conviction_threshold and best_direction != "HOLD"
-        )
+        should_trade = conviction >= conviction_threshold and best_direction != "HOLD"
     elif pattern == _PATTERN_SUPERMAJORITY:
         conviction *= 0.92  # small penalty for the dissenting voice
         conviction_threshold = _MIN_CONVICTION_SUPERMAJORITY
-        should_trade = (
-            conviction >= conviction_threshold and best_direction != "HOLD"
-        )
+        should_trade = conviction >= conviction_threshold and best_direction != "HOLD"
 
-    avg_confidence = float(np.mean([
-        float(o.get("confidence", 0.5)) for o in analyst_opinions
-    ])) if analyst_opinions else 0.0
+    avg_confidence = (
+        float(np.mean([float(o.get("confidence", 0.5)) for o in analyst_opinions]))
+        if analyst_opinions
+        else 0.0
+    )
 
     consensus_confidence = conviction * 0.7 + avg_confidence * 0.3
 
@@ -449,7 +450,7 @@ def run_debate(
             f"<{_EPISTEMIC_DIVERGENCE_THRESHOLD:.2f} (coherent)"
             if not high_disagreement
             else f">{_EPISTEMIC_DIVERGENCE_THRESHOLD:.2f} (INCOHERENT; conv ×"
-                 f"{_EPISTEMIC_CONVICTION_MULTIPLIER:.2f})"
+            f"{_EPISTEMIC_CONVICTION_MULTIPLIER:.2f})"
         ),
         f"Conviction: {conviction:.2f} (need {conviction_threshold:.2f})",
         f"Trade: {'YES' if should_trade else 'NO'}",

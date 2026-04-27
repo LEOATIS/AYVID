@@ -9,9 +9,9 @@ Queries the Neo4j supply chain graph at runtime to discover:
 Nothing is hardcoded. Everything is discovered from the graph or computed
 from market data.
 """
+
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +39,7 @@ async def discover_supply_chain_neighbours(
     """
     try:
         from graph_intelligence.tools.neo4j_tools import find_hidden_victims
+
         paths = await find_hidden_victims(
             ticker,
             pagerank_percentile=0.90,
@@ -129,13 +130,15 @@ async def _correlation_fallback(ticker: str, threshold: float = 0.6) -> list[dic
 
         corr = float(np.corrcoef(target_returns[-n:], other_returns[-n:])[0, 1])
         if abs(corr) > threshold:
-            neighbours.append({
-                "target_ticker": other_ticker,
-                "depth": 1,
-                "compound_risk": abs(corr),
-                "path": [ticker, other_ticker],
-                "correlation": corr,
-            })
+            neighbours.append(
+                {
+                    "target_ticker": other_ticker,
+                    "depth": 1,
+                    "compound_risk": abs(corr),
+                    "path": [ticker, other_ticker],
+                    "correlation": corr,
+                }
+            )
 
     neighbours.sort(key=lambda x: x["compound_risk"], reverse=True)
     return neighbours[:20]
@@ -162,7 +165,7 @@ async def _build_correlation_pairs(threshold: float = 0.5) -> dict[str, list[str
     ticker_list = list(returns_map.keys())
 
     for i, t1 in enumerate(ticker_list):
-        for t2 in ticker_list[i + 1:]:
+        for t2 in ticker_list[i + 1 :]:
             r1, r2 = returns_map[t1], returns_map[t2]
             n = min(len(r1), len(r2))
             if n < 10:
@@ -200,7 +203,7 @@ async def discover_cointegrated_pairs(
     ticker_list = list(closes_map.keys())
 
     for i, t1 in enumerate(ticker_list):
-        for t2 in ticker_list[i + 1:]:
+        for t2 in ticker_list[i + 1 :]:
             c1, c2 = closes_map[t1], closes_map[t2]
             n = min(len(c1), len(c2))
             if n < min_bars:
@@ -235,7 +238,9 @@ def _simple_adf(series: np.ndarray) -> float:
     try:
         beta = np.linalg.lstsq(x, diff, rcond=None)[0]
         residuals = diff - x @ beta
-        se = np.sqrt(np.sum(residuals**2) / (n - 2) / max(np.sum((lagged - np.mean(lagged))**2), 1e-10))
+        se = np.sqrt(
+            np.sum(residuals**2) / (n - 2) / max(np.sum((lagged - np.mean(lagged)) ** 2), 1e-10)
+        )
         return float(beta[0] / max(se, 1e-10))
     except Exception:
         return 0.0
@@ -278,137 +283,465 @@ async def build_dynamic_universe() -> dict[str, Any]:
 
 GLOBAL_INDEX_DERIVATIVES: dict[str, dict[str, Any]] = {
     "SPX": {
-        "name": "S&P 500", "exchange": "CBOE", "multiplier": 100,
-        "yahoo": "^GSPC", "futures": "ES", "etf": "SPY",
-        "country": "US", "currency": "USD",
+        "name": "S&P 500",
+        "exchange": "CBOE",
+        "multiplier": 100,
+        "yahoo": "^GSPC",
+        "futures": "ES",
+        "etf": "SPY",
+        "country": "US",
+        "currency": "USD",
     },
     "NDX": {
-        "name": "NASDAQ 100", "exchange": "CBOE", "multiplier": 100,
-        "yahoo": "^IXIC", "futures": "NQ", "etf": "QQQ",
-        "country": "US", "currency": "USD",
+        "name": "NASDAQ 100",
+        "exchange": "CBOE",
+        "multiplier": 100,
+        "yahoo": "^IXIC",
+        "futures": "NQ",
+        "etf": "QQQ",
+        "country": "US",
+        "currency": "USD",
     },
     "RUT": {
-        "name": "Russell 2000", "exchange": "CBOE", "multiplier": 100,
-        "yahoo": "^RUT", "futures": "RTY", "etf": "IWM",
-        "country": "US", "currency": "USD",
+        "name": "Russell 2000",
+        "exchange": "CBOE",
+        "multiplier": 100,
+        "yahoo": "^RUT",
+        "futures": "RTY",
+        "etf": "IWM",
+        "country": "US",
+        "currency": "USD",
     },
     "DJX": {
-        "name": "Dow Jones", "exchange": "CBOE", "multiplier": 100,
-        "yahoo": "^DJI", "futures": "YM", "etf": "DIA",
-        "country": "US", "currency": "USD",
+        "name": "Dow Jones",
+        "exchange": "CBOE",
+        "multiplier": 100,
+        "yahoo": "^DJI",
+        "futures": "YM",
+        "etf": "DIA",
+        "country": "US",
+        "currency": "USD",
     },
     "VIX": {
-        "name": "CBOE VIX", "exchange": "CBOE", "multiplier": 100,
-        "yahoo": "^VIX", "futures": "VX", "etf": "VXX",
-        "country": "US", "currency": "USD",
+        "name": "CBOE VIX",
+        "exchange": "CBOE",
+        "multiplier": 100,
+        "yahoo": "^VIX",
+        "futures": "VX",
+        "etf": "VXX",
+        "country": "US",
+        "currency": "USD",
     },
     "DAX": {
-        "name": "DAX 40", "exchange": "EUREX", "multiplier": 5,
-        "yahoo": "^GDAXI", "futures": "FDAX", "etf": "EWG",
-        "country": "DE", "currency": "EUR",
+        "name": "DAX 40",
+        "exchange": "EUREX",
+        "multiplier": 5,
+        "yahoo": "^GDAXI",
+        "futures": "FDAX",
+        "etf": "EWG",
+        "country": "DE",
+        "currency": "EUR",
     },
     "UKX": {
-        "name": "FTSE 100", "exchange": "ICE", "multiplier": 10,
-        "yahoo": "^FTSE", "futures": "Z", "etf": "EWU",
-        "country": "GB", "currency": "GBP",
+        "name": "FTSE 100",
+        "exchange": "ICE",
+        "multiplier": 10,
+        "yahoo": "^FTSE",
+        "futures": "Z",
+        "etf": "EWU",
+        "country": "GB",
+        "currency": "GBP",
     },
     "SX5E": {
-        "name": "EURO STOXX 50", "exchange": "EUREX", "multiplier": 10,
-        "yahoo": "^STOXX50E", "futures": "FESX", "etf": "FEZ",
-        "country": "EU", "currency": "EUR",
+        "name": "EURO STOXX 50",
+        "exchange": "EUREX",
+        "multiplier": 10,
+        "yahoo": "^STOXX50E",
+        "futures": "FESX",
+        "etf": "FEZ",
+        "country": "EU",
+        "currency": "EUR",
     },
     "NKY": {
-        "name": "Nikkei 225", "exchange": "OSE", "multiplier": 1000,
-        "yahoo": "^N225", "futures": "NK", "etf": "EWJ",
-        "country": "JP", "currency": "JPY",
+        "name": "Nikkei 225",
+        "exchange": "OSE",
+        "multiplier": 1000,
+        "yahoo": "^N225",
+        "futures": "NK",
+        "etf": "EWJ",
+        "country": "JP",
+        "currency": "JPY",
     },
     "HSI": {
-        "name": "Hang Seng", "exchange": "HKFE", "multiplier": 50,
-        "yahoo": "^HSI", "futures": "HSI", "etf": "EWH",
-        "country": "HK", "currency": "HKD",
+        "name": "Hang Seng",
+        "exchange": "HKFE",
+        "multiplier": 50,
+        "yahoo": "^HSI",
+        "futures": "HSI",
+        "etf": "EWH",
+        "country": "HK",
+        "currency": "HKD",
     },
     "NIFTY": {
-        "name": "NIFTY 50", "exchange": "NSE", "multiplier": 75,
-        "yahoo": "^NSEI", "futures": "NIFTY", "etf": "INDA",
-        "country": "IN", "currency": "INR",
+        "name": "NIFTY 50",
+        "exchange": "NSE",
+        "multiplier": 75,
+        "yahoo": "^NSEI",
+        "futures": "NIFTY",
+        "etf": "INDA",
+        "country": "IN",
+        "currency": "INR",
     },
     "SENSEX": {
-        "name": "BSE SENSEX", "exchange": "BSE", "multiplier": 15,
-        "yahoo": "^BSESN", "futures": "SENSEX", "etf": "INDY",
-        "country": "IN", "currency": "INR",
+        "name": "BSE SENSEX",
+        "exchange": "BSE",
+        "multiplier": 15,
+        "yahoo": "^BSESN",
+        "futures": "SENSEX",
+        "etf": "INDY",
+        "country": "IN",
+        "currency": "INR",
     },
     "KOSPI": {
-        "name": "KOSPI 200", "exchange": "KRX", "multiplier": 250000,
-        "yahoo": "^KS11", "futures": "K200", "etf": "EWY",
-        "country": "KR", "currency": "KRW",
+        "name": "KOSPI 200",
+        "exchange": "KRX",
+        "multiplier": 250000,
+        "yahoo": "^KS11",
+        "futures": "K200",
+        "etf": "EWY",
+        "country": "KR",
+        "currency": "KRW",
     },
     "ASX": {
-        "name": "S&P/ASX 200", "exchange": "ASX", "multiplier": 25,
-        "yahoo": "^AXJO", "futures": "AP", "etf": "EWA",
-        "country": "AU", "currency": "AUD",
+        "name": "S&P/ASX 200",
+        "exchange": "ASX",
+        "multiplier": 25,
+        "yahoo": "^AXJO",
+        "futures": "AP",
+        "etf": "EWA",
+        "country": "AU",
+        "currency": "AUD",
     },
     "CAC": {
-        "name": "CAC 40", "exchange": "EURONEXT", "multiplier": 10,
-        "yahoo": "^FCHI", "futures": "FCE", "etf": "EWQ",
-        "country": "FR", "currency": "EUR",
+        "name": "CAC 40",
+        "exchange": "EURONEXT",
+        "multiplier": 10,
+        "yahoo": "^FCHI",
+        "futures": "FCE",
+        "etf": "EWQ",
+        "country": "FR",
+        "currency": "EUR",
     },
     "IBOV": {
-        "name": "Bovespa", "exchange": "B3", "multiplier": 1,
-        "yahoo": "^BVSP", "futures": "IND", "etf": "EWZ",
-        "country": "BR", "currency": "BRL",
+        "name": "Bovespa",
+        "exchange": "B3",
+        "multiplier": 1,
+        "yahoo": "^BVSP",
+        "futures": "IND",
+        "etf": "EWZ",
+        "country": "BR",
+        "currency": "BRL",
     },
     "TAIEX": {
-        "name": "TAIEX", "exchange": "TAIFEX", "multiplier": 200,
-        "yahoo": "^TWII", "futures": "TX", "etf": "EWT",
-        "country": "TW", "currency": "TWD",
+        "name": "TAIEX",
+        "exchange": "TAIFEX",
+        "multiplier": 200,
+        "yahoo": "^TWII",
+        "futures": "TX",
+        "etf": "EWT",
+        "country": "TW",
+        "currency": "TWD",
     },
     "SMI": {
-        "name": "Swiss Market Index", "exchange": "EUREX", "multiplier": 10,
-        "yahoo": "^SSMI", "futures": "FSMI", "etf": "EWL",
-        "country": "CH", "currency": "CHF",
+        "name": "Swiss Market Index",
+        "exchange": "EUREX",
+        "multiplier": 10,
+        "yahoo": "^SSMI",
+        "futures": "FSMI",
+        "etf": "EWL",
+        "country": "CH",
+        "currency": "CHF",
     },
 }
 
 
 GLOBAL_FUTURES_UNIVERSE: dict[str, dict[str, Any]] = {
     # Energy
-    "CL": {"name": "Crude Oil WTI", "exchange": "NYMEX", "multiplier": 1000, "tick": 0.01, "currency": "USD", "category": "energy"},
-    "BZ": {"name": "Brent Crude", "exchange": "ICE", "multiplier": 1000, "tick": 0.01, "currency": "USD", "category": "energy"},
-    "NG": {"name": "Natural Gas", "exchange": "NYMEX", "multiplier": 10000, "tick": 0.001, "currency": "USD", "category": "energy"},
-    "RB": {"name": "RBOB Gasoline", "exchange": "NYMEX", "multiplier": 42000, "tick": 0.0001, "currency": "USD", "category": "energy"},
-    "HO": {"name": "Heating Oil", "exchange": "NYMEX", "multiplier": 42000, "tick": 0.0001, "currency": "USD", "category": "energy"},
+    "CL": {
+        "name": "Crude Oil WTI",
+        "exchange": "NYMEX",
+        "multiplier": 1000,
+        "tick": 0.01,
+        "currency": "USD",
+        "category": "energy",
+    },
+    "BZ": {
+        "name": "Brent Crude",
+        "exchange": "ICE",
+        "multiplier": 1000,
+        "tick": 0.01,
+        "currency": "USD",
+        "category": "energy",
+    },
+    "NG": {
+        "name": "Natural Gas",
+        "exchange": "NYMEX",
+        "multiplier": 10000,
+        "tick": 0.001,
+        "currency": "USD",
+        "category": "energy",
+    },
+    "RB": {
+        "name": "RBOB Gasoline",
+        "exchange": "NYMEX",
+        "multiplier": 42000,
+        "tick": 0.0001,
+        "currency": "USD",
+        "category": "energy",
+    },
+    "HO": {
+        "name": "Heating Oil",
+        "exchange": "NYMEX",
+        "multiplier": 42000,
+        "tick": 0.0001,
+        "currency": "USD",
+        "category": "energy",
+    },
     # Metals
-    "GC": {"name": "Gold", "exchange": "COMEX", "multiplier": 100, "tick": 0.10, "currency": "USD", "category": "metals"},
-    "SI": {"name": "Silver", "exchange": "COMEX", "multiplier": 5000, "tick": 0.005, "currency": "USD", "category": "metals"},
-    "HG": {"name": "Copper", "exchange": "COMEX", "multiplier": 25000, "tick": 0.0005, "currency": "USD", "category": "metals"},
-    "PL": {"name": "Platinum", "exchange": "NYMEX", "multiplier": 50, "tick": 0.10, "currency": "USD", "category": "metals"},
-    "PA": {"name": "Palladium", "exchange": "NYMEX", "multiplier": 100, "tick": 0.05, "currency": "USD", "category": "metals"},
+    "GC": {
+        "name": "Gold",
+        "exchange": "COMEX",
+        "multiplier": 100,
+        "tick": 0.10,
+        "currency": "USD",
+        "category": "metals",
+    },
+    "SI": {
+        "name": "Silver",
+        "exchange": "COMEX",
+        "multiplier": 5000,
+        "tick": 0.005,
+        "currency": "USD",
+        "category": "metals",
+    },
+    "HG": {
+        "name": "Copper",
+        "exchange": "COMEX",
+        "multiplier": 25000,
+        "tick": 0.0005,
+        "currency": "USD",
+        "category": "metals",
+    },
+    "PL": {
+        "name": "Platinum",
+        "exchange": "NYMEX",
+        "multiplier": 50,
+        "tick": 0.10,
+        "currency": "USD",
+        "category": "metals",
+    },
+    "PA": {
+        "name": "Palladium",
+        "exchange": "NYMEX",
+        "multiplier": 100,
+        "tick": 0.05,
+        "currency": "USD",
+        "category": "metals",
+    },
     # Agriculture
-    "ZC": {"name": "Corn", "exchange": "CBOT", "multiplier": 50, "tick": 0.25, "currency": "USD", "category": "agriculture"},
-    "ZS": {"name": "Soybeans", "exchange": "CBOT", "multiplier": 50, "tick": 0.25, "currency": "USD", "category": "agriculture"},
-    "ZW": {"name": "Wheat", "exchange": "CBOT", "multiplier": 50, "tick": 0.25, "currency": "USD", "category": "agriculture"},
-    "CT": {"name": "Cotton", "exchange": "ICE", "multiplier": 50000, "tick": 0.01, "currency": "USD", "category": "agriculture"},
-    "KC": {"name": "Coffee", "exchange": "ICE", "multiplier": 37500, "tick": 0.05, "currency": "USD", "category": "agriculture"},
-    "SB": {"name": "Sugar", "exchange": "ICE", "multiplier": 112000, "tick": 0.01, "currency": "USD", "category": "agriculture"},
-    "CC": {"name": "Cocoa", "exchange": "ICE", "multiplier": 10, "tick": 1.0, "currency": "USD", "category": "agriculture"},
+    "ZC": {
+        "name": "Corn",
+        "exchange": "CBOT",
+        "multiplier": 50,
+        "tick": 0.25,
+        "currency": "USD",
+        "category": "agriculture",
+    },
+    "ZS": {
+        "name": "Soybeans",
+        "exchange": "CBOT",
+        "multiplier": 50,
+        "tick": 0.25,
+        "currency": "USD",
+        "category": "agriculture",
+    },
+    "ZW": {
+        "name": "Wheat",
+        "exchange": "CBOT",
+        "multiplier": 50,
+        "tick": 0.25,
+        "currency": "USD",
+        "category": "agriculture",
+    },
+    "CT": {
+        "name": "Cotton",
+        "exchange": "ICE",
+        "multiplier": 50000,
+        "tick": 0.01,
+        "currency": "USD",
+        "category": "agriculture",
+    },
+    "KC": {
+        "name": "Coffee",
+        "exchange": "ICE",
+        "multiplier": 37500,
+        "tick": 0.05,
+        "currency": "USD",
+        "category": "agriculture",
+    },
+    "SB": {
+        "name": "Sugar",
+        "exchange": "ICE",
+        "multiplier": 112000,
+        "tick": 0.01,
+        "currency": "USD",
+        "category": "agriculture",
+    },
+    "CC": {
+        "name": "Cocoa",
+        "exchange": "ICE",
+        "multiplier": 10,
+        "tick": 1.0,
+        "currency": "USD",
+        "category": "agriculture",
+    },
     # Equity Index Futures
-    "ES": {"name": "E-mini S&P 500", "exchange": "CME", "multiplier": 50, "tick": 0.25, "currency": "USD", "category": "index"},
-    "NQ": {"name": "E-mini NASDAQ 100", "exchange": "CME", "multiplier": 20, "tick": 0.25, "currency": "USD", "category": "index"},
-    "YM": {"name": "E-mini Dow", "exchange": "CBOT", "multiplier": 5, "tick": 1.0, "currency": "USD", "category": "index"},
-    "RTY": {"name": "E-mini Russell 2000", "exchange": "CME", "multiplier": 50, "tick": 0.10, "currency": "USD", "category": "index"},
-    "MES": {"name": "Micro E-mini S&P", "exchange": "CME", "multiplier": 5, "tick": 0.25, "currency": "USD", "category": "index"},
-    "MNQ": {"name": "Micro E-mini NASDAQ", "exchange": "CME", "multiplier": 2, "tick": 0.25, "currency": "USD", "category": "index"},
+    "ES": {
+        "name": "E-mini S&P 500",
+        "exchange": "CME",
+        "multiplier": 50,
+        "tick": 0.25,
+        "currency": "USD",
+        "category": "index",
+    },
+    "NQ": {
+        "name": "E-mini NASDAQ 100",
+        "exchange": "CME",
+        "multiplier": 20,
+        "tick": 0.25,
+        "currency": "USD",
+        "category": "index",
+    },
+    "YM": {
+        "name": "E-mini Dow",
+        "exchange": "CBOT",
+        "multiplier": 5,
+        "tick": 1.0,
+        "currency": "USD",
+        "category": "index",
+    },
+    "RTY": {
+        "name": "E-mini Russell 2000",
+        "exchange": "CME",
+        "multiplier": 50,
+        "tick": 0.10,
+        "currency": "USD",
+        "category": "index",
+    },
+    "MES": {
+        "name": "Micro E-mini S&P",
+        "exchange": "CME",
+        "multiplier": 5,
+        "tick": 0.25,
+        "currency": "USD",
+        "category": "index",
+    },
+    "MNQ": {
+        "name": "Micro E-mini NASDAQ",
+        "exchange": "CME",
+        "multiplier": 2,
+        "tick": 0.25,
+        "currency": "USD",
+        "category": "index",
+    },
     # Rates
-    "ZB": {"name": "30Y T-Bond", "exchange": "CBOT", "multiplier": 1000, "tick": 0.03125, "currency": "USD", "category": "rates"},
-    "ZN": {"name": "10Y T-Note", "exchange": "CBOT", "multiplier": 1000, "tick": 0.015625, "currency": "USD", "category": "rates"},
-    "ZF": {"name": "5Y T-Note", "exchange": "CBOT", "multiplier": 1000, "tick": 0.0078125, "currency": "USD", "category": "rates"},
-    "ZT": {"name": "2Y T-Note", "exchange": "CBOT", "multiplier": 2000, "tick": 0.0078125, "currency": "USD", "category": "rates"},
-    "GE": {"name": "Eurodollar", "exchange": "CME", "multiplier": 2500, "tick": 0.005, "currency": "USD", "category": "rates"},
+    "ZB": {
+        "name": "30Y T-Bond",
+        "exchange": "CBOT",
+        "multiplier": 1000,
+        "tick": 0.03125,
+        "currency": "USD",
+        "category": "rates",
+    },
+    "ZN": {
+        "name": "10Y T-Note",
+        "exchange": "CBOT",
+        "multiplier": 1000,
+        "tick": 0.015625,
+        "currency": "USD",
+        "category": "rates",
+    },
+    "ZF": {
+        "name": "5Y T-Note",
+        "exchange": "CBOT",
+        "multiplier": 1000,
+        "tick": 0.0078125,
+        "currency": "USD",
+        "category": "rates",
+    },
+    "ZT": {
+        "name": "2Y T-Note",
+        "exchange": "CBOT",
+        "multiplier": 2000,
+        "tick": 0.0078125,
+        "currency": "USD",
+        "category": "rates",
+    },
+    "GE": {
+        "name": "Eurodollar",
+        "exchange": "CME",
+        "multiplier": 2500,
+        "tick": 0.005,
+        "currency": "USD",
+        "category": "rates",
+    },
     # FX Futures
-    "6E": {"name": "Euro FX", "exchange": "CME", "multiplier": 125000, "tick": 0.00005, "currency": "USD", "category": "fx"},
-    "6J": {"name": "Japanese Yen", "exchange": "CME", "multiplier": 12500000, "tick": 0.0000005, "currency": "USD", "category": "fx"},
-    "6B": {"name": "British Pound", "exchange": "CME", "multiplier": 62500, "tick": 0.0001, "currency": "USD", "category": "fx"},
-    "6A": {"name": "Australian Dollar", "exchange": "CME", "multiplier": 100000, "tick": 0.0001, "currency": "USD", "category": "fx"},
-    "6C": {"name": "Canadian Dollar", "exchange": "CME", "multiplier": 100000, "tick": 0.00005, "currency": "USD", "category": "fx"},
-    "6S": {"name": "Swiss Franc", "exchange": "CME", "multiplier": 125000, "tick": 0.0001, "currency": "USD", "category": "fx"},
+    "6E": {
+        "name": "Euro FX",
+        "exchange": "CME",
+        "multiplier": 125000,
+        "tick": 0.00005,
+        "currency": "USD",
+        "category": "fx",
+    },
+    "6J": {
+        "name": "Japanese Yen",
+        "exchange": "CME",
+        "multiplier": 12500000,
+        "tick": 0.0000005,
+        "currency": "USD",
+        "category": "fx",
+    },
+    "6B": {
+        "name": "British Pound",
+        "exchange": "CME",
+        "multiplier": 62500,
+        "tick": 0.0001,
+        "currency": "USD",
+        "category": "fx",
+    },
+    "6A": {
+        "name": "Australian Dollar",
+        "exchange": "CME",
+        "multiplier": 100000,
+        "tick": 0.0001,
+        "currency": "USD",
+        "category": "fx",
+    },
+    "6C": {
+        "name": "Canadian Dollar",
+        "exchange": "CME",
+        "multiplier": 100000,
+        "tick": 0.00005,
+        "currency": "USD",
+        "category": "fx",
+    },
+    "6S": {
+        "name": "Swiss Franc",
+        "exchange": "CME",
+        "multiplier": 125000,
+        "tick": 0.0001,
+        "currency": "USD",
+        "category": "fx",
+    },
 }

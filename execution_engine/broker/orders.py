@@ -26,18 +26,29 @@ Implements:
 - Regular Trading Hours enforcement
 - Passive peg-and-trail with auto-cancel
 """
+
 from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import threading
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from execution_engine.broker.liquidity import (
+    LiquidityTier,
+    compute_pre_market_midpoint,
+)
+from execution_engine.broker.liquidity import (
+    classify as classify_liquidity,
+)
 from shared.config import settings
-from shared.exceptions import IBKROrderRejectedError, PreMarketTrapError
+from shared.exceptions import IBKROrderRejectedError, PreMarketTrapError  # noqa: F401
+from shared.executors import run_in_io, with_ib_deadline
 from shared.logger import get_logger
 from shared.types import (
     AlphaHorizon,
+    AssetClass,
     BracketOrder,
     OrderType,
     SignalStatus,
@@ -47,16 +58,35 @@ from shared.types import (
 
 log = get_logger("broker.orders")
 
+# All session windows and passive-routing cadence knobs live in
+# `shared.config.Settings` so a deployment can override via .env without
+# touching code. The module-level tuples below are derived once at
+# import time from Settings so downstream helpers (is_regular_trading_hours,
+# etc.) stay pure-Python time comparisons.
 _ET = ZoneInfo("America/New_York")
-_RTH_OPEN = dt.time(9, 30)
-_RTH_CLOSE = dt.time(16, 0)
-_SAFE_OPEN = dt.time(9, 45)
+_RTH_OPEN = dt.time(settings.RTH_OPEN_HOUR, settings.RTH_OPEN_MINUTE)
+_RTH_CLOSE = dt.time(settings.RTH_CLOSE_HOUR, settings.RTH_CLOSE_MINUTE)
+_SAFE_OPEN = dt.time(settings.SAFE_OPEN_HOUR, settings.SAFE_OPEN_MINUTE)
+# Pre-market window. IBKR pre-market opens at 04:00 ET; we only attempt
+# the midpoint-LIMIT path within the last 90 minutes before RTH where
+# both bid/ask depth is materially better and our quote vendor still
+# has fresh data (most providers throttle at 03:00-07:00 ET).
+_PRE_MARKET_LIMIT_OPEN = dt.time(
+    settings.PRE_MARKET_LIMIT_OPEN_HOUR,
+    settings.PRE_MARKET_LIMIT_OPEN_MINUTE,
+)
 
 # Passive-routing knobs (Tier-1 microstructure).
-PASSIVE_PEG_TIMEOUT_SEC = 30           # cancel if unfilled after this window
-PASSIVE_PEG_POLL_INTERVAL_SEC = 2      # how often to re-check fill / re-peg
-PASSIVE_REPEG_TICK_THRESHOLD = 2       # re-peg when quote drifts >N ticks
+PASSIVE_PEG_TIMEOUT_SEC: int = settings.PASSIVE_PEG_TIMEOUT_SEC
+PASSIVE_PEG_POLL_INTERVAL_SEC: int = settings.PASSIVE_PEG_POLL_INTERVAL_SEC
+PASSIVE_REPEG_TICK_THRESHOLD = 2  # re-peg when quote drifts >N ticks
 
+# P1-D: both structures are mutated from async coroutines that may be
+# scheduled across OS threads (ib_async dispatches event callbacks from
+# its own thread). A `threading.Lock` keeps mutations atomic even in
+# the worst case; the critical sections are pure dict / list / set ops
+# so contention is sub-microsecond.
+_broker_state_lock = threading.Lock()
 _order_queue: list[TradeSignal] = []
 _inflight_signals: set[str] = set()
 
@@ -65,6 +95,12 @@ def is_regular_trading_hours() -> bool:
     """Check if we're within Regular Trading Hours (09:30–16:00 ET)."""
     now_et = dt.datetime.now(_ET).time()
     return _RTH_OPEN <= now_et <= _RTH_CLOSE
+
+
+def is_pre_market_window() -> bool:
+    """Pre-market window where the midpoint-LIMIT path is eligible."""
+    now_et = dt.datetime.now(_ET).time()
+    return _PRE_MARKET_LIMIT_OPEN <= now_et < _RTH_OPEN
 
 
 def _determine_order_type(signal: TradeSignal) -> OrderType:
@@ -90,60 +126,318 @@ def _determine_order_type(signal: TradeSignal) -> OrderType:
             return OrderType.PASSIVE_LIMIT
 
 
+def _load_bars_for_bracket(ticker: str) -> list:
+    """Fetch the recent bar window needed for ATR computation.
+
+    Batch-1/B: tries the orchestrator in-process price cache first
+    (populated by the ingestion cycle with ~90 days of history), then
+    falls back to the local data store loader used by the backtest
+    engine. Returns an empty list when neither path has data — the
+    caller's ATR helper will then use the fixed-pct fallback.
+    """
+    try:
+        import backend.services.orchestrator as orch
+
+        cached = orch._price_cache.get(ticker)
+        if cached and len(cached) >= 15:
+            return cached[-60:]
+    except Exception:
+        pass
+    try:
+        from backtesting.engine import _load_local_bars
+
+        bars = _load_local_bars(ticker)
+        if bars and len(bars) >= 15:
+            return bars[-60:]
+    except Exception:
+        pass
+    return []
+
+
+# ── Batch-1/B: ATR-scaled dynamic bracket ────────────────────────────
+
+
+def _target_r_for_signal(signal: TradeSignal) -> float:
+    """Select the R-ratio for this signal's horizon / shock state.
+
+    Tier-3 shocks get the tightest R (BRACKET_TARGET_R_TIER3_SHOCK)
+    because the alpha decays fast. 3rd / 4th order structural trades
+    get BRACKET_TARGET_R_LONG_HORIZON so the thesis has room to play
+    out through day-to-day noise. Everything else gets the default.
+    """
+    if getattr(signal, "tier3_shock", False):
+        return float(settings.BRACKET_TARGET_R_TIER3_SHOCK)
+    if signal.alpha_horizon in (AlphaHorizon.THIRD_ORDER, AlphaHorizon.FOURTH_ORDER):
+        return float(settings.BRACKET_TARGET_R_LONG_HORIZON)
+    return float(settings.BRACKET_TARGET_R)
+
+
+def compute_bracket_levels(
+    signal: TradeSignal,
+    entry_price: float,
+    bars: list | None = None,
+) -> tuple[float, float, dict]:
+    """Return (stop_loss_price, take_profit_price, meta) for this signal.
+
+    Batch-1/B: replaces the fixed ``BRACKET_STOP_LOSS_PCT`` /
+    ``BRACKET_TAKE_PROFIT_PCT`` math with an ATR-scaled bracket so
+    stops adapt to each instrument's realised volatility:
+
+        atr14       = ATR(14) on the provided bars
+        stop_pct    = clamp(K_stop * atr14 / entry_price,
+                            MIN_STOP_PCT, MAX_STOP_PCT)
+        tp_pct      = target_R * stop_pct     (target_R picks by horizon
+                                               / shock state via
+                                               _target_r_for_signal)
+
+    In high-vol regimes the stop widens with the market so the
+    thesis isn't cashed out on noise; in low-vol regimes the stop
+    tightens so losses cap before theta-decay on F&O overwhelms the
+    edge. The R-ratio stays constant, only the absolute distance
+    scales.
+
+    Fallback: when no bars are available (pre-market quote, new
+    listing, ingestion miss) we return the legacy fixed-pct bracket
+    so the code path stays complete. The ``meta`` dict records
+    whether we took the ATR path or fell back.
+    """
+    from execution_engine.math._primitives import compute_atr
+
+    target_r = _target_r_for_signal(signal)
+
+    # Fallback path — no usable history for ATR.
+    if not bars or len(bars) < 15 or entry_price <= 0:
+        legacy_stop = float(settings.BRACKET_STOP_LOSS_PCT)
+        legacy_tp = float(
+            settings.BRACKET_TAKE_PROFIT_PCT_LONG_HORIZON
+            if signal.alpha_horizon in (AlphaHorizon.THIRD_ORDER, AlphaHorizon.FOURTH_ORDER)
+            else settings.BRACKET_TAKE_PROFIT_PCT
+        )
+        sl, tp = _project_bracket_prices(
+            entry_price,
+            signal.action,
+            legacy_stop,
+            legacy_tp,
+        )
+        return (
+            sl,
+            tp,
+            {
+                "mode": "fallback_fixed_pct",
+                "stop_pct": legacy_stop,
+                "tp_pct": legacy_tp,
+                "target_r": legacy_tp / legacy_stop if legacy_stop > 0 else 0.0,
+                "atr_pct": None,
+            },
+        )
+
+    import numpy as np
+
+    highs = np.array([b.high for b in bars], dtype=float)
+    lows = np.array([b.low for b in bars], dtype=float)
+    closes = np.array([b.close for b in bars], dtype=float)
+    atr14 = float(compute_atr(highs, lows, closes, period=14))
+    if atr14 <= 0 or not np.isfinite(atr14):
+        # Degenerate data → fall back so we never emit a zero-distance bracket.
+        return compute_bracket_levels(signal, entry_price, bars=None)
+
+    atr_pct = atr14 / entry_price
+    raw_stop_pct = float(settings.ATR_STOP_MULTIPLIER) * atr_pct
+    stop_pct = max(
+        float(settings.MIN_STOP_PCT),
+        min(float(settings.MAX_STOP_PCT), raw_stop_pct),
+    )
+    tp_pct = target_r * stop_pct
+
+    sl, tp = _project_bracket_prices(entry_price, signal.action, stop_pct, tp_pct)
+    return (
+        sl,
+        tp,
+        {
+            "mode": "atr_scaled",
+            "atr14": atr14,
+            "atr_pct": atr_pct,
+            "stop_pct": stop_pct,
+            "tp_pct": tp_pct,
+            "target_r": target_r,
+            "k_stop": float(settings.ATR_STOP_MULTIPLIER),
+        },
+    )
+
+
+def _project_bracket_prices(
+    entry: float,
+    action: TradeAction,
+    stop_pct: float,
+    tp_pct: float,
+) -> tuple[float, float]:
+    """Return (stop_loss, take_profit) prices for the direction."""
+    if action == TradeAction.SHORT:
+        sl = entry * (1 + stop_pct)
+        tp = entry * (1 - tp_pct)
+    else:
+        sl = entry * (1 - stop_pct)
+        tp = entry * (1 + tp_pct)
+    return round(sl, 2), round(tp, 2)
+
+
 async def submit_signal(
     signal: TradeSignal,
     portfolio_equity: float,
     current_price: float,
     quantity: int,
 ) -> TradeSignal:
-    """Process a trade signal through the pre-market and order routing logic."""
+    """Process a trade signal through the pre-market and order routing logic.
+
+    Pre-market routing (PDF spec):
+      * LIQUID name (e.g. S&P 500 class)  → submit a stringent LIMIT at
+        the pre-market spread midpoint. Accept non-fill risk for price
+        protection.
+      * ILLIQUID name (mid/small-cap)     → delay to 09:45 ET via the
+        existing queue path.
+
+    Liquidity tier is computed dynamically from local OHLCV
+    (``execution_engine.broker.liquidity``); no hardcoded ticker list.
+    """
 
     if not is_regular_trading_hours():
+        # Try the liquid → midpoint LIMIT path first.
+        if is_pre_market_window() and signal.asset_class == AssetClass.EQUITY:
+            tier, meta = classify_liquidity(signal.ticker)
+            if tier == LiquidityTier.LIQUID:
+                midpoint = await compute_pre_market_midpoint(signal.ticker)
+                if midpoint and midpoint > 0:
+                    log.info(
+                        f"Pre-market LIMIT @ midpoint for LIQUID {signal.ticker} "
+                        f"(${midpoint:.2f}, dv≈${meta.get('median_dollar_volume', 0):,.0f}, "
+                        f"spread≈{meta.get('median_spread_bps', 0):.1f}bps) — "
+                        f"NON-fill acceptable"
+                    )
+                    return await _execute_now(signal, midpoint, quantity, force_limit=True)
+                log.info(f"LIQUID {signal.ticker} but no pre-market quote — falling back to delay")
+
         now_et = dt.datetime.now(_ET)
         log.warning(
             f"Signal for {signal.ticker} generated outside RTH "
-            f"({now_et.strftime('%H:%M')} ET) — queueing"
+            f"({now_et.strftime('%H:%M')} ET) — queueing for 09:45 ET"
         )
         signal.status = SignalStatus.QUEUED
-        _order_queue.append(signal)
+        with _broker_state_lock:
+            _order_queue.append(signal)
         return signal
 
-    order_type = _determine_order_type(signal)
+    return await _execute_now(signal, current_price, quantity, force_limit=False)
+
+
+async def _execute_now(
+    signal: TradeSignal,
+    price: float,
+    quantity: int,
+    *,
+    force_limit: bool = False,
+) -> TradeSignal:
+    """Build the bracket and dispatch through the right asset-class path.
+
+    ``force_limit=True`` is used by the pre-market liquid path: we want a
+    crossable LIMIT (not the passive REL peg the horizon would otherwise
+    pick), because the entire point of submitting in pre-market is to
+    take the midpoint while it's still there.
+
+    Batch-1/B: the stop/TP levels come from ``compute_bracket_levels``,
+    which returns ATR-scaled distances when OHLCV bars are available
+    and falls back to the fixed-pct legacy bracket otherwise.
+    """
+    order_type = OrderType.LIMIT if force_limit else _determine_order_type(signal)
     ib_action = "SELL" if signal.action == TradeAction.SHORT else "BUY"
 
-    stop_loss_pct = 0.03
-    take_profit_pct = 0.06 if signal.alpha_horizon in (
-        AlphaHorizon.THIRD_ORDER, AlphaHorizon.FOURTH_ORDER
-    ) else 0.03
-
-    if ib_action == "BUY":
-        take_profit = current_price * (1 + take_profit_pct)
-        stop_loss = current_price * (1 - stop_loss_pct)
-    else:
-        take_profit = current_price * (1 - take_profit_pct)
-        stop_loss = current_price * (1 + stop_loss_pct)
+    # Pull the ticker's recent history for ATR.
+    # We go via the orchestrator's price cache first because it is
+    # already populated by the ingestion cycle; a cache miss falls
+    # through to a local-disk load and, finally, to the fixed-pct
+    # fallback inside compute_bracket_levels.
+    bars = _load_bars_for_bracket(signal.ticker)
+    stop_loss, take_profit, bracket_meta = compute_bracket_levels(
+        signal,
+        price,
+        bars,
+    )
 
     bracket = BracketOrder(
         ticker=signal.ticker,
         action=ib_action,
         quantity=quantity,
         order_type=order_type,
-        limit_price=current_price,
-        take_profit_price=round(take_profit, 2),
-        stop_loss_price=round(stop_loss, 2),
+        limit_price=price,
+        take_profit_price=take_profit,
+        stop_loss_price=stop_loss,
     )
 
     if settings.PAPER_TRADING:
         signal.status = SignalStatus.FILLED
         log.info(
-            f"[PAPER] {ib_action} {quantity} {signal.ticker} @ ${current_price:.2f} | "
+            f"[PAPER] {ib_action} {quantity} {signal.ticker} "
+            f"({signal.asset_class.value}) @ ${price:.2f} | "
             f"TP=${bracket.take_profit_price:.2f} SL=${bracket.stop_loss_price:.2f} | "
-            f"Type={order_type.value}"
+            f"Type={order_type.value} | "
+            f"bracket={bracket_meta.get('mode')} "
+            f"stop_pct={bracket_meta.get('stop_pct', 0):.3%} "
+            f"target_r={bracket_meta.get('target_r', 0):.2f}"
         )
         return signal
 
-    signal = await _submit_to_ib(signal, bracket)
-    return signal
+    # Asset-class dispatch — futures & options have their own bracket-less
+    # IB paths, equity (default) goes through the bracket submitter.
+    if signal.asset_class == AssetClass.FUTURE:
+        result = await submit_futures_order(
+            symbol=signal.ticker,
+            action=ib_action,
+            quantity=quantity,
+            exchange=signal.exchange or "CME",
+            expiry=signal.contract_expiry or "",
+            multiplier=signal.contract_multiplier or "50",
+            limit_price=price if order_type != OrderType.TWAP else None,
+            portfolio_equity=0.0,
+        )
+        signal.status = (
+            SignalStatus.EXECUTING
+            if result.get("status") == "EXECUTING"
+            else SignalStatus.FILLED
+            if result.get("status") == "FILLED"
+            else SignalStatus.REJECTED
+        )
+        return signal
+    if signal.asset_class == AssetClass.OPTION:
+        if (
+            not signal.contract_expiry
+            or signal.contract_strike is None
+            or not signal.contract_right
+        ):
+            signal.status = SignalStatus.REJECTED
+            log.error(
+                f"OPTION signal for {signal.ticker} missing expiry / strike / right "
+                f"— refusing to submit"
+            )
+            return signal
+        result = await submit_options_order(
+            underlying=signal.ticker,
+            expiry=signal.contract_expiry,
+            strike=float(signal.contract_strike),
+            right=signal.contract_right,
+            action=ib_action,
+            quantity=quantity,
+            exchange=signal.exchange or "SMART",
+            limit_price=price,
+        )
+        signal.status = (
+            SignalStatus.EXECUTING
+            if result.get("status") == "EXECUTING"
+            else SignalStatus.FILLED
+            if result.get("status") == "FILLED"
+            else SignalStatus.REJECTED
+        )
+        return signal
+
+    return await _submit_to_ib(signal, bracket)
 
 
 def _build_ib_contract(
@@ -154,26 +448,61 @@ def _build_ib_contract(
     strike: float = 0.0,
     right: str = "",
     multiplier: str = "",
+    currency: str = "USD",
 ):
-    """Build the appropriate ib_async contract for any asset class."""
-    from ib_async import Stock, Future, Option
+    """Build the appropriate ib_async contract for any asset class.
 
-    match asset_class.upper():
+    Accepts either the ``AssetClass`` enum value (e.g. ``"EQUITY"``,
+    ``"FUTURE"``, ``"OPTION"``, ``"INDEX"``, ``"FX"``, ``"CRYPTO"``) or
+    its lowercased form. Unknown values fall back to ``Stock`` so the
+    legacy equity path is never broken.
+    """
+    from ib_async import Future, Option, Stock
+
+    cls = (asset_class or "EQUITY").upper()
+
+    match cls:
         case "FUTURE":
             return Future(
-                symbol=ticker, exchange=exchange,
+                symbol=ticker,
+                exchange=exchange,
                 lastTradeDateOrContractMonth=expiry,
                 multiplier=multiplier or "1",
+                currency=currency,
             )
         case "OPTION":
             return Option(
-                symbol=ticker, exchange=exchange or "SMART",
+                symbol=ticker,
+                exchange=exchange or "SMART",
                 lastTradeDateOrContractMonth=expiry,
-                strike=strike, right=right,
+                strike=strike,
+                right=right,
                 multiplier=multiplier or "100",
+                currency=currency,
             )
+        case "INDEX":
+            try:
+                from ib_async import Index
+
+                return Index(symbol=ticker, exchange=exchange or "CBOE", currency=currency)
+            except ImportError:
+                return Stock(ticker, exchange or "SMART", currency)
+        case "FX":
+            try:
+                from ib_async import Forex
+
+                return Forex(pair=ticker)
+            except ImportError:
+                return Stock(ticker, exchange or "IDEALPRO", currency)
+        case "CRYPTO":
+            try:
+                from ib_async import Crypto
+
+                return Crypto(symbol=ticker, exchange=exchange or "PAXOS", currency=currency)
+            except ImportError:
+                return Stock(ticker, exchange or "PAXOS", currency)
         case _:
-            return Stock(ticker, exchange, "USD")
+            return Stock(ticker, exchange or "SMART", currency)
 
 
 async def _submit_to_ib(signal: TradeSignal, bracket: BracketOrder) -> TradeSignal:
@@ -185,25 +514,44 @@ async def _submit_to_ib(signal: TradeSignal, bracket: BracketOrder) -> TradeSign
     All three legs (parent, TP, SL) are placed in rapid succession
     within a single try block. If any leg fails after the parent was
     accepted, we attempt to cancel the parent to avoid orphans.
-    """
-    if signal.signal_id in _inflight_signals:
-        log.warning(
-            f"Duplicate submission blocked: {signal.signal_id} "
-            f"for {bracket.ticker} is already in-flight"
-        )
-        signal.status = SignalStatus.EXECUTING
-        return signal
 
-    _inflight_signals.add(signal.signal_id)
+    **P1-D hardening.** The inflight set is protected by a module-level
+    lock, and cleanup lives in a ``finally`` so the entry is removed on
+    every exit path (success, raise, cancel). Before this fix a
+    successful bracket left the signal_id permanently in the set,
+    which silently short-circuited any subsequent retry attempt at
+    L332-337 (`Duplicate submission blocked`).
+    """
+    with _broker_state_lock:
+        if signal.signal_id in _inflight_signals:
+            log.warning(
+                f"Duplicate submission blocked: {signal.signal_id} "
+                f"for {bracket.ticker} is already in-flight"
+            )
+            signal.status = SignalStatus.EXECUTING
+            return signal
+        _inflight_signals.add(signal.signal_id)
+
     parent_trade = None
+    submission_ok = False
 
     try:
         from ib_async import LimitOrder, Order
+
         from execution_engine.broker.connection import get_ib
 
         ib = await get_ib()
-        contract = _build_ib_contract(bracket.ticker)
-        await ib.qualifyContractsAsync(contract)
+        contract = _build_ib_contract(
+            bracket.ticker,
+            asset_class=signal.asset_class.value if hasattr(signal, "asset_class") else "EQUITY",
+            exchange=getattr(signal, "exchange", "SMART") or "SMART",
+            currency=getattr(signal, "currency", "USD") or "USD",
+        )
+        await with_ib_deadline(
+            ib.qualifyContractsAsync(contract),
+            deadline_ms=1500,
+            op_name=f"qualifyContracts({bracket.ticker})",
+        )
 
         exit_action = "SELL" if bracket.action == "BUY" else "BUY"
 
@@ -244,7 +592,9 @@ async def _submit_to_ib(signal: TradeSignal, bracket: BracketOrder) -> TradeSign
                 transmit=False,
             )
 
-        parent_trade = await asyncio.to_thread(ib.placeOrder, contract, parent_order)
+        # placeOrder is synchronous in ib_async — push to the dedicated I/O
+        # pool so the IB event loop never blocks even on a slow ack.
+        parent_trade = await run_in_io(ib.placeOrder, contract, parent_order)
         parent_id = parent_trade.order.orderId
 
         take_profit_order = LimitOrder(
@@ -264,8 +614,8 @@ async def _submit_to_ib(signal: TradeSignal, bracket: BracketOrder) -> TradeSign
             transmit=True,
         )
 
-        await asyncio.to_thread(ib.placeOrder, contract, take_profit_order)
-        await asyncio.to_thread(ib.placeOrder, contract, stop_loss_order)
+        await run_in_io(ib.placeOrder, contract, take_profit_order)
+        await run_in_io(ib.placeOrder, contract, stop_loss_order)
 
         signal.status = SignalStatus.EXECUTING
         log.info(
@@ -274,16 +624,16 @@ async def _submit_to_ib(signal: TradeSignal, bracket: BracketOrder) -> TradeSign
         )
 
         if bracket.order_type == OrderType.PASSIVE_LIMIT:
-            asyncio.create_task(
-                _passive_peg_monitor(ib, parent_trade, signal, bracket, contract)
-            )
+            asyncio.create_task(_passive_peg_monitor(ib, parent_trade, signal, bracket, contract))
 
+        submission_ok = True
         return signal
 
     except Exception as exc:
         if parent_trade is not None:
             try:
                 from execution_engine.broker.connection import get_ib
+
                 ib = await get_ib()
                 ib.cancelOrder(parent_trade.order)
                 log.warning(
@@ -295,9 +645,29 @@ async def _submit_to_ib(signal: TradeSignal, bracket: BracketOrder) -> TradeSign
                     f"CRITICAL: Failed to cancel orphan parent for "
                     f"{bracket.ticker}: {cancel_exc}. Manual intervention required."
                 )
-        _inflight_signals.discard(signal.signal_id)
         signal.status = SignalStatus.REJECTED
         raise IBKROrderRejectedError(0, str(exc)) from exc
+    finally:
+        # P1-D: always release the inflight slot — success AND failure
+        # paths. Previous implementation only discarded on exception,
+        # which meant a successful bracket locked the signal_id forever
+        # and silently no-op'd all subsequent submits with that id.
+        # For passive REL pegs that need async monitoring, the peg
+        # monitor task is already scheduled above and carries its own
+        # state; nothing here cancels it.
+        if not submission_ok:
+            with _broker_state_lock:
+                _inflight_signals.discard(signal.signal_id)
+        else:
+            # Equity LIMIT / TWAP / VWAP paths transmit terminal state
+            # through ib_async callbacks. We release after the bracket
+            # is fully placed so retries on a later cycle can proceed.
+            # PASSIVE_LIMIT monitors parent resolution in the background
+            # and MUST NOT be cleared here — the monitor owns the slot
+            # until timeout or fill.
+            if bracket.order_type != OrderType.PASSIVE_LIMIT:
+                with _broker_state_lock:
+                    _inflight_signals.discard(signal.signal_id)
 
 
 async def _passive_peg_monitor(
@@ -332,6 +702,8 @@ async def _passive_peg_monitor(
                     f"[PASSIVE-PEG] {bracket.ticker} parent={parent_trade.order.orderId} "
                     f"resolved status={order_status} filled={filled_qty}/{bracket.quantity}"
                 )
+                with _broker_state_lock:
+                    _inflight_signals.discard(signal.signal_id)
                 return
 
         elapsed = (dt.datetime.now(_ET) - start_ts).total_seconds()
@@ -342,14 +714,17 @@ async def _passive_peg_monitor(
             f"{bracket.quantity}). NOT crossing spread."
         )
         try:
-            await asyncio.to_thread(ib.cancelOrder, parent_trade.order)
+            await run_in_io(ib.cancelOrder, parent_trade.order)
         except Exception as cancel_exc:
-            log.error(
-                f"[PASSIVE-PEG] cancel failed for {bracket.ticker}: {cancel_exc}"
-            )
+            log.error(f"[PASSIVE-PEG] cancel failed for {bracket.ticker}: {cancel_exc}")
         signal.status = SignalStatus.CANCELLED
     except Exception as exc:
         log.error(f"[PASSIVE-PEG] monitor error for {bracket.ticker}: {exc}")
+    finally:
+        # Release the inflight slot on every exit path so a later
+        # cycle can retry this signal_id if needed.
+        with _broker_state_lock:
+            _inflight_signals.discard(signal.signal_id)
 
 
 async def process_queued_orders(portfolio_equity: float) -> list[TradeSignal]:
@@ -357,8 +732,9 @@ async def process_queued_orders(portfolio_equity: float) -> list[TradeSignal]:
 
     Fetches live prices and computes Kelly sizing before resubmission.
     """
-    if not _order_queue:
-        return []
+    with _broker_state_lock:
+        if not _order_queue:
+            return []
 
     if not is_regular_trading_hours():
         return []
@@ -371,12 +747,16 @@ async def process_queued_orders(portfolio_equity: float) -> list[TradeSignal]:
     from execution_engine.math.kelly import optimal_allocation_for_signal
 
     processed: list[TradeSignal] = []
-    while _order_queue:
-        signal = _order_queue.pop(0)
+    while True:
+        with _broker_state_lock:
+            if not _order_queue:
+                break
+            signal = _order_queue.pop(0)
         log.info(f"Resubmitting queued signal: {signal.action.value} {signal.ticker}")
         signal.status = SignalStatus.PENDING
         try:
             from data_primitives.extractors.openbb_client import fetch_current_price
+
             price = await fetch_current_price(signal.ticker)
             _, shares = optimal_allocation_for_signal(
                 portfolio_equity=portfolio_equity,
@@ -384,6 +764,10 @@ async def process_queued_orders(portfolio_equity: float) -> list[TradeSignal]:
                 expected_return=0.05,
                 volatility=0.2,
                 current_price=price,
+                # Batch-1/D: conviction-scaled sizing on the queued-order
+                # resubmission path too, so a 0.62 signal doesn't get
+                # full size simply because it was deferred past RTH.
+                conviction=float(signal.confidence),
             )
             if shares == 0:
                 signal.status = SignalStatus.CANCELLED
@@ -401,8 +785,9 @@ async def process_queued_orders(portfolio_equity: float) -> list[TradeSignal]:
 
 
 def get_queued_orders() -> list[TradeSignal]:
-    """Return current order queue."""
-    return list(_order_queue)
+    """Return a snapshot of the current order queue (lock-protected copy)."""
+    with _broker_state_lock:
+        return list(_order_queue)
 
 
 # ── Futures & Options Order Submission ───────────────────────
@@ -423,8 +808,12 @@ async def submit_futures_order(
     Paper mode fills immediately; live mode routes through IB.
     """
     contract_info = {
-        "symbol": symbol, "action": action, "quantity": quantity,
-        "exchange": exchange, "expiry": expiry, "multiplier": multiplier,
+        "symbol": symbol,
+        "action": action,
+        "quantity": quantity,
+        "exchange": exchange,
+        "expiry": expiry,
+        "multiplier": multiplier,
     }
 
     if settings.PAPER_TRADING:
@@ -433,11 +822,16 @@ async def submit_futures_order(
 
     try:
         from ib_async import LimitOrder, MarketOrder
+
         from execution_engine.broker.connection import get_ib
 
         ib = await get_ib()
         contract = _build_ib_contract(
-            symbol, "FUTURE", exchange, expiry, multiplier=multiplier,
+            symbol,
+            "FUTURE",
+            exchange,
+            expiry,
+            multiplier=multiplier,
         )
         await ib.qualifyContractsAsync(contract)
 
@@ -446,8 +840,10 @@ async def submit_futures_order(
         else:
             order = MarketOrder(action=action, totalQuantity=quantity)
 
-        trade = await asyncio.to_thread(ib.placeOrder, contract, order)
-        log.info(f"Futures order submitted: {action} {quantity} {symbol} (id={trade.order.orderId})")
+        trade = await run_in_io(ib.placeOrder, contract, order)
+        log.info(
+            f"Futures order submitted: {action} {quantity} {symbol} (id={trade.order.orderId})"
+        )
         return {"status": "EXECUTING", "order_id": trade.order.orderId, **contract_info}
     except Exception as exc:
         log.error(f"Futures order failed for {symbol}: {exc}")
@@ -469,8 +865,12 @@ async def submit_options_order(
     Paper mode fills immediately; live mode routes through IB.
     """
     contract_info = {
-        "underlying": underlying, "expiry": expiry, "strike": strike,
-        "right": right, "action": action, "quantity": quantity,
+        "underlying": underlying,
+        "expiry": expiry,
+        "strike": strike,
+        "right": right,
+        "action": action,
+        "quantity": quantity,
     }
 
     if settings.PAPER_TRADING:
@@ -479,11 +879,17 @@ async def submit_options_order(
 
     try:
         from ib_async import LimitOrder, MarketOrder
+
         from execution_engine.broker.connection import get_ib
 
         ib = await get_ib()
         contract = _build_ib_contract(
-            underlying, "OPTION", exchange, expiry, strike, right,
+            underlying,
+            "OPTION",
+            exchange,
+            expiry,
+            strike,
+            right,
         )
         await ib.qualifyContractsAsync(contract)
 
@@ -492,8 +898,10 @@ async def submit_options_order(
         else:
             order = MarketOrder(action=action, totalQuantity=quantity)
 
-        trade = await asyncio.to_thread(ib.placeOrder, contract, order)
-        log.info(f"Options order submitted: {action} {quantity} {underlying} {strike}{right[0]} (id={trade.order.orderId})")
+        trade = await run_in_io(ib.placeOrder, contract, order)
+        log.info(
+            f"Options order submitted: {action} {quantity} {underlying} {strike}{right[0]} (id={trade.order.orderId})"
+        )
         return {"status": "EXECUTING", "order_id": trade.order.orderId, **contract_info}
     except Exception as exc:
         log.error(f"Options order failed for {underlying}: {exc}")
@@ -516,6 +924,7 @@ async def submit_combo_order(
 
     try:
         from ib_async import ComboLeg, Contract, MarketOrder
+
         from execution_engine.broker.connection import get_ib
 
         ib = await get_ib()
@@ -523,21 +932,32 @@ async def submit_combo_order(
         combo_legs: list[ComboLeg] = []
         for leg in legs:
             opt_contract = _build_ib_contract(
-                leg["underlying"], "OPTION", exchange,
-                leg["expiry"], leg["strike"], leg["right"],
+                leg["underlying"],
+                "OPTION",
+                exchange,
+                leg["expiry"],
+                leg["strike"],
+                leg["right"],
             )
             await ib.qualifyContractsAsync(opt_contract)
-            combo_legs.append(ComboLeg(
-                conId=opt_contract.conId,
-                ratio=leg.get("ratio", 1),
-                action=leg["action"],
-                exchange=exchange,
-            ))
+            combo_legs.append(
+                ComboLeg(
+                    conId=opt_contract.conId,
+                    ratio=leg.get("ratio", 1),
+                    action=leg["action"],
+                    exchange=exchange,
+                )
+            )
 
-        combo = Contract(symbol=legs[0]["underlying"], secType="BAG",
-                         exchange=exchange, currency="USD", comboLegs=combo_legs)
+        combo = Contract(
+            symbol=legs[0]["underlying"],
+            secType="BAG",
+            exchange=exchange,
+            currency="USD",
+            comboLegs=combo_legs,
+        )
         order = MarketOrder(action=action, totalQuantity=1)
-        trade = await asyncio.to_thread(ib.placeOrder, combo, order)
+        trade = await run_in_io(ib.placeOrder, combo, order)
         log.info(f"Combo order submitted: {len(legs)} legs (id={trade.order.orderId})")
         return {"status": "EXECUTING", "order_id": trade.order.orderId, "legs": legs}
     except Exception as exc:

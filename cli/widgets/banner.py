@@ -20,6 +20,7 @@ Two public helpers are exposed:
     print_status_bar()    – the slim 1-line bar reprinted before every prompt
                             so cwd / mode / model / clock stay live.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -383,9 +384,7 @@ def _build_panel(layout: dict) -> Panel:
         Padding(layout["footer"], (0, left_pad)),
     ]
 
-    panel_padding = (1, 3) if layout["tier"] == "ultrawide" else (
-        (1, 2) if big_tier else (1, 1)
-    )
+    panel_padding = (1, 3) if layout["tier"] == "ultrawide" else ((1, 2) if big_tier else (1, 1))
     # NOTE: ``expand=False`` makes Rich's Panel SILENTLY IGNORE the
     # ``width=`` argument and shrink-wrap to content — that's how the
     # banner ended up at ~80 cols on a 190-col terminal.  Leaving expand

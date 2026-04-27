@@ -11,15 +11,11 @@ Covers:
       – debate_summary surfaces the JSD number
       – backward compatibility with existing 65+ tests
 """
+
 from __future__ import annotations
-
-import math
-
-import pytest
 
 from graph_intelligence.debate import (
     _EPISTEMIC_DIVERGENCE_THRESHOLD,
-    _EPISTEMIC_CONVICTION_MULTIPLIER,
     _MIN_CONVICTION_SUPERMAJORITY,
     compute_epistemic_divergence,
     js_divergence,
@@ -50,6 +46,7 @@ class TestJSDPrimitive:
 
     def test_jsd_non_negative(self):
         import random
+
         random.seed(42)
         for _ in range(100):
             p = [random.random() for _ in range(3)]
@@ -101,9 +98,16 @@ class TestEmpiricalCoherence:
         ]
 
     def test_tight_unanimous_is_coherent(self):
-        jsd = compute_epistemic_divergence(self._opinions([
-            ("LONG", 0.85), ("LONG", 0.82), ("LONG", 0.80), ("LONG", 0.78),
-        ]))
+        jsd = compute_epistemic_divergence(
+            self._opinions(
+                [
+                    ("LONG", 0.85),
+                    ("LONG", 0.82),
+                    ("LONG", 0.80),
+                    ("LONG", 0.78),
+                ]
+            )
+        )
         assert jsd < 0.05
         assert jsd < _EPISTEMIC_DIVERGENCE_THRESHOLD
 
@@ -111,39 +115,72 @@ class TestEmpiricalCoherence:
         # Even with a confidence outlier, unanimous direction keeps JSD
         # below τ. We explicitly do NOT want to penalise "one analyst
         # is very confident; the other three are cautiously agreeing".
-        jsd = compute_epistemic_divergence(self._opinions([
-            ("LONG", 0.99), ("LONG", 0.55), ("LONG", 0.52), ("LONG", 0.50),
-        ]))
+        jsd = compute_epistemic_divergence(
+            self._opinions(
+                [
+                    ("LONG", 0.99),
+                    ("LONG", 0.55),
+                    ("LONG", 0.52),
+                    ("LONG", 0.50),
+                ]
+            )
+        )
         assert jsd < _EPISTEMIC_DIVERGENCE_THRESHOLD
 
     def test_benign_supermajority_stays_coherent(self):
-        jsd = compute_epistemic_divergence(self._opinions([
-            ("LONG", 0.80), ("LONG", 0.82), ("LONG", 0.78), ("HOLD", 0.60),
-        ]))
+        jsd = compute_epistemic_divergence(
+            self._opinions(
+                [
+                    ("LONG", 0.80),
+                    ("LONG", 0.82),
+                    ("LONG", 0.78),
+                    ("HOLD", 0.60),
+                ]
+            )
+        )
         assert jsd < _EPISTEMIC_DIVERGENCE_THRESHOLD
 
     def test_high_confidence_hold_dissenter_fires(self):
-        jsd = compute_epistemic_divergence(self._opinions([
-            ("LONG", 0.80), ("LONG", 0.82), ("LONG", 0.78), ("HOLD", 0.95),
-        ]))
+        jsd = compute_epistemic_divergence(
+            self._opinions(
+                [
+                    ("LONG", 0.80),
+                    ("LONG", 0.82),
+                    ("LONG", 0.78),
+                    ("HOLD", 0.95),
+                ]
+            )
+        )
         assert jsd > _EPISTEMIC_DIVERGENCE_THRESHOLD, (
             "high-conviction dissent in a supermajority MUST trigger the filter"
         )
 
     def test_extreme_hold_dissenter_fires_harder(self):
-        jsd_loud = compute_epistemic_divergence(self._opinions([
-            ("LONG", 0.80), ("LONG", 0.82), ("LONG", 0.78), ("HOLD", 0.99),
-        ]))
-        jsd_moderate = compute_epistemic_divergence(self._opinions([
-            ("LONG", 0.80), ("LONG", 0.82), ("LONG", 0.78), ("HOLD", 0.95),
-        ]))
+        jsd_loud = compute_epistemic_divergence(
+            self._opinions(
+                [
+                    ("LONG", 0.80),
+                    ("LONG", 0.82),
+                    ("LONG", 0.78),
+                    ("HOLD", 0.99),
+                ]
+            )
+        )
+        jsd_moderate = compute_epistemic_divergence(
+            self._opinions(
+                [
+                    ("LONG", 0.80),
+                    ("LONG", 0.82),
+                    ("LONG", 0.78),
+                    ("HOLD", 0.95),
+                ]
+            )
+        )
         assert jsd_loud > jsd_moderate
 
     def test_jsd_respects_empty_or_single(self):
         assert compute_epistemic_divergence([]) == 0.0
-        assert compute_epistemic_divergence([
-            {"direction": "LONG", "confidence": 0.8}
-        ]) == 0.0
+        assert compute_epistemic_divergence([{"direction": "LONG", "confidence": 0.8}]) == 0.0
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -154,16 +191,16 @@ class TestRunDebateIntegration:
         return [
             {"analyst": "Supply Chain", "direction": "LONG", "confidence": 0.82},
             {"analyst": "Fundamentals", "direction": "LONG", "confidence": 0.80},
-            {"analyst": "Technicals",   "direction": "LONG", "confidence": 0.78},
-            {"analyst": "Macro",        "direction": "HOLD", "confidence": 0.60},
+            {"analyst": "Technicals", "direction": "LONG", "confidence": 0.78},
+            {"analyst": "Macro", "direction": "HOLD", "confidence": 0.60},
         ]
 
     def _supermajority_loud_dissent(self):
         return [
             {"analyst": "Supply Chain", "direction": "LONG", "confidence": 0.82},
             {"analyst": "Fundamentals", "direction": "LONG", "confidence": 0.80},
-            {"analyst": "Technicals",   "direction": "LONG", "confidence": 0.78},
-            {"analyst": "Macro",        "direction": "HOLD", "confidence": 0.95},
+            {"analyst": "Technicals", "direction": "LONG", "confidence": 0.78},
+            {"analyst": "Macro", "direction": "HOLD", "confidence": 0.95},
         ]
 
     def test_benign_supermajority_passes_filter(self):
@@ -173,7 +210,7 @@ class TestRunDebateIntegration:
 
     def test_loud_dissent_trips_filter_and_halves_conviction(self):
         r_benign = run_debate(self._supermajority_benign())
-        r_loud   = run_debate(self._supermajority_loud_dissent())
+        r_loud = run_debate(self._supermajority_loud_dissent())
         assert r_loud.high_epistemic_disagreement is True
         # The only difference is the dissenter's confidence; the loud
         # version must have materially lower conviction (because the
@@ -198,8 +235,8 @@ class TestRunDebateIntegration:
         opinions = [
             {"analyst": "Supply Chain", "direction": "LONG", "confidence": 0.99},
             {"analyst": "Fundamentals", "direction": "LONG", "confidence": 0.55},
-            {"analyst": "Technicals",   "direction": "LONG", "confidence": 0.52},
-            {"analyst": "Macro",        "direction": "LONG", "confidence": 0.50},
+            {"analyst": "Technicals", "direction": "LONG", "confidence": 0.52},
+            {"analyst": "Macro", "direction": "LONG", "confidence": 0.50},
         ]
         r = run_debate(opinions)
         assert r.high_epistemic_disagreement is False
@@ -216,10 +253,10 @@ class TestRunDebateIntegration:
     def test_split_opposite_still_hard_aborts(self):
         # Phase 4 must NOT weaken the existing SPLIT_OPPOSITE rule.
         opinions = [
-            {"analyst": "Supply Chain", "direction": "LONG",  "confidence": 0.80},
-            {"analyst": "Fundamentals", "direction": "LONG",  "confidence": 0.80},
-            {"analyst": "Technicals",   "direction": "SHORT", "confidence": 0.80},
-            {"analyst": "Macro",        "direction": "SHORT", "confidence": 0.80},
+            {"analyst": "Supply Chain", "direction": "LONG", "confidence": 0.80},
+            {"analyst": "Fundamentals", "direction": "LONG", "confidence": 0.80},
+            {"analyst": "Technicals", "direction": "SHORT", "confidence": 0.80},
+            {"analyst": "Macro", "direction": "SHORT", "confidence": 0.80},
         ]
         r = run_debate(opinions)
         assert r.should_trade is False
@@ -246,8 +283,8 @@ class TestCompoundDiscounts:
         opinions = [
             {"analyst": "Supply Chain", "direction": "LONG", "confidence": 0.82},
             {"analyst": "Fundamentals", "direction": "LONG", "confidence": 0.80},
-            {"analyst": "Technicals",   "direction": "LONG", "confidence": 0.78},
-            {"analyst": "Macro",        "direction": "HOLD", "confidence": 0.95},
+            {"analyst": "Technicals", "direction": "LONG", "confidence": 0.78},
+            {"analyst": "Macro", "direction": "HOLD", "confidence": 0.95},
         ]
         r = run_debate(opinions)
         # Conviction must be approximately (raw × 0.5 × 0.92) given

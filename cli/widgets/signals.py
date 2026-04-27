@@ -1,4 +1,5 @@
 """Trade signal display widgets for the CLI."""
+
 from __future__ import annotations
 
 from rich.console import Console
@@ -29,8 +30,10 @@ def render_signals(signals: list[TradeSignal], title: str = "Trade Signals") -> 
     table.add_column("Status", justify="center")
 
     for sig in signals[-15:]:
-        action_style = "bold green" if sig.action.value == "LONG" else (
-            "bold red" if sig.action.value == "SHORT" else "dim"
+        action_style = (
+            "bold green"
+            if sig.action.value == "LONG"
+            else ("bold red" if sig.action.value == "SHORT" else "dim")
         )
         status_style = {
             "PENDING": "yellow",

@@ -5,16 +5,18 @@ Implements the continuous-finance derivation from the architecture doc:
 
 Then applies Half-Kelly constraint for behavioral ruin protection.
 """
+
 from __future__ import annotations
 
 import numpy as np
 
 from shared.config import settings
+from shared.constants import DEFAULT_RISK_FREE_RATE
 from shared.logger import get_logger
 
 log = get_logger("math.kelly")
 
-_RISK_FREE_RATE = 0.05
+_RISK_FREE_RATE = DEFAULT_RISK_FREE_RATE
 
 
 def kelly_fraction_single(
@@ -24,12 +26,30 @@ def kelly_fraction_single(
     """Classic Kelly Criterion for a single binary bet.
 
     f* = p - (1-p)/b
-    where p = win probability, b = win/loss ratio
+    where p = win probability, b = win/loss ratio.
+
+    **P1-Y input hardening.** Defensive clamps on both inputs:
+      * ``win_probability`` is forced into ``[0, 1]`` — a miscalibrated
+        upstream that passed 1.3 would otherwise yield f* > 1 before the
+        cap, risking leverage after downstream cost-model scaling.
+        NaN / inf inputs collapse to 0 (no bet).
+      * ``win_loss_ratio <= 0`` returns 0 (undefined payoff) and NaN / inf
+        also collapses to 0 rather than propagating through f*.
+    The cap via ``MAX_POSITION_PCT / 100`` is the hard ceiling; the
+    clamps above make the cap necessary-and-sufficient instead of
+    merely best-effort.
     """
-    if win_loss_ratio <= 0:
+    import math
+
+    if (
+        not math.isfinite(win_probability)
+        or not math.isfinite(win_loss_ratio)
+        or win_loss_ratio <= 0.0
+    ):
         return 0.0
-    q = 1.0 - win_probability
-    f_star = win_probability - (q / win_loss_ratio)
+    p = max(0.0, min(1.0, float(win_probability)))
+    q = 1.0 - p
+    f_star = p - (q / win_loss_ratio)
     half_kelly = f_star * settings.KELLY_FRACTION
     return max(0.0, min(half_kelly, settings.MAX_POSITION_PCT / 100.0))
 
@@ -96,6 +116,38 @@ def compute_position_size(
     return max(shares, 0)
 
 
+def _conviction_size_multiplier(conviction: float) -> float:
+    """Batch-1/D: scale size linearly in the region where the supervisor
+    allows a trade — below floor → 0, at floor → 0, at 1.0 → 1.0.
+
+    The fraction is defined as::
+
+        m = (conviction - SUPERVISOR_MIN_CONFIDENCE)
+            / (1.0 - SUPERVISOR_MIN_CONFIDENCE)
+
+    clamped to ``[0, 1]``. A signal at exactly the supervisor floor
+    carries zero size; a maxed-out 1.0 conviction carries full size.
+    Intermediate convictions get proportional size. This is the
+    institutional pattern: size scales with edge, not with presence.
+
+    Separate from the ``win_probability`` input to
+    ``kelly_fraction_single`` — that drives the raw Kelly bet; this
+    scales the final Kelly fraction so a 0.62 signal gets a much
+    smaller position than a 0.95 signal even when both clear
+    ``win_probability > 0.5``.
+    """
+    import math
+
+    if not math.isfinite(conviction):
+        return 0.0
+    floor = float(settings.SUPERVISOR_MIN_CONFIDENCE)
+    span = 1.0 - floor
+    if span <= 0.0:
+        return 1.0 if conviction >= floor else 0.0
+    raw = (float(conviction) - floor) / span
+    return max(0.0, min(1.0, raw))
+
+
 def optimal_allocation_for_signal(
     portfolio_equity: float,
     win_probability: float,
@@ -103,6 +155,7 @@ def optimal_allocation_for_signal(
     volatility: float,
     current_price: float,
     enforce_ev_hurdle: bool = True,
+    conviction: float | None = None,
 ) -> tuple[float, int]:
     """Convenience: compute Kelly fraction and share count for a single signal.
 
@@ -112,6 +165,13 @@ def optimal_allocation_for_signal(
     the Tier-1 institutional filter that kills sub-noise trades before
     they reach the execution tier.
 
+    Batch-1/D: when ``conviction`` is provided, the final Kelly fraction
+    is multiplied by a conviction-scaled size multiplier
+    (``_conviction_size_multiplier``). A barely-clearing 0.62 signal
+    then gets ~12% of the size a 0.95 signal would get, preserving
+    capital for the higher-edge opportunities. Callers that don't
+    pass ``conviction`` get the legacy unscaled behaviour.
+
     Returns (allocation_fraction, share_count).
     """
     if volatility <= 0:
@@ -119,10 +179,22 @@ def optimal_allocation_for_signal(
 
     win_loss_ratio = max(abs(expected_return / volatility), 0.1)
     frac = kelly_fraction_single(win_probability, win_loss_ratio)
+
+    if conviction is not None:
+        multiplier = _conviction_size_multiplier(conviction)
+        frac_scaled = frac * multiplier
+        if frac > 0 and multiplier < 1.0:
+            log.info(
+                f"Conviction-scaled sizing: conviction={conviction:.2f} "
+                f"multiplier={multiplier:.2f} frac {frac:.4f} → {frac_scaled:.4f}"
+            )
+        frac = frac_scaled
+
     shares = compute_position_size(portfolio_equity, frac, current_price)
 
     if enforce_ev_hurdle and shares > 0:
         from execution_engine.math.costs import evaluate_trade_ev
+
         report = evaluate_trade_ev(
             asset_class="EQUITY",
             expected_return_pct=abs(expected_return),
@@ -138,8 +210,7 @@ def optimal_allocation_for_signal(
             return frac, 0
 
     log.info(
-        f"Signal sizing: frac={frac:.4f}, shares={shares}, "
-        f"notional=${shares * current_price:,.0f}"
+        f"Signal sizing: frac={frac:.4f}, shares={shares}, notional=${shares * current_price:,.0f}"
     )
     return frac, shares
 

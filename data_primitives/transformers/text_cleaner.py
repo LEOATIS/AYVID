@@ -3,19 +3,17 @@
 Implements the Chronological Semantic Compression strategy from the architecture doc:
 time-window daily news into 24h batches, compress via LLM, preserve timeline integrity.
 """
+
 from __future__ import annotations
 
 import datetime as dt
 from collections import defaultdict
-from typing import Sequence
+from collections.abc import Sequence
 
-from openai import AsyncOpenAI
-from anthropic import AsyncAnthropic
-
-from shared.config import settings
+from data_primitives.security import is_safe, sanitize_news_text
+from shared.llm_client import json_call as _llm_json_call
 from shared.logger import get_logger
 from shared.types import CompressedDaySummary, NewsItem
-from data_primitives.security import sanitize_news_text, is_safe
 
 log = get_logger("data.text")
 
@@ -30,39 +28,19 @@ Rules:
 - Be extremely concise — each fact should be one sentence max"""
 
 
-async def _compress_with_openai(ticker: str, date: dt.date, texts: list[str]) -> dict:
-    """Compress a day's news using OpenAI."""
-    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+async def _compress_day(ticker: str, date: dt.date, texts: list[str]) -> dict:
+    """Compress a day's news via the shared llm_client layer (provider-agnostic)."""
+    import json
+
     joined = "\n---\n".join(texts)
-    response = await client.chat.completions.create(
-        model=settings.OPENAI_MODEL,
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": _COMPRESSION_SYSTEM_PROMPT},
-            {"role": "user", "content": f"Ticker: {ticker}\nDate: {date.isoformat()}\n\nArticles:\n{joined}"},
-        ],
+    user_prompt = f"Ticker: {ticker}\nDate: {date.isoformat()}\n\nArticles:\n{joined}"
+    raw = await _llm_json_call(
+        _COMPRESSION_SYSTEM_PROMPT,
+        user_prompt,
+        max_tokens=500,
         temperature=0.1,
-        max_tokens=500,
     )
-    import json
-    return json.loads(response.choices[0].message.content or "{}")
-
-
-async def _compress_with_anthropic(ticker: str, date: dt.date, texts: list[str]) -> dict:
-    """Compress a day's news using Claude."""
-    client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-    joined = "\n---\n".join(texts)
-    response = await client.messages.create(
-        model=settings.ANTHROPIC_MODEL,
-        max_tokens=500,
-        system=_COMPRESSION_SYSTEM_PROMPT,
-        messages=[
-            {"role": "user", "content": f"Ticker: {ticker}\nDate: {date.isoformat()}\n\nArticles:\n{joined}"},
-        ],
-    )
-    import json
-    raw = response.content[0].text if response.content else "{}"
-    return json.loads(raw)
+    return json.loads(raw or "{}")
 
 
 async def compress_daily_news(
@@ -104,10 +82,7 @@ async def compress_daily_news(
         return CompressedDaySummary(date=date, ticker=ticker)
 
     try:
-        if settings.LLM_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
-            data = await _compress_with_anthropic(ticker, date, sanitised_texts)
-        else:
-            data = await _compress_with_openai(ticker, date, sanitised_texts)
+        data = await _compress_day(ticker, date, sanitised_texts)
 
         sentiment_shift = float(data.get("sentiment_shift", 0.0))
         # Cap the sentiment magnitude when input corpus had hostile
@@ -158,6 +133,7 @@ async def build_chronological_timeline(
 def clean_text(raw: str) -> str:
     """Basic text cleaning for pre-LLM processing."""
     import re
+
     text = re.sub(r"<[^>]+>", "", raw)
     text = re.sub(r"\s+", " ", text)
     text = re.sub(r"[^\x20-\x7E\n]", "", text)

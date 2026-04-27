@@ -15,10 +15,10 @@ References (public, as of 2026):
     half-cent for liquid US equities; we add a realistic conservative
     haircut to mimic real fills, not theoretical Black-Scholes mids.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-
 
 # ── Commission rates (per contract / per share, USD) ──────────
 COMMISSION_PER_OPTION_CONTRACT = 0.65
@@ -37,12 +37,12 @@ SLIPPAGE_EQUITY_PCT_OF_PRICE = 0.0005
 
 # Indices known to be illiquid for retail-routed flow → wider haircut
 ILLIQUID_INDEX_SYMBOLS: set[str] = {
-    "^HSI",          # Hang Seng — wider spreads, fewer market-makers
-    "000001.SS",     # CSI 300 — restricted access
-    "^TWII",         # TAIEX — 5pt tick, illiquid weeklies
-    "^STI",          # STI — limited option depth
-    "^AXJO",         # ASX 200 — wide quoting
-    "^BVSP",         # Bovespa — illiquid options
+    "^HSI",  # Hang Seng — wider spreads, fewer market-makers
+    "000001.SS",  # CSI 300 — restricted access
+    "^TWII",  # TAIEX — 5pt tick, illiquid weeklies
+    "^STI",  # STI — limited option depth
+    "^AXJO",  # ASX 200 — wide quoting
+    "^BVSP",  # Bovespa — illiquid options
 }
 ILLIQUID_SLIPPAGE_MULTIPLIER = 2.0
 
@@ -148,6 +148,7 @@ def equity_costs(
     Applies IBKR Tiered: $0.0035/share, $0.35 min per side,
     capped at 1% of notional per side.
     """
+
     def _side_commission(price: float) -> float:
         raw = COMMISSION_PER_SHARE * shares
         cap = COMMISSION_MAX_EQUITY_PCT * price * shares

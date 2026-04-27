@@ -13,12 +13,12 @@ one of these Pydantic models. Two benefits:
 Validation policy: fields are optional with conservative defaults so a
 partial LLM output degrades gracefully rather than killing the pipeline.
 """
+
 from __future__ import annotations
 
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
-
 
 # ── Canonical list of strategy identifiers the orchestrator can run.
 # The Strategist / Supervisor emit these exact strings; anything outside
@@ -26,15 +26,28 @@ from pydantic import BaseModel, Field, field_validator
 # `strategy_orchestrator.py`.
 CANONICAL_STRATEGIES: tuple[str, ...] = (
     # Index F&O
-    "idx_trend_es", "idx_trend_nq", "idx_trend_ym", "idx_trend_rty",
-    "idx_mr_oversold_call", "idx_mr_overbought_put",
-    "idx_bull_spread", "idx_bear_spread", "idx_decline_put",
-    "idx_momentum", "idx_vol_arb_call", "idx_vol_arb_put",
-    "crisis_index_put", "crisis_capitulation_bounce",
-    "shock_directed_call", "shock_directed_put",
+    "idx_trend_es",
+    "idx_trend_nq",
+    "idx_trend_ym",
+    "idx_trend_rty",
+    "idx_mr_oversold_call",
+    "idx_mr_overbought_put",
+    "idx_bull_spread",
+    "idx_bear_spread",
+    "idx_decline_put",
+    "idx_momentum",
+    "idx_vol_arb_call",
+    "idx_vol_arb_put",
+    "crisis_index_put",
+    "crisis_capitulation_bounce",
+    "shock_directed_call",
+    "shock_directed_put",
     # Equity investment
-    "deep_value_investment", "supply_chain_beneficiary",
-    "supply_chain_oversold_dip", "trend_investment", "mr_equity_bounce",
+    "deep_value_investment",
+    "supply_chain_beneficiary",
+    "supply_chain_oversold_dip",
+    "trend_investment",
+    "mr_equity_bounce",
 )
 
 MacroRegime = Literal["RISK_ON", "RISK_OFF", "TRANSITIONAL"]
@@ -116,7 +129,7 @@ class StrategyParameters(BaseModel):
     rationale: str = ""
 
     @classmethod
-    def defaults(cls) -> "StrategyParameters":
+    def defaults(cls) -> StrategyParameters:
         """Construct with legacy static thresholds (backward compat)."""
         return cls()
 

@@ -1,4 +1,5 @@
 """Portfolio display widgets for the CLI."""
+
 from __future__ import annotations
 
 from rich.console import Console
@@ -59,8 +60,10 @@ def render_portfolio(portfolio: PortfolioState) -> Panel:
 
 def render_risk(risk: RiskSnapshot) -> Panel:
     """Render risk metrics as a Rich panel."""
-    dd_style = "green" if risk.current_drawdown_pct < 1.0 else (
-        "yellow" if risk.current_drawdown_pct < 2.0 else "bold red"
+    dd_style = (
+        "green"
+        if risk.current_drawdown_pct < 1.0
+        else ("yellow" if risk.current_drawdown_pct < 2.0 else "bold red")
     )
 
     content = (

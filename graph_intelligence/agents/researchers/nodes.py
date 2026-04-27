@@ -24,31 +24,87 @@ Design choices
 The node is imported by ``pipeline.py`` and inserted between
 ``mapper`` and ``analyst_swarm``.
 """
+
 from __future__ import annotations
 
 import asyncio
 from typing import Any
 
+from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
 from pydantic import ValidationError
 
-from shared.config import settings
-from shared.logger import get_logger
-from graph_intelligence.graph_state.state import CausalArbitrageState
 from graph_intelligence.agents.researchers.prompts import (
-    BULL_SYSTEM, BULL_USER_TEMPLATE,
-    BEAR_SYSTEM, BEAR_USER_TEMPLATE,
-    FACILITATOR_SYSTEM, FACILITATOR_USER_TEMPLATE,
+    BEAR_SYSTEM,
+    BEAR_USER_TEMPLATE,
+    BULL_SYSTEM,
+    BULL_USER_TEMPLATE,
+    FACILITATOR_SYSTEM,
+    FACILITATOR_USER_TEMPLATE,
 )
 from graph_intelligence.agents.researchers.schema import (
-    BullArgument, BearArgument, DebateRound, ResearcherConsensus,
+    BearArgument,
+    BullArgument,
+    DebateRound,
+    ResearcherConsensus,
 )
+from graph_intelligence.graph_state.state import CausalArbitrageState
+from shared.config import settings
+from shared.logger import get_logger
 
 log = get_logger("agent.researcher")
 
 _DEFAULT_DEBATE_ROUNDS = 2
+
+# P1-N: when the facilitator returns NEITHER (debate was effectively
+# tied), downstream conviction MUST be capped. Prior to this fix the
+# code logged the intent to cap but never wrote it to the state
+# patch, so the analyst swarm + auditor + supervisor all saw
+# unchanged confidence.
+NEITHER_CONVICTION_CAP: float = 0.65
+
+
+def render_researcher_consensus_block(state: CausalArbitrageState) -> str:
+    """Render a compact, prompt-ready summary of the researcher debate.
+
+    P1-L: the analyst swarm and the auditor both embed this block in
+    their prompt templates (``{researcher_consensus_block}``) so the
+    bull/bear debate outcome actually reaches the downstream agents
+    that gate execution. Previously the consensus was computed and
+    then dropped on the floor — analysts and auditor ran without any
+    visibility into the debate.
+
+    When no consensus exists yet (node did not run or advocates
+    errored), returns a neutral placeholder so prompt templates stay
+    well-formed.
+    """
+    consensus = state.get("researcher_consensus") or {}
+    if not consensus:
+        return "(no researcher debate has run yet)"
+
+    def _fmt_list(values: list[str]) -> str:
+        if not values:
+            return "(none)"
+        return "; ".join(v for v in values[:4] if v)
+
+    dominant = consensus.get("dominant_side", "NEITHER")
+    direction = consensus.get("direction", "HOLD")
+    conviction = float(consensus.get("conviction", 0.0) or 0.0)
+    margin = float(consensus.get("margin", 0.0) or 0.0)
+    summary = consensus.get("executive_summary", "") or "(no summary)"
+    bull_takeaways = consensus.get("bull_takeaways") or []
+    bear_takeaways = consensus.get("bear_takeaways") or []
+    rationale = consensus.get("facilitator_rationale", "") or ""
+
+    return (
+        f"dominant_side={dominant} | direction={direction} "
+        f"| conviction={conviction:.2f} | margin={margin:.2f}\n"
+        f"summary: {summary[:320]}\n"
+        f"bull_takeaways: {_fmt_list(bull_takeaways)}\n"
+        f"bear_takeaways: {_fmt_list(bear_takeaways)}\n"
+        f"rationale: {rationale[:320] if rationale else '(none)'}"
+    )
 
 
 # ── Mixed-model selection ─────────────────────────────────────────────
@@ -76,16 +132,9 @@ def _get_advocate_llm(schema: type):
 
 def _get_facilitator_llm(schema: type):
     """Deep-reasoning model for the facilitator — the call that matters."""
-    if settings.LLM_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
-        return ChatAnthropic(
-            model=settings.ANTHROPIC_MODEL,
-            api_key=settings.ANTHROPIC_API_KEY,
-            temperature=0.05,
-            max_tokens=1500,
-        ).with_structured_output(schema)
-    return ChatOpenAI(
-        model=settings.OPENAI_MODEL,
-        api_key=settings.OPENAI_API_KEY,
+    from shared.llm_client import get_langchain_chat_model
+
+    return get_langchain_chat_model(
         temperature=0.05,
         max_tokens=1500,
     ).with_structured_output(schema)
@@ -93,10 +142,15 @@ def _get_facilitator_llm(schema: type):
 
 # ── Context helpers ──────────────────────────────────────────────────
 def _mapper_direction_from_state(state: CausalArbitrageState) -> str:
+    """Phase-3 (Gap A6): mapper now ALWAYS sets `proposed_action` to one of
+    LONG/SHORT/HOLD (either from its JSON schema or from the deterministic
+    causal-intel fallback). If we still see something unexpected here, it
+    is a genuine pipeline bug — we return HOLD so the researcher debate
+    refuses to trade rather than silently going long."""
     action = (state.get("proposed_action") or "").upper()
     if action in ("LONG", "SHORT", "HOLD"):
         return action
-    return "LONG"  # default — mappers usually skew directional
+    return "HOLD"
 
 
 def _mapper_thesis_from_state(state: CausalArbitrageState) -> str:
@@ -133,8 +187,7 @@ def _priors_block_from_state(state: CausalArbitrageState) -> str:
     params = state.get("strategy_parameters") or {}
     if not params:
         return "(no empirical priors loaded)"
-    keys = ("max_rsi_entry_long", "max_z_entry_long",
-            "min_factor_score", "min_expected_r")
+    keys = ("max_rsi_entry_long", "max_z_entry_long", "min_factor_score", "min_expected_r")
     parts = [f"{k}={params.get(k)}" for k in keys if k in params]
     return "; ".join(parts) or "(no relevant priors)"
 
@@ -161,10 +214,12 @@ async def bull_advocate(
         opposing_thesis=opposing_thesis,
     )
     try:
-        result: BullArgument = await llm.ainvoke([
-            SystemMessage(content=BULL_SYSTEM),
-            HumanMessage(content=prompt),
-        ])
+        result: BullArgument = await llm.ainvoke(
+            [
+                SystemMessage(content=BULL_SYSTEM),
+                HumanMessage(content=prompt),
+            ]
+        )
     except (ValidationError, ValueError, TypeError) as exc:
         log.warning(f"bull_advocate validation failed: {exc}")
         return BullArgument()
@@ -195,10 +250,12 @@ async def bear_advocate(
         opposing_thesis=opposing_thesis,
     )
     try:
-        result: BearArgument = await llm.ainvoke([
-            SystemMessage(content=BEAR_SYSTEM),
-            HumanMessage(content=prompt),
-        ])
+        result: BearArgument = await llm.ainvoke(
+            [
+                SystemMessage(content=BEAR_SYSTEM),
+                HumanMessage(content=prompt),
+            ]
+        )
     except (ValidationError, ValueError, TypeError) as exc:
         log.warning(f"bear_advocate validation failed: {exc}")
         return BearArgument()
@@ -255,10 +312,12 @@ async def facilitator_judge(
         r2_bear=_bear_block(r2.bear),
     )
     try:
-        result: ResearcherConsensus = await llm.ainvoke([
-            SystemMessage(content=FACILITATOR_SYSTEM),
-            HumanMessage(content=prompt),
-        ])
+        result: ResearcherConsensus = await llm.ainvoke(
+            [
+                SystemMessage(content=FACILITATOR_SYSTEM),
+                HumanMessage(content=prompt),
+            ]
+        )
     except (ValidationError, ValueError, TypeError) as exc:
         log.warning(f"facilitator validation failed: {exc}")
         return ResearcherConsensus()
@@ -325,18 +384,26 @@ async def researcher_debate_node(
         "researcher_rounds": [r.model_dump() for r in debate_rounds],
     }
 
-    # Integrate with downstream state:
-    #   • When facilitator says NEITHER, analyst swarm is warned and
-    #     the mapper-proposed direction is preserved but confidence
-    #     is capped (the analysts can still rescue it).
-    #   • When facilitator disagrees with mapper, we flag a red alert
-    #     but let the analyst swarm re-vote.
+    # P1-N: actually apply the NEITHER cap. Previously this was logged
+    # as if the downstream would honour it, but the state patch never
+    # touched ``confidence``. Now we write a capped value so the
+    # auditor and supervisor see the degraded conviction.
     mapper_dir = _mapper_direction_from_state(state)
+    current_conf = float(state.get("confidence") or 0.0)
+
     if consensus.dominant_side == "NEITHER":
-        log.info(
-            f"[RESEARCHER] tied debate on {target} (margin={consensus.margin:.2f}) "
-            f"— analyst swarm will decide, conviction capped at 0.65"
-        )
+        if current_conf > NEITHER_CONVICTION_CAP:
+            patch["confidence"] = NEITHER_CONVICTION_CAP
+            log.info(
+                f"[RESEARCHER] tied debate on {target} (margin={consensus.margin:.2f}) "
+                f"— conviction capped {current_conf:.2f} → "
+                f"{NEITHER_CONVICTION_CAP:.2f}"
+            )
+        else:
+            log.info(
+                f"[RESEARCHER] tied debate on {target}; conviction "
+                f"{current_conf:.2f} already below cap, no change"
+            )
     elif consensus.direction != mapper_dir and consensus.direction != "HOLD":
         log.warning(
             f"[RESEARCHER] OVERRULING mapper on {target}: "

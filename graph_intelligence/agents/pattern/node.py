@@ -20,6 +20,7 @@ cache results on a fingerprint of the rendered chart bytes — two
 calls for the same ticker within the same session that would produce
 identical pixel bytes share the same classification.
 """
+
 from __future__ import annotations
 
 import base64
@@ -28,22 +29,25 @@ from typing import Any
 
 import numpy as np
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
 from pydantic import ValidationError
 
-from shared.config import settings
-from shared.logger import get_logger
-from graph_intelligence.graph_state.state import CausalArbitrageState
 from graph_intelligence.agents.pattern.chart_renderer import (
-    OHLCVSeries, render_candlestick_chart, chart_fingerprint,
+    OHLCVSeries,
+    chart_fingerprint,
+    render_candlestick_chart,
 )
 from graph_intelligence.agents.pattern.prompts import (
-    PATTERN_SYSTEM, PATTERN_USER_TEMPLATE,
+    PATTERN_SYSTEM,
+    PATTERN_USER_TEMPLATE,
 )
 from graph_intelligence.agents.pattern.schema import (
-    PATTERN_BIAS, PatternClass, PatternClassification,
+    PATTERN_BIAS,
+    PatternClass,
+    PatternClassification,
 )
+from graph_intelligence.graph_state.state import CausalArbitrageState
+from shared.config import settings
+from shared.logger import get_logger
 
 log = get_logger("agent.pattern")
 
@@ -67,34 +71,31 @@ def _build_image_message(png_bytes: bytes, text: str) -> HumanMessage:
     """
     b64 = base64.standard_b64encode(png_bytes).decode("ascii")
     if settings.LLM_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
-        return HumanMessage(content=[
-            {
-                "type": "image",
-                "source": {"type": "base64", "media_type": "image/png", "data": b64},
-            },
+        return HumanMessage(
+            content=[
+                {
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": "image/png", "data": b64},
+                },
+                {"type": "text", "text": text},
+            ]
+        )
+    return HumanMessage(
+        content=[
             {"type": "text", "text": text},
-        ])
-    return HumanMessage(content=[
-        {"type": "text", "text": text},
-        {
-            "type": "image_url",
-            "image_url": {"url": f"data:image/png;base64,{b64}"},
-        },
-    ])
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{b64}"},
+            },
+        ]
+    )
 
 
 def _get_vision_llm():
     """Vision-capable LLM bound to the ``PatternClassification`` schema."""
-    if settings.LLM_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
-        return ChatAnthropic(
-            model=settings.ANTHROPIC_MODEL,
-            api_key=settings.ANTHROPIC_API_KEY,
-            temperature=0.05,
-            max_tokens=900,
-        ).with_structured_output(PatternClassification)
-    return ChatOpenAI(
-        model=settings.OPENAI_MODEL,
-        api_key=settings.OPENAI_API_KEY,
+    from shared.llm_client import get_langchain_chat_model
+
+    return get_langchain_chat_model(
         temperature=0.05,
         max_tokens=900,
     ).with_structured_output(PatternClassification)
@@ -112,10 +113,22 @@ async def classify_pattern(
     Safe to call in any async context. Always returns a valid
     ``PatternClassification`` — failures degrade to
     ``PatternClass.NONE`` with confidence 0, never raise.
+
+    Gated behind ``settings.PATTERN_AGENT_ENABLED`` (default False).
+    When the flag is off, we short-circuit to the NONE classification
+    without rendering a chart or touching the vision LLM. This keeps
+    the hot ingestion cycle fast — the historical Matplotlib path
+    was adding a multi-second font-cache build to backend startup and
+    charging vision-LLM tokens per ticker per cycle for a signal the
+    supervisor only reads as a confirming tiebreaker. Flip the env
+    flag back on (+ wire an SVG-capable vision model in
+    ``_get_vision_llm``) when pattern analysis is actually needed.
     """
+    if not getattr(settings, "PATTERN_AGENT_ENABLED", False):
+        return PatternClassification()
+
     try:
-        png = render_candlestick_chart(ohlcv, lookback=lookback,
-                                       title=f"{ticker} • {timeframe}")
+        png = render_candlestick_chart(ohlcv, lookback=lookback, title=f"{ticker} • {timeframe}")
     except Exception as exc:
         log.warning(f"[Pattern] render failed for {ticker}: {exc}")
         return PatternClassification()
@@ -137,8 +150,10 @@ async def classify_pattern(
     price_high = float(np.max(ohlcv.highs[start:]))
 
     text = PATTERN_USER_TEMPLATE.format(
-        ticker=ticker, timeframe=timeframe,
-        price_low=price_low, price_high=price_high,
+        ticker=ticker,
+        timeframe=timeframe,
+        price_low=price_low,
+        price_high=price_high,
     )
     messages = [SystemMessage(content=PATTERN_SYSTEM), _build_image_message(png, text)]
 
@@ -202,15 +217,23 @@ async def pattern_analyst_opinion(
     ticker = state.get("target_ticker") or state.get("shock_ticker") or ""
     if not ticker:
         return {
-            "analyst": "Pattern", "direction": "HOLD", "confidence": 0.0,
-            "thesis": "no target ticker", "full_analysis": {}, "latency_ms": 0.0,
+            "analyst": "Pattern",
+            "direction": "HOLD",
+            "confidence": 0.0,
+            "thesis": "no target ticker",
+            "full_analysis": {},
+            "latency_ms": 0.0,
         }
 
     ohlcv = await _fetch_ohlcv_for_pattern(ticker)
     if ohlcv is None:
         return {
-            "analyst": "Pattern", "direction": "HOLD", "confidence": 0.0,
-            "thesis": "OHLCV unavailable", "full_analysis": {}, "latency_ms": 0.0,
+            "analyst": "Pattern",
+            "direction": "HOLD",
+            "confidence": 0.0,
+            "thesis": "OHLCV unavailable",
+            "full_analysis": {},
+            "latency_ms": 0.0,
         }
 
     t0 = time.perf_counter()
@@ -247,11 +270,13 @@ async def pattern_analyst_opinion(
 
 
 async def _fetch_ohlcv_for_pattern(
-    ticker: str, days: int = 90,
+    ticker: str,
+    days: int = 90,
 ) -> OHLCVSeries | None:
     """Fetch OHLCV for the PatternAgent, gracefully degrading on failure."""
     try:
         from data_primitives.extractors.openbb_client import fetch_ohlcv
+
         bars = await fetch_ohlcv(ticker, days=days)
         if not bars or len(bars) < 30:
             return None

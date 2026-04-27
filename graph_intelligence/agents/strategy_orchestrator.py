@@ -16,15 +16,18 @@ Architecture split:
 This mirrors how Citadel/Jane Street actually trade: index-level
 macro bets via futures and options, stock-level positions via equity.
 """
+
 from __future__ import annotations
 
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from shared.config import settings
 from shared.logger import get_logger
+
+if TYPE_CHECKING:
+    from shared.types import AlphaScore, TradeIntent
 
 log = get_logger("agent.orchestrator")
 
@@ -36,26 +39,246 @@ log = get_logger("agent.orchestrator")
 INDEX_FUTURES_SPECS: dict[str, dict] = {
     # fut_expiry_rule: "3rd_fri" = 3rd Friday, "last_thu" = last Thursday, "2nd_fri" = 2nd Friday
     # opt_expiry_rule: "weekly_fri" = every Friday, "weekly_thu" = every Thursday, "monthly" = same as futures
-    "^GSPC":    {"future": "ES",     "name": "E-mini S&P 500",       "multiplier": 50,  "currency": "USD", "usd_rate": 1.0,    "exchange": "CME",     "country": "US", "margin_pct": 0.05, "fut_expiry_rule": "3rd_fri",  "opt_expiry_rule": "weekly_fri"},
-    "^IXIC":    {"future": "NQ",     "name": "E-mini NASDAQ 100",    "multiplier": 20,  "currency": "USD", "usd_rate": 1.0,    "exchange": "CME",     "country": "US", "margin_pct": 0.05, "fut_expiry_rule": "3rd_fri",  "opt_expiry_rule": "weekly_fri"},
-    "^DJI":     {"future": "YM",     "name": "E-mini Dow",           "multiplier": 5,   "currency": "USD", "usd_rate": 1.0,    "exchange": "CME",     "country": "US", "margin_pct": 0.05, "fut_expiry_rule": "3rd_fri",  "opt_expiry_rule": "weekly_fri"},
-    "^RUT":     {"future": "RTY",    "name": "E-mini Russell 2000",  "multiplier": 50,  "currency": "USD", "usd_rate": 1.0,    "exchange": "CME",     "country": "US", "margin_pct": 0.05, "fut_expiry_rule": "3rd_fri",  "opt_expiry_rule": "weekly_fri"},
-    "^NSEI":    {"future": "NIFTY",  "name": "NIFTY 50 Future",      "multiplier": 75,  "currency": "INR", "usd_rate": 0.012,  "exchange": "NSE",     "country": "IN", "margin_pct": 0.10, "fut_expiry_rule": "last_thu", "opt_expiry_rule": "weekly_thu"},
-    "^BSESN":   {"future": "SENSEX", "name": "SENSEX Future",        "multiplier": 15,  "currency": "INR", "usd_rate": 0.012,  "exchange": "BSE",     "country": "IN", "margin_pct": 0.10, "fut_expiry_rule": "last_thu", "opt_expiry_rule": "weekly_fri"},
-    "^FTSE":    {"future": "Z",      "name": "FTSE 100 Future",      "multiplier": 10,  "currency": "GBP", "usd_rate": 1.27,   "exchange": "ICE",     "country": "GB", "margin_pct": 0.05, "fut_expiry_rule": "3rd_fri",  "opt_expiry_rule": "monthly"},
-    "^GDAXI":   {"future": "FDAX",   "name": "DAX Future",           "multiplier": 25,  "currency": "EUR", "usd_rate": 1.08,   "exchange": "EUREX",   "country": "DE", "margin_pct": 0.05, "fut_expiry_rule": "3rd_fri",  "opt_expiry_rule": "weekly_fri"},
-    "^FCHI":    {"future": "FCE",    "name": "CAC 40 Future",        "multiplier": 10,  "currency": "EUR", "usd_rate": 1.08,   "exchange": "EURONEXT","country": "FR", "margin_pct": 0.05, "fut_expiry_rule": "3rd_fri",  "opt_expiry_rule": "monthly"},
-    "^STOXX50E":{"future": "FESX",   "name": "EURO STOXX 50 Future", "multiplier": 10,  "currency": "EUR", "usd_rate": 1.08,   "exchange": "EUREX",   "country": "EU", "margin_pct": 0.05, "fut_expiry_rule": "3rd_fri",  "opt_expiry_rule": "weekly_fri"},
-    "^N225":    {"future": "NKD",    "name": "Nikkei 225 Future",    "multiplier": 5,   "currency": "USD", "usd_rate": 1.0,    "exchange": "CME",     "country": "JP", "margin_pct": 0.05, "fut_expiry_rule": "2nd_fri",  "opt_expiry_rule": "monthly"},
-    "^HSI":     {"future": "HSI",    "name": "Hang Seng Future",     "multiplier": 50,  "currency": "HKD", "usd_rate": 0.128,  "exchange": "HKEX",    "country": "HK", "margin_pct": 0.08, "fut_expiry_rule": "2nd_last_bd", "opt_expiry_rule": "monthly"},
-    "^KS11":    {"future": "KOSPI",  "name": "KOSPI 200 Future",     "multiplier": 250000, "currency": "KRW", "usd_rate": 0.00075, "exchange": "KRX", "country": "KR", "margin_pct": 0.08, "fut_expiry_rule": "2nd_thu",  "opt_expiry_rule": "weekly_thu"},
-    "^AXJO":    {"future": "AP",     "name": "S&P/ASX 200 Future",   "multiplier": 25,  "currency": "AUD", "usd_rate": 0.65,   "exchange": "ASX",     "country": "AU", "margin_pct": 0.05, "fut_expiry_rule": "3rd_thu",  "opt_expiry_rule": "monthly"},
-    "^BVSP":    {"future": "IND",    "name": "Bovespa Future",       "multiplier": 1,   "currency": "BRL", "usd_rate": 0.20,   "exchange": "B3",      "country": "BR", "margin_pct": 0.08, "fut_expiry_rule": "wed_near_15th", "opt_expiry_rule": "monthly"},
-    "^SSMI":    {"future": "SMI",    "name": "Swiss Market Future",  "multiplier": 10,  "currency": "CHF", "usd_rate": 1.10,   "exchange": "SIX",     "country": "CH", "margin_pct": 0.05, "fut_expiry_rule": "3rd_fri",  "opt_expiry_rule": "monthly"},
-    "^GSPTSE":  {"future": "SXF",    "name": "S&P/TSX 60 Future",   "multiplier": 200, "currency": "CAD", "usd_rate": 0.74,   "exchange": "TMX",     "country": "CA", "margin_pct": 0.05, "fut_expiry_rule": "3rd_fri",  "opt_expiry_rule": "monthly"},
-    "000001.SS":{"future": "IF",     "name": "CSI 300 Future",       "multiplier": 300, "currency": "CNY", "usd_rate": 0.14,   "exchange": "CFFEX",   "country": "CN", "margin_pct": 0.12, "fut_expiry_rule": "3rd_fri",  "opt_expiry_rule": "monthly"},
-    "^STI":     {"future": "SGX_NK", "name": "SGX Nifty / STI Future","multiplier": 10, "currency": "SGD", "usd_rate": 0.74,   "exchange": "SGX",     "country": "SG", "margin_pct": 0.06, "fut_expiry_rule": "2nd_last_bd", "opt_expiry_rule": "monthly"},
-    "^TWII":    {"future": "TX",     "name": "TAIEX Future",         "multiplier": 200, "currency": "TWD", "usd_rate": 0.031,  "exchange": "TAIFEX",  "country": "TW", "margin_pct": 0.07, "fut_expiry_rule": "3rd_wed",  "opt_expiry_rule": "monthly"},
+    "^GSPC": {
+        "future": "ES",
+        "name": "E-mini S&P 500",
+        "multiplier": 50,
+        "currency": "USD",
+        "usd_rate": 1.0,
+        "exchange": "CME",
+        "country": "US",
+        "margin_pct": 0.05,
+        "fut_expiry_rule": "3rd_fri",
+        "opt_expiry_rule": "weekly_fri",
+    },
+    "^IXIC": {
+        "future": "NQ",
+        "name": "E-mini NASDAQ 100",
+        "multiplier": 20,
+        "currency": "USD",
+        "usd_rate": 1.0,
+        "exchange": "CME",
+        "country": "US",
+        "margin_pct": 0.05,
+        "fut_expiry_rule": "3rd_fri",
+        "opt_expiry_rule": "weekly_fri",
+    },
+    "^DJI": {
+        "future": "YM",
+        "name": "E-mini Dow",
+        "multiplier": 5,
+        "currency": "USD",
+        "usd_rate": 1.0,
+        "exchange": "CME",
+        "country": "US",
+        "margin_pct": 0.05,
+        "fut_expiry_rule": "3rd_fri",
+        "opt_expiry_rule": "weekly_fri",
+    },
+    "^RUT": {
+        "future": "RTY",
+        "name": "E-mini Russell 2000",
+        "multiplier": 50,
+        "currency": "USD",
+        "usd_rate": 1.0,
+        "exchange": "CME",
+        "country": "US",
+        "margin_pct": 0.05,
+        "fut_expiry_rule": "3rd_fri",
+        "opt_expiry_rule": "weekly_fri",
+    },
+    "^NSEI": {
+        "future": "NIFTY",
+        "name": "NIFTY 50 Future",
+        "multiplier": 75,
+        "currency": "INR",
+        "usd_rate": 0.012,
+        "exchange": "NSE",
+        "country": "IN",
+        "margin_pct": 0.10,
+        "fut_expiry_rule": "last_thu",
+        "opt_expiry_rule": "weekly_thu",
+    },
+    "^BSESN": {
+        "future": "SENSEX",
+        "name": "SENSEX Future",
+        "multiplier": 15,
+        "currency": "INR",
+        "usd_rate": 0.012,
+        "exchange": "BSE",
+        "country": "IN",
+        "margin_pct": 0.10,
+        "fut_expiry_rule": "last_thu",
+        "opt_expiry_rule": "weekly_fri",
+    },
+    "^FTSE": {
+        "future": "Z",
+        "name": "FTSE 100 Future",
+        "multiplier": 10,
+        "currency": "GBP",
+        "usd_rate": 1.27,
+        "exchange": "ICE",
+        "country": "GB",
+        "margin_pct": 0.05,
+        "fut_expiry_rule": "3rd_fri",
+        "opt_expiry_rule": "monthly",
+    },
+    "^GDAXI": {
+        "future": "FDAX",
+        "name": "DAX Future",
+        "multiplier": 25,
+        "currency": "EUR",
+        "usd_rate": 1.08,
+        "exchange": "EUREX",
+        "country": "DE",
+        "margin_pct": 0.05,
+        "fut_expiry_rule": "3rd_fri",
+        "opt_expiry_rule": "weekly_fri",
+    },
+    "^FCHI": {
+        "future": "FCE",
+        "name": "CAC 40 Future",
+        "multiplier": 10,
+        "currency": "EUR",
+        "usd_rate": 1.08,
+        "exchange": "EURONEXT",
+        "country": "FR",
+        "margin_pct": 0.05,
+        "fut_expiry_rule": "3rd_fri",
+        "opt_expiry_rule": "monthly",
+    },
+    "^STOXX50E": {
+        "future": "FESX",
+        "name": "EURO STOXX 50 Future",
+        "multiplier": 10,
+        "currency": "EUR",
+        "usd_rate": 1.08,
+        "exchange": "EUREX",
+        "country": "EU",
+        "margin_pct": 0.05,
+        "fut_expiry_rule": "3rd_fri",
+        "opt_expiry_rule": "weekly_fri",
+    },
+    "^N225": {
+        "future": "NKD",
+        "name": "Nikkei 225 Future",
+        "multiplier": 5,
+        "currency": "USD",
+        "usd_rate": 1.0,
+        "exchange": "CME",
+        "country": "JP",
+        "margin_pct": 0.05,
+        "fut_expiry_rule": "2nd_fri",
+        "opt_expiry_rule": "monthly",
+    },
+    "^HSI": {
+        "future": "HSI",
+        "name": "Hang Seng Future",
+        "multiplier": 50,
+        "currency": "HKD",
+        "usd_rate": 0.128,
+        "exchange": "HKEX",
+        "country": "HK",
+        "margin_pct": 0.08,
+        "fut_expiry_rule": "2nd_last_bd",
+        "opt_expiry_rule": "monthly",
+    },
+    "^KS11": {
+        "future": "KOSPI",
+        "name": "KOSPI 200 Future",
+        "multiplier": 250000,
+        "currency": "KRW",
+        "usd_rate": 0.00075,
+        "exchange": "KRX",
+        "country": "KR",
+        "margin_pct": 0.08,
+        "fut_expiry_rule": "2nd_thu",
+        "opt_expiry_rule": "weekly_thu",
+    },
+    "^AXJO": {
+        "future": "AP",
+        "name": "S&P/ASX 200 Future",
+        "multiplier": 25,
+        "currency": "AUD",
+        "usd_rate": 0.65,
+        "exchange": "ASX",
+        "country": "AU",
+        "margin_pct": 0.05,
+        "fut_expiry_rule": "3rd_thu",
+        "opt_expiry_rule": "monthly",
+    },
+    "^BVSP": {
+        "future": "IND",
+        "name": "Bovespa Future",
+        "multiplier": 1,
+        "currency": "BRL",
+        "usd_rate": 0.20,
+        "exchange": "B3",
+        "country": "BR",
+        "margin_pct": 0.08,
+        "fut_expiry_rule": "wed_near_15th",
+        "opt_expiry_rule": "monthly",
+    },
+    "^SSMI": {
+        "future": "SMI",
+        "name": "Swiss Market Future",
+        "multiplier": 10,
+        "currency": "CHF",
+        "usd_rate": 1.10,
+        "exchange": "SIX",
+        "country": "CH",
+        "margin_pct": 0.05,
+        "fut_expiry_rule": "3rd_fri",
+        "opt_expiry_rule": "monthly",
+    },
+    "^GSPTSE": {
+        "future": "SXF",
+        "name": "S&P/TSX 60 Future",
+        "multiplier": 200,
+        "currency": "CAD",
+        "usd_rate": 0.74,
+        "exchange": "TMX",
+        "country": "CA",
+        "margin_pct": 0.05,
+        "fut_expiry_rule": "3rd_fri",
+        "opt_expiry_rule": "monthly",
+    },
+    "000001.SS": {
+        "future": "IF",
+        "name": "CSI 300 Future",
+        "multiplier": 300,
+        "currency": "CNY",
+        "usd_rate": 0.14,
+        "exchange": "CFFEX",
+        "country": "CN",
+        "margin_pct": 0.12,
+        "fut_expiry_rule": "3rd_fri",
+        "opt_expiry_rule": "monthly",
+    },
+    "^STI": {
+        "future": "SGX_NK",
+        "name": "SGX Nifty / STI Future",
+        "multiplier": 10,
+        "currency": "SGD",
+        "usd_rate": 0.74,
+        "exchange": "SGX",
+        "country": "SG",
+        "margin_pct": 0.06,
+        "fut_expiry_rule": "2nd_last_bd",
+        "opt_expiry_rule": "monthly",
+    },
+    "^TWII": {
+        "future": "TX",
+        "name": "TAIEX Future",
+        "multiplier": 200,
+        "currency": "TWD",
+        "usd_rate": 0.031,
+        "exchange": "TAIFEX",
+        "country": "TW",
+        "margin_pct": 0.07,
+        "fut_expiry_rule": "3rd_wed",
+        "opt_expiry_rule": "monthly",
+    },
 }
 
 TRADEABLE_INDEX_SYMBOLS = list(INDEX_FUTURES_SPECS.keys())
@@ -82,6 +305,34 @@ BANNED_FNO_INDICES: set[str] = {
     "^TWII",
 }
 
+# Batch 3/H: per-future strategy-variant blocklist.
+#
+# Distinct from `BANNED_FNO_INDICES` (which kills the WHOLE index
+# for EVERY strategy) — this set blocks specific (strategy, future)
+# combinations whose historical win rate is ≤33% with n≥3 trades,
+# i.e. strategies the 2018-2025 walkforward proved have no edge on
+# a specific venue even though the *same strategy* works on a
+# different venue (e.g. `idx_bear_spread_fce` wins at 60% WR on the
+# CAC 40 — we keep that; but `idx_bear_spread_sgx_nk` lost 33% WR
+# over 3 trades — we block that specific variant).
+#
+# Seeding: populated from the `document/backtests/shock_driven_*.json`
+# walkforward reports. The Option-C recalibrator in
+# `backtesting.trade_outcomes` will also add to this set at runtime
+# when a variant crosses the threshold — evidence-driven expansion.
+BLOCKED_STRATEGY_VARIANTS: set[str] = {
+    # 2018-2025 walkforward, n≥3, WR ≤33%:
+    "idx_bear_spread_sgx_nk",  # SGX Nikkei — 3 trades, 33% WR, -$3.3k
+    "idx_bear_spread_z",  # Z future    — 4 trades, 25% WR, -$10.4k
+}
+
+
+def is_strategy_variant_blocked(strategy_name: str) -> bool:
+    """Return True if this concrete per-future strategy variant is on
+    the H-blocklist. Used by `index_fno_orchestrate` to skip emission
+    before any other gating fires."""
+    return bool(strategy_name) and strategy_name in BLOCKED_STRATEGY_VARIANTS
+
 
 def _illiquid_factor_floor(symbol: str, base_floor: float) -> float:
     """Bump the factor-score floor for known-illiquid index venues."""
@@ -97,6 +348,7 @@ class MarketContext:
     Includes both per-ticker signals AND global macro context so the
     orchestrator can think multi-dimensionally like Citadel.
     """
+
     ticker: str
     current_price: float = 0.0
     volatility_regime: str = "NORMAL"  # LOW_VOL, NORMAL, HIGH_VOL, CRISIS
@@ -126,11 +378,11 @@ class MarketContext:
     ret_5d: float = 0.0
     ret_20d: float = 0.0
     # Global macro context
-    market_breadth: float = 0.5   # 0=bearish, 0.5=neutral, 1=bullish (% stocks above 200MA)
-    vix_level: float = 20.0       # current VIX equivalent
+    market_breadth: float = 0.5  # 0=bearish, 0.5=neutral, 1=bullish (% stocks above 200MA)
+    vix_level: float = 20.0  # current VIX equivalent
     cross_asset_momentum: float = 0.0  # avg momentum across correlated assets
     open_positions_count: int = 0  # total open positions in portfolio
-    daily_pnl_pct: float = 0.0    # portfolio daily P&L so far
+    daily_pnl_pct: float = 0.0  # portfolio daily P&L so far
     # ── Tier-1 regime-gating fields (populated from RegimeState) ──
     # Positive VRP = IV premium is rich vs realised; negative = cheap
     vrp: float = 0.0
@@ -164,6 +416,7 @@ class TradeDecision:
         This ensures the portfolio is positively skewed — small frequent
         losses, large occasional wins — the institutional edge.
     """
+
     action: Literal["EXECUTE", "SKIP"]
     instrument_type: str  # "EQUITY", "INDEX_FUTURE", "INDEX_CALL", "INDEX_PUT", "INDEX_SPREAD"
     direction: str  # "LONG", "SHORT"
@@ -188,6 +441,22 @@ class TradeDecision:
     country: str = ""
     exchange: str = ""
     graph_intel: bool = False  # True if trade was driven by causal graph intelligence
+    # Concrete exit percentages. The *method* fields above describe
+    # HOW to compute the stop / take-profit (ATR bucket, fixed,
+    # volatility-adjusted, …); these two hold the actual % values
+    # that downstream executors (the signal-book upsert, the paper
+    # runner, IB order builder) need as numbers. Institutional
+    # defaults — 3 % stop / 6 % take-profit — give a 2R envelope
+    # that matches the ``min_r >= 1.5`` gate on TradeDecision. The
+    # Tier-3 emergency-recompute path in ``continuous_worker.py``
+    # crashed on every shock ticker (``AttributeError:
+    # 'TradeDecision' object has no attribute 'stop_loss_pct'``)
+    # because these fields were absent entirely — the signal book
+    # could never be refreshed on a shock. Now every TradeDecision
+    # carries safe defaults; orchestrator paths that know the ATR or
+    # vol can still override them with tighter values.
+    stop_loss_pct: float = 3.0
+    take_profit_pct: float = 6.0
 
 
 ORCHESTRATOR_SYSTEM = """You are the Strategy Orchestrator for AYVID, an AI-native quantitative hedge fund.
@@ -229,15 +498,21 @@ If expected_r < 1.5 or multi-factor score < 50%, set action to "SKIP"."""
 
 def _build_context_prompt(ctx: MarketContext) -> str:
     """Build the market context prompt for the LLM."""
-    mtf_str = ", ".join(f"{tf}={d}" for tf, d in ctx.mtf_signals.items()) if ctx.mtf_signals else "N/A"
+    mtf_str = (
+        ", ".join(f"{tf}={d}" for tf, d in ctx.mtf_signals.items()) if ctx.mtf_signals else "N/A"
+    )
 
-    instruments = ", ".join(ctx.available_instruments) if ctx.available_instruments else "EQUITY, CALL, PUT, STRADDLE, IRON_CONDOR, FUTURE"
+    instruments = (
+        ", ".join(ctx.available_instruments)
+        if ctx.available_instruments
+        else "EQUITY, CALL, PUT, STRADDLE, IRON_CONDOR, FUTURE"
+    )
 
     iv_section = ""
     if ctx.implied_vol is not None:
         iv_section = f"""
 Implied Volatility: {ctx.implied_vol:.1%}
-IV-RV Spread: {ctx.iv_rv_spread:+.1%} ({'IV expensive' if (ctx.iv_rv_spread or 0) > 0 else 'IV cheap'})"""
+IV-RV Spread: {ctx.iv_rv_spread:+.1%} ({"IV expensive" if (ctx.iv_rv_spread or 0) > 0 else "IV cheap"})"""
 
     shock_section = ""
     if ctx.supply_chain_shock:
@@ -246,18 +521,18 @@ IV-RV Spread: {ctx.iv_rv_spread:+.1%} ({'IV expensive' if (ctx.iv_rv_spread or 0
 SUPPLY CHAIN SHOCK DETECTED:
 Source: {ctx.shock_source}
 Magnitude: {ctx.shock_magnitude:+.1%}
-This ticker is a {'direct' if ctx.shock_magnitude > 0.05 else 'indirect'} supply chain link.
+This ticker is a {"direct" if ctx.shock_magnitude > 0.05 else "indirect"} supply chain link.
 AYVID'S EDGE: Express this view through OPTIONS for asymmetric payoff."""
 
     return f"""MARKET CONTEXT FOR {ctx.ticker}:
 
 Price: ${ctx.current_price:.2f}
-Sector: {ctx.sector or 'Unknown'}
+Sector: {ctx.sector or "Unknown"}
 
 REGIME:
 Volatility Regime: {ctx.volatility_regime}
 Trend Regime: {ctx.trend_regime}
-Hurst Exponent: {ctx.hurst:.3f} ({'trending' if ctx.hurst > 0.55 else 'mean-reverting' if ctx.hurst < 0.45 else 'random walk'})
+Hurst Exponent: {ctx.hurst:.3f} ({"trending" if ctx.hurst > 0.55 else "mean-reverting" if ctx.hurst < 0.45 else "random walk"})
 Realized Volatility: {ctx.realized_vol:.1%}{iv_section}
 
 INDICATORS:
@@ -292,29 +567,18 @@ async def orchestrate_trade(ctx: MarketContext) -> TradeDecision:
     and receives a structured TradeDecision back.
     """
     from langchain_core.messages import HumanMessage, SystemMessage
-    from langchain_openai import ChatOpenAI
-    from langchain_anthropic import ChatAnthropic
 
-    if settings.LLM_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
-        llm = ChatAnthropic(
-            model=settings.ANTHROPIC_MODEL,
-            api_key=settings.ANTHROPIC_API_KEY,
-            temperature=0.05,
-            max_tokens=800,
-        )
-    else:
-        llm = ChatOpenAI(
-            model=settings.OPENAI_MODEL,
-            api_key=settings.OPENAI_API_KEY,
-            temperature=0.05,
-            max_tokens=800,
-        )
+    from shared.llm_client import get_langchain_chat_model
+
+    llm = get_langchain_chat_model(temperature=0.05, max_tokens=800)
 
     prompt = _build_context_prompt(ctx)
-    response = await llm.ainvoke([
-        SystemMessage(content=ORCHESTRATOR_SYSTEM),
-        HumanMessage(content=prompt),
-    ])
+    response = await llm.ainvoke(
+        [
+            SystemMessage(content=ORCHESTRATOR_SYSTEM),
+            HumanMessage(content=prompt),
+        ]
+    )
 
     try:
         parsed = _extract_json(response.content)
@@ -353,11 +617,17 @@ async def orchestrate_trade(ctx: MarketContext) -> TradeDecision:
     except (json.JSONDecodeError, KeyError, TypeError) as exc:
         log.warning(f"Orchestrator parse failed: {exc}")
         return TradeDecision(
-            action="SKIP", instrument_type="EQUITY", direction="LONG",
-            ticker=ctx.ticker, strategy_name="parse_error",
-            analysis_timeframe="D1", entry_timeframe="M5",
-            conviction=0.0, sizing_method="FIXED_RISK",
-            max_risk_pct=1.0, stop_loss_method="ATR",
+            action="SKIP",
+            instrument_type="EQUITY",
+            direction="LONG",
+            ticker=ctx.ticker,
+            strategy_name="parse_error",
+            analysis_timeframe="D1",
+            entry_timeframe="M5",
+            conviction=0.0,
+            sizing_method="FIXED_RISK",
+            max_risk_pct=1.0,
+            stop_loss_method="ATR",
             take_profit_method="ATR",
             rationale=f"Parse error: {exc}",
         )
@@ -442,26 +712,39 @@ def _multi_factor_score(ctx: MarketContext) -> float:
 def _skip(ctx: MarketContext, reason: str) -> TradeDecision:
     """Shorthand for a SKIP decision."""
     return TradeDecision(
-        action="SKIP", instrument_type="EQUITY", direction="LONG",
-        ticker=ctx.ticker, strategy_name="no_edge",
-        analysis_timeframe="D1", entry_timeframe="M5",
-        conviction=0.0, sizing_method="FIXED_RISK",
-        max_risk_pct=1.0, stop_loss_method="ATR",
-        take_profit_method="ATR", rationale=reason,
-        expected_r=0.0, min_r=0.0,
+        action="SKIP",
+        instrument_type="EQUITY",
+        direction="LONG",
+        ticker=ctx.ticker,
+        strategy_name="no_edge",
+        analysis_timeframe="D1",
+        entry_timeframe="M5",
+        conviction=0.0,
+        sizing_method="FIXED_RISK",
+        max_risk_pct=1.0,
+        stop_loss_method="ATR",
+        take_profit_method="ATR",
+        rationale=reason,
+        expected_r=0.0,
+        min_r=0.0,
     )
 
 
-MIN_FACTOR_SCORE = 0.30
-MIN_CONVICTION = 0.62
-MIN_R_GLOBAL = 1.5
+# All policy floors below are operator-tunable via `.env` through
+# `shared.config.Settings`. These module-level aliases preserve the
+# legacy import surface so downstream code and tests keep working.
+from shared.config import settings as _settings
+
+MIN_FACTOR_SCORE: float = _settings.MIN_FACTOR_SCORE
+MIN_CONVICTION: float = _settings.MIN_CONVICTION_TRADE
+MIN_R_GLOBAL: float = _settings.MIN_R_GLOBAL
 
 # ── Regime-gating constants (Tier-1 long-vol block) ──────────────────
 # Causal-agent conviction required to override a grind-up block on
 # long-vol strategies (naked puts, crisis puts, shock-directed puts,
 # aggressive short equity). Below this bar, the orchestrator MUST skip
 # — low-vol grind-up markets systematically bleed these strategies.
-CAUSAL_OVERRIDE_THRESHOLD = 0.90
+CAUSAL_OVERRIDE_THRESHOLD: float = _settings.CAUSAL_OVERRIDE_CONVICTION
 
 # VRP band where buying options is statistically expensive. When
 # IV − RV ≥ this, we refuse to pay for premium and flip to credit
@@ -474,7 +757,7 @@ CAUSAL_OVERRIDE_THRESHOLD = 0.90
 # the gate entirely when a causal shock is active with directional
 # bias (the shock signal is the primary alpha driver; VRP would
 # otherwise veto exactly the trades the causal graph is right about).
-VRP_RICH_THRESHOLD = 0.06
+VRP_RICH_THRESHOLD: float = _settings.VRP_RICH_THRESHOLD
 
 # Long-vol strategy families — gated through the grind-up filter.
 LONG_VOL_STRATEGY_PREFIXES: tuple[str, ...] = (
@@ -514,8 +797,11 @@ def _matches_blocklist(strategy_name: str, blocklist: list[str]) -> bool:
 
 
 def get_param(
-    ctx: MarketContext, key: str, default: float,
-    *, strategy_name: str | None = None,
+    ctx: MarketContext,
+    key: str,
+    default: float,
+    *,
+    strategy_name: str | None = None,
 ) -> float:
     """Read a dynamic parameter with three-tier fallback:
 
@@ -547,8 +833,8 @@ def get_param(
 
 
 # ── Empirical-prior loader (calibration/priors.json) ──────────────────
-from pathlib import Path as _Path
 import json as _json
+from pathlib import Path as _Path
 
 _PRIORS_PATH: _Path = _Path("calibration/priors.json")
 _priors_cache: dict[str, Any] | None = None
@@ -559,9 +845,9 @@ _priors_cache_mtime: float | None = None
 # contract stays verbose and unambiguous.
 _PRIORS_KEY_ALIASES: dict[str, str] = {
     "max_rsi_entry_long": "max_rsi",
-    "max_z_entry_long":   "max_z",
-    "min_factor_score":   "min_factor_score",
-    "min_expected_r":     "min_expected_r",
+    "max_z_entry_long": "max_z",
+    "min_factor_score": "min_factor_score",
+    "min_expected_r": "min_expected_r",
 }
 
 
@@ -603,7 +889,9 @@ def _compose_regime_key(ctx: MarketContext) -> str:
 
 
 def _lookup_empirical_prior(
-    ctx: MarketContext, strategy_name: str | None, key: str,
+    ctx: MarketContext,
+    strategy_name: str | None,
+    key: str,
 ) -> float | None:
     """Resolve (strategy, regime, key) against the priors JSON.
 
@@ -633,7 +921,8 @@ def _lookup_empirical_prior(
 
 
 def is_strategy_regime_blocked(
-    ctx: MarketContext, strategy_name: str,
+    ctx: MarketContext,
+    strategy_name: str,
 ) -> bool:
     """Return True if priors.json explicitly flagged this cell as blocked.
 
@@ -652,7 +941,7 @@ def is_strategy_regime_blocked(
 # ── Institutional EV hurdle (Step 2 gate) ─────────────────────────────
 # Conservative per-asset-class round-trip-cost-as-%-of-notional used at
 # the orchestrator layer. These mirror (and slightly over-estimate) the
-# `backtesting.cost_model` assumptions so we never let a sub-noise trade
+# `shared.cost_model` assumptions so we never let a sub-noise trade
 # through just because the downstream Kelly sizer would have rejected it.
 #
 # Equity:  ~5 bps slippage/side + $0.35 min commission ≈ 0.10% round-trip
@@ -663,15 +952,18 @@ def is_strategy_regime_blocked(
 #          dimension separate: evaluate EV on the *premium*, not notional.
 # Spread:  1.5% × 1.5 multiplier × 2 sides = 4.5% on net_debit.
 ORCHESTRATOR_COST_PCT_OF_NOTIONAL: dict[str, float] = {
-    "EQUITY":       0.0020,   # 20 bps round-trip incl. caps & mins
-    "INDEX_FUTURE": 0.0015,   # 15 bps — institutional tier futures
-    "INDEX_CALL":   0.0400,   # 4% of premium round-trip
-    "INDEX_PUT":    0.0400,
-    "INDEX_SPREAD": 0.0600,   # 6% of net debit (two legs, two sides)
+    "EQUITY": 0.0020,  # 20 bps round-trip incl. caps & mins
+    "INDEX_FUTURE": 0.0015,  # 15 bps — institutional tier futures
+    "INDEX_CALL": 0.0400,  # 4% of premium round-trip
+    "INDEX_PUT": 0.0400,
+    "INDEX_SPREAD": 0.0600,  # 6% of net debit (two legs, two sides)
 }
 
-# Institutional EV hurdle multiple — expected PnL must clear 4× cost.
-ORCH_EV_HURDLE = 4.0
+# Institutional EV hurdle multiple — expected PnL must clear N× cost.
+# Single source of truth is `shared.config.Settings.EV_HURDLE_MULTIPLE`;
+# `execution_engine.math.costs` reads the same key, so both orchestrator
+# and Kelly EV-gate agree on "what 'economically worth trading' means".
+ORCH_EV_HURDLE: float = _settings.EV_HURDLE_MULTIPLE
 
 # Instrument-to-risk-capital basis: for equities/futures, the notional
 # exposure is roughly equal to the portfolio risk pct (we trade full
@@ -682,8 +974,9 @@ ORCH_EV_HURDLE = 4.0
 _OPTIONS_INSTRUMENTS = ("INDEX_CALL", "INDEX_PUT", "INDEX_SPREAD")
 
 
-def _orchestrator_ev_gate(
-    ctx: MarketContext, decision: TradeDecision,
+def orchestrator_ev_gate(
+    ctx: MarketContext,
+    decision: TradeDecision,
 ) -> tuple[bool, str]:
     """Conservative EV hurdle check at the orchestrator layer.
 
@@ -722,16 +1015,18 @@ def _orchestrator_ev_gate(
         return True, ""
 
     return False, (
-        f"EV<4×cost: E[ret]={expected_return_pct*100:.3f}% "
-        f"({risk_frac*100:.1f}% risk × {r_mult:.1f}R × conv={conviction:.2f}) "
-        f"vs hurdle={hurdle_pct*100:.3f}% "
-        f"(port_cost={portfolio_cost_pct*100:.3f}% × {ORCH_EV_HURDLE:.0f}×) "
+        f"EV<4×cost: E[ret]={expected_return_pct * 100:.3f}% "
+        f"({risk_frac * 100:.1f}% risk × {r_mult:.1f}R × conv={conviction:.2f}) "
+        f"vs hurdle={hurdle_pct * 100:.3f}% "
+        f"(port_cost={portfolio_cost_pct * 100:.3f}% × {ORCH_EV_HURDLE:.0f}×) "
         f"on {itype}"
     )
 
 
 def _grind_up_gate(
-    ctx: MarketContext, strategy_name: str, instrument_type: str = "",
+    ctx: MarketContext,
+    strategy_name: str,
+    instrument_type: str = "",
 ) -> tuple[bool, str]:
     """Apply the Tier-1 grind-up regime gate.
 
@@ -756,7 +1051,10 @@ def _grind_up_gate(
 
     is_long_vol = _is_long_vol_strategy(strategy_name)
     is_index_derivative = instrument_type in (
-        "INDEX_FUTURE", "INDEX_CALL", "INDEX_PUT", "INDEX_SPREAD",
+        "INDEX_FUTURE",
+        "INDEX_CALL",
+        "INDEX_PUT",
+        "INDEX_SPREAD",
     )
 
     if not (is_long_vol or is_index_derivative):
@@ -794,6 +1092,7 @@ def _dynamic_conviction(ctx: MarketContext, factor_score: float) -> float:
 #  INDEX F&O ORCHESTRATOR — trades index futures & options
 # ══════════════════════════════════════════════════════════════
 
+
 def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
     """Decide index F&O trades: futures, index options, index spreads.
 
@@ -821,6 +1120,16 @@ def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
     exchange = spec.get("exchange", "")
 
     def _idx_decision(**kwargs) -> TradeDecision:
+        # Batch 3/H: short-circuit emission if the concrete per-future
+        # variant is on the evidence-driven blocklist. We return SKIP
+        # instead of the intended EXECUTE so the decision flows through
+        # `rule_based_orchestrate`'s normal SKIP handling downstream.
+        sname = kwargs.get("strategy_name", "")
+        if is_strategy_variant_blocked(sname):
+            return _skip(
+                ctx,
+                f"{sname} on H-blocklist (historical WR ≤33% with n≥3)",
+            )
         kwargs.setdefault("futures_contract", future_name)
         kwargs.setdefault("multiplier", multiplier)
         kwargs.setdefault("country", country)
@@ -852,19 +1161,26 @@ def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
             debit_est = spread_pts * debit_ratio
             exp_r = max((spread_pts - debit_est) / max(debit_est, 0.01), 1.2)
             return _idx_decision(
-                action="EXECUTE", instrument_type="INDEX_PUT", direction="LONG",
-                ticker=ctx.ticker, strategy_name=f"shock_directed_put_{future_name.lower()}",
-                analysis_timeframe="D1", entry_timeframe="M5",
+                action="EXECUTE",
+                instrument_type="INDEX_PUT",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name=f"shock_directed_put_{future_name.lower()}",
+                analysis_timeframe="D1",
+                entry_timeframe="M5",
                 conviction=min(0.80, _dynamic_conviction(ctx, factor_score) + 0.10),
                 sizing_method="KELLY_OPTIONS",
-                max_risk_pct=1.5, stop_loss_method="FIXED_PCT",
+                max_risk_pct=1.5,
+                stop_loss_method="FIXED_PCT",
                 take_profit_method="ATR",
                 rationale=(
                     f"Shock-directed PUT on {future_name}: {ctx.shock_source} "
                     f"→ BEARISH bias (z={ctx.z_score:+.1f}, RSI={ctx.rsi:.0f})"
                 ),
-                strike=round(price * 0.98, 2), expiry_days=14,
-                expected_r=exp_r, min_r=1.5,
+                strike=round(price * 0.98, 2),
+                expiry_days=14,
+                expected_r=exp_r,
+                min_r=1.5,
                 graph_intel=True,
             )
 
@@ -877,19 +1193,26 @@ def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
             debit_est = spread_pts * debit_ratio
             exp_r = max((spread_pts - debit_est) / max(debit_est, 0.01), 1.2)
             return _idx_decision(
-                action="EXECUTE", instrument_type="INDEX_CALL", direction="LONG",
-                ticker=ctx.ticker, strategy_name=f"shock_directed_call_{future_name.lower()}",
-                analysis_timeframe="D1", entry_timeframe="M5",
+                action="EXECUTE",
+                instrument_type="INDEX_CALL",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name=f"shock_directed_call_{future_name.lower()}",
+                analysis_timeframe="D1",
+                entry_timeframe="M5",
                 conviction=min(0.80, _dynamic_conviction(ctx, factor_score) + 0.10),
                 sizing_method="KELLY_OPTIONS",
-                max_risk_pct=1.5, stop_loss_method="FIXED_PCT",
+                max_risk_pct=1.5,
+                stop_loss_method="FIXED_PCT",
                 take_profit_method="ATR",
                 rationale=(
                     f"Shock-directed CALL on {future_name}: {ctx.shock_source} "
                     f"→ BULLISH bias (z={ctx.z_score:+.1f}, RSI={ctx.rsi:.0f})"
                 ),
-                strike=round(price * 1.02, 2), expiry_days=14,
-                expected_r=exp_r, min_r=1.5,
+                strike=round(price * 1.02, 2),
+                expiry_days=14,
+                expected_r=exp_r,
+                min_r=1.5,
                 graph_intel=True,
             )
 
@@ -898,28 +1221,44 @@ def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
         if ctx.rsi < 25 and ctx.z_score < -2.0 and factor_score >= 0.45:
             exp_r = 3.0
             return _idx_decision(
-                action="EXECUTE", instrument_type="INDEX_PUT", direction="LONG",
-                ticker=ctx.ticker, strategy_name="crisis_index_put",
-                analysis_timeframe="D1", entry_timeframe="M5",
-                conviction=0.75, sizing_method="KELLY_OPTIONS",
-                max_risk_pct=1.0, stop_loss_method="FIXED_PCT",
+                action="EXECUTE",
+                instrument_type="INDEX_PUT",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name="crisis_index_put",
+                analysis_timeframe="D1",
+                entry_timeframe="M5",
+                conviction=0.75,
+                sizing_method="KELLY_OPTIONS",
+                max_risk_pct=1.0,
+                stop_loss_method="FIXED_PCT",
                 take_profit_method="ATR",
                 rationale=f"Crisis regime put on {future_name} (RSI={ctx.rsi:.0f}, z={ctx.z_score:+.1f})",
-                strike=round(price * 0.97, 2), expiry_days=21,
-                expected_r=exp_r, min_r=2.0,
+                strike=round(price * 0.97, 2),
+                expiry_days=21,
+                expected_r=exp_r,
+                min_r=2.0,
             )
         if ctx.rsi < 15 and ctx.z_score < -3.0 and factor_score >= 0.50:
             exp_r = 4.0
             return _idx_decision(
-                action="EXECUTE", instrument_type="INDEX_CALL", direction="LONG",
-                ticker=ctx.ticker, strategy_name="crisis_capitulation_bounce",
-                analysis_timeframe="D1", entry_timeframe="M5",
-                conviction=0.70, sizing_method="KELLY_OPTIONS",
-                max_risk_pct=0.8, stop_loss_method="FIXED_PCT",
+                action="EXECUTE",
+                instrument_type="INDEX_CALL",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name="crisis_capitulation_bounce",
+                analysis_timeframe="D1",
+                entry_timeframe="M5",
+                conviction=0.70,
+                sizing_method="KELLY_OPTIONS",
+                max_risk_pct=0.8,
+                stop_loss_method="FIXED_PCT",
                 take_profit_method="ATR",
                 rationale=f"Extreme capitulation bounce on {future_name} (RSI={ctx.rsi:.0f}, z={ctx.z_score:+.1f})",
-                strike=round(price * 0.99, 2), expiry_days=14,
-                expected_r=exp_r, min_r=2.0,
+                strike=round(price * 0.99, 2),
+                expiry_days=14,
+                expected_r=exp_r,
+                min_r=2.0,
             )
         return _skip(ctx, f"Crisis on {future_name} — no compelling setup")
 
@@ -930,15 +1269,21 @@ def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
     # `min_ret_5d_momentum` so the gate auto-tightens.
     idx_trend_strategy = f"idx_trend_{future_name.lower()}"
     min_trend_fno = get_param(
-        ctx, "min_trend_strength_long", 0.08,
+        ctx,
+        "min_trend_strength_long",
+        0.08,
         strategy_name=idx_trend_strategy,
     )
     min_ret5_fno = get_param(
-        ctx, "min_ret_5d_momentum", 0.005,
+        ctx,
+        "min_ret_5d_momentum",
+        0.005,
         strategy_name=idx_trend_strategy,
     )
     min_factor_fno = get_param(
-        ctx, "min_factor_score", MIN_FACTOR_SCORE,
+        ctx,
+        "min_factor_score",
+        MIN_FACTOR_SCORE,
         strategy_name=idx_trend_strategy,
     )
 
@@ -946,7 +1291,7 @@ def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
         if factor_score < min_factor_fno:
             return _skip(ctx, f"Trend on {future_name} but factors={factor_score:.0%}")
 
-        bullish = ctx.trend_strength >  min_trend_fno and ctx.ret_5d >  min_ret5_fno
+        bullish = ctx.trend_strength > min_trend_fno and ctx.ret_5d > min_ret5_fno
         bearish = ctx.trend_strength < -min_trend_fno and ctx.ret_5d < -min_ret5_fno
 
         if bullish or bearish:
@@ -957,19 +1302,25 @@ def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
             exp_r = min(exp_r, 5.0)
 
             return _idx_decision(
-                action="EXECUTE", instrument_type="INDEX_FUTURE", direction=direction,
-                ticker=ctx.ticker, strategy_name=f"idx_trend_{future_name.lower()}",
-                analysis_timeframe="D1", entry_timeframe="M5",
+                action="EXECUTE",
+                instrument_type="INDEX_FUTURE",
+                direction=direction,
+                ticker=ctx.ticker,
+                strategy_name=f"idx_trend_{future_name.lower()}",
+                analysis_timeframe="D1",
+                entry_timeframe="M5",
                 conviction=_dynamic_conviction(ctx, factor_score),
                 sizing_method="KELLY_FUTURES",
-                max_risk_pct=2.0, stop_loss_method="ATR",
+                max_risk_pct=2.0,
+                stop_loss_method="ATR",
                 take_profit_method="ATR",
                 rationale=(
                     f"{direction} {future_name} ({spec['name']}): "
                     f"trend={ctx.trend_strength:+.2f}, H={ctx.hurst:.2f}, "
                     f"5d={ctx.ret_5d:+.1%}, factors={factor_score:.0%}, R={exp_r:.1f}"
                 ),
-                expected_r=exp_r, min_r=1.5,
+                expected_r=exp_r,
+                min_r=1.5,
             )
 
     # ── MEAN REVERTING + HIGH VOL: index option spreads ───────────
@@ -980,30 +1331,44 @@ def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
         if ctx.z_score < -1.5 and ctx.rsi < 35:
             exp_r = 2.5
             return _idx_decision(
-                action="EXECUTE", instrument_type="INDEX_CALL", direction="LONG",
-                ticker=ctx.ticker, strategy_name=f"idx_mr_oversold_call_{future_name.lower()}",
-                analysis_timeframe="D1", entry_timeframe="M5",
+                action="EXECUTE",
+                instrument_type="INDEX_CALL",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name=f"idx_mr_oversold_call_{future_name.lower()}",
+                analysis_timeframe="D1",
+                entry_timeframe="M5",
                 conviction=_dynamic_conviction(ctx, factor_score),
                 sizing_method="KELLY_OPTIONS",
-                max_risk_pct=1.5, stop_loss_method="FIXED_PCT",
+                max_risk_pct=1.5,
+                stop_loss_method="FIXED_PCT",
                 take_profit_method="MEAN_REVERSION",
                 rationale=f"MR oversold {future_name}: z={ctx.z_score:+.1f}, RSI={ctx.rsi:.0f}",
-                strike=round(price * 0.99, 2), expiry_days=21,
-                expected_r=exp_r, min_r=2.0,
+                strike=round(price * 0.99, 2),
+                expiry_days=21,
+                expected_r=exp_r,
+                min_r=2.0,
             )
         if ctx.z_score > 1.5 and ctx.rsi > 65:
             exp_r = 2.5
             return _idx_decision(
-                action="EXECUTE", instrument_type="INDEX_PUT", direction="LONG",
-                ticker=ctx.ticker, strategy_name=f"idx_mr_overbought_put_{future_name.lower()}",
-                analysis_timeframe="D1", entry_timeframe="M5",
+                action="EXECUTE",
+                instrument_type="INDEX_PUT",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name=f"idx_mr_overbought_put_{future_name.lower()}",
+                analysis_timeframe="D1",
+                entry_timeframe="M5",
                 conviction=_dynamic_conviction(ctx, factor_score),
                 sizing_method="KELLY_OPTIONS",
-                max_risk_pct=1.5, stop_loss_method="FIXED_PCT",
+                max_risk_pct=1.5,
+                stop_loss_method="FIXED_PCT",
                 take_profit_method="MEAN_REVERSION",
                 rationale=f"MR overbought {future_name}: z={ctx.z_score:+.1f}, RSI={ctx.rsi:.0f}",
-                strike=round(price * 1.01, 2), expiry_days=21,
-                expected_r=exp_r, min_r=2.0,
+                strike=round(price * 1.01, 2),
+                expiry_days=21,
+                expected_r=exp_r,
+                min_r=2.0,
             )
 
     # ── NORMAL VOL + DIRECTIONAL: index debit spreads ─────────────
@@ -1015,25 +1380,36 @@ def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
         # Regime-aware directional filter: don't buy calls into a falling market
         trailing_bearish = ctx.ret_5d < 0 and ctx.z_score < -0.5
 
-        if (ctx.z_score < -1.2 and ctx.rsi < 40
-                and factor_score >= MIN_FACTOR_SCORE and not trailing_bearish):
+        if (
+            ctx.z_score < -1.2
+            and ctx.rsi < 40
+            and factor_score >= MIN_FACTOR_SCORE
+            and not trailing_bearish
+        ):
             long_K = round(price * 0.998, 2)
             short_K = round(long_K + spread_pts, 2)
             debit_est = spread_pts * debit_ratio
             exp_r = (spread_pts - debit_est) / max(debit_est, 0.01)
             conv = _dynamic_conviction(ctx, factor_score)
             return _idx_decision(
-                action="EXECUTE", instrument_type="INDEX_SPREAD", direction="LONG",
-                ticker=ctx.ticker, strategy_name=f"idx_bull_spread_{future_name.lower()}",
-                analysis_timeframe="H4", entry_timeframe="M5",
+                action="EXECUTE",
+                instrument_type="INDEX_SPREAD",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name=f"idx_bull_spread_{future_name.lower()}",
+                analysis_timeframe="H4",
+                entry_timeframe="M5",
                 conviction=conv,
                 sizing_method="KELLY_OPTIONS",
-                max_risk_pct=1.5, stop_loss_method="FIXED_PCT",
+                max_risk_pct=1.5,
+                stop_loss_method="FIXED_PCT",
                 take_profit_method="MEAN_REVERSION",
                 rationale=f"Bull call spread on {future_name}: z={ctx.z_score:+.1f}, RSI={ctx.rsi:.0f}, R={exp_r:.1f}",
-                strike=long_K, expiry_days=14,
+                strike=long_K,
+                expiry_days=14,
                 second_leg={"strike": short_K, "direction": "SHORT", "type": "CALL"},
-                expected_r=exp_r, min_r=1.5,
+                expected_r=exp_r,
+                min_r=1.5,
             )
 
         if ctx.z_score > 0.8 and ctx.rsi > 55 and factor_score >= MIN_FACTOR_SCORE:
@@ -1043,57 +1419,85 @@ def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
             exp_r = (spread_pts - debit_est) / max(debit_est, 0.01)
             conv = _dynamic_conviction(ctx, factor_score)
             return _idx_decision(
-                action="EXECUTE", instrument_type="INDEX_SPREAD", direction="LONG",
-                ticker=ctx.ticker, strategy_name=f"idx_bear_spread_{future_name.lower()}",
-                analysis_timeframe="H4", entry_timeframe="M5",
+                action="EXECUTE",
+                instrument_type="INDEX_SPREAD",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name=f"idx_bear_spread_{future_name.lower()}",
+                analysis_timeframe="H4",
+                entry_timeframe="M5",
                 conviction=conv,
                 sizing_method="KELLY_OPTIONS",
-                max_risk_pct=1.5, stop_loss_method="FIXED_PCT",
+                max_risk_pct=1.5,
+                stop_loss_method="FIXED_PCT",
                 take_profit_method="MEAN_REVERSION",
                 rationale=f"Bear put spread on {future_name}: z={ctx.z_score:+.1f}, RSI={ctx.rsi:.0f}, R={exp_r:.1f}",
-                strike=long_K, expiry_days=14,
+                strike=long_K,
+                expiry_days=14,
                 second_leg={"strike": short_K, "direction": "SHORT", "type": "PUT"},
-                expected_r=exp_r, min_r=1.5,
+                expected_r=exp_r,
+                min_r=1.5,
             )
 
         # Protective put on extended decline (no bounce in sight)
-        if (trailing_bearish and ctx.z_score < -2.0 and ctx.rsi < 30
-                and factor_score >= MIN_FACTOR_SCORE):
+        if (
+            trailing_bearish
+            and ctx.z_score < -2.0
+            and ctx.rsi < 30
+            and factor_score >= MIN_FACTOR_SCORE
+        ):
             exp_r = abs(ctx.z_score) * 1.1
             conv = _dynamic_conviction(ctx, factor_score)
             return _idx_decision(
-                action="EXECUTE", instrument_type="INDEX_PUT", direction="LONG",
-                ticker=ctx.ticker, strategy_name=f"idx_decline_put_{future_name.lower()}",
-                analysis_timeframe="D1", entry_timeframe="M5",
+                action="EXECUTE",
+                instrument_type="INDEX_PUT",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name=f"idx_decline_put_{future_name.lower()}",
+                analysis_timeframe="D1",
+                entry_timeframe="M5",
                 conviction=conv,
                 sizing_method="KELLY_OPTIONS",
-                max_risk_pct=1.0, stop_loss_method="FIXED_PCT",
+                max_risk_pct=1.0,
+                stop_loss_method="FIXED_PCT",
                 take_profit_method="ATR",
                 rationale=f"Decline put on {future_name}: z={ctx.z_score:+.1f}, RSI={ctx.rsi:.0f}, 5d={ctx.ret_5d:+.1%}",
-                strike=round(price * 1.01, 2), expiry_days=14,
-                expected_r=exp_r, min_r=1.5,
+                strike=round(price * 1.01, 2),
+                expiry_days=14,
+                expected_r=exp_r,
+                min_r=1.5,
             )
 
         # Momentum futures on normal/low vol
-        if (abs(ctx.trend_strength) > 0.15 and ctx.hurst > 0.52
-                and abs(ctx.ret_5d) > 0.008 and factor_score >= MIN_FACTOR_SCORE):
+        if (
+            abs(ctx.trend_strength) > 0.15
+            and ctx.hurst > 0.52
+            and abs(ctx.ret_5d) > 0.008
+            and factor_score >= MIN_FACTOR_SCORE
+        ):
             direction = "LONG" if ctx.trend_strength > 0 else "SHORT"
             stop_dist = atr * 2.0
             target_dist = atr * 3.0
             exp_r = target_dist / max(stop_dist, 0.01)
             return _idx_decision(
-                action="EXECUTE", instrument_type="INDEX_FUTURE", direction=direction,
-                ticker=ctx.ticker, strategy_name=f"idx_momentum_{future_name.lower()}",
-                analysis_timeframe="D1", entry_timeframe="M5",
+                action="EXECUTE",
+                instrument_type="INDEX_FUTURE",
+                direction=direction,
+                ticker=ctx.ticker,
+                strategy_name=f"idx_momentum_{future_name.lower()}",
+                analysis_timeframe="D1",
+                entry_timeframe="M5",
                 conviction=_dynamic_conviction(ctx, factor_score),
                 sizing_method="KELLY_FUTURES",
-                max_risk_pct=1.5, stop_loss_method="ATR",
+                max_risk_pct=1.5,
+                stop_loss_method="ATR",
                 take_profit_method="ATR",
                 rationale=(
                     f"Momentum {direction} {future_name}: "
                     f"trend={ctx.trend_strength:+.2f}, 5d={ctx.ret_5d:+.1%}, R={exp_r:.1f}"
                 ),
-                expected_r=exp_r, min_r=1.5,
+                expected_r=exp_r,
+                min_r=1.5,
             )
 
     # ── IV-RV DISLOCATION: buy cheap vol on index ─────────────────
@@ -1102,29 +1506,43 @@ def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
             exp_r = 2.5
             if ctx.trend_strength > 0:
                 return _idx_decision(
-                    action="EXECUTE", instrument_type="INDEX_CALL", direction="LONG",
-                    ticker=ctx.ticker, strategy_name=f"idx_vol_arb_call_{future_name.lower()}",
-                    analysis_timeframe="D1", entry_timeframe="M5",
+                    action="EXECUTE",
+                    instrument_type="INDEX_CALL",
+                    direction="LONG",
+                    ticker=ctx.ticker,
+                    strategy_name=f"idx_vol_arb_call_{future_name.lower()}",
+                    analysis_timeframe="D1",
+                    entry_timeframe="M5",
                     conviction=_dynamic_conviction(ctx, factor_score),
                     sizing_method="KELLY_OPTIONS",
-                    max_risk_pct=1.5, stop_loss_method="FIXED_PCT",
+                    max_risk_pct=1.5,
+                    stop_loss_method="FIXED_PCT",
                     take_profit_method="ATR",
                     rationale=f"IV cheap on {future_name}: IV={ctx.implied_vol:.0%} < RV={ctx.realized_vol:.0%}",
-                    strike=round(price, 2), expiry_days=21,
-                    expected_r=exp_r, min_r=1.5,
+                    strike=round(price, 2),
+                    expiry_days=21,
+                    expected_r=exp_r,
+                    min_r=1.5,
                 )
             else:
                 return _idx_decision(
-                    action="EXECUTE", instrument_type="INDEX_PUT", direction="LONG",
-                    ticker=ctx.ticker, strategy_name=f"idx_vol_arb_put_{future_name.lower()}",
-                    analysis_timeframe="D1", entry_timeframe="M5",
+                    action="EXECUTE",
+                    instrument_type="INDEX_PUT",
+                    direction="LONG",
+                    ticker=ctx.ticker,
+                    strategy_name=f"idx_vol_arb_put_{future_name.lower()}",
+                    analysis_timeframe="D1",
+                    entry_timeframe="M5",
                     conviction=_dynamic_conviction(ctx, factor_score),
                     sizing_method="KELLY_OPTIONS",
-                    max_risk_pct=1.5, stop_loss_method="FIXED_PCT",
+                    max_risk_pct=1.5,
+                    stop_loss_method="FIXED_PCT",
                     take_profit_method="ATR",
                     rationale=f"IV cheap on {future_name}: IV={ctx.implied_vol:.0%} < RV={ctx.realized_vol:.0%}",
-                    strike=round(price, 2), expiry_days=21,
-                    expected_r=exp_r, min_r=1.5,
+                    strike=round(price, 2),
+                    expiry_days=21,
+                    expected_r=exp_r,
+                    min_r=1.5,
                 )
 
     return _skip(ctx, f"No edge on {future_name} ({spec['name']})")
@@ -1133,6 +1551,7 @@ def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
 # ══════════════════════════════════════════════════════════════
 #  EQUITY INVESTMENT ORCHESTRATOR — stock positions only
 # ══════════════════════════════════════════════════════════════
+
 
 def _equity_orchestrate_core(ctx: MarketContext) -> TradeDecision:
     """Equity-only investment decisions. No options on stocks.
@@ -1163,15 +1582,21 @@ def _equity_orchestrate_core(ctx: MarketContext) -> TradeDecision:
         if ctx.is_beneficiary and ctx.shock_magnitude > 0.008 and ctx.volume_ratio >= 1.1:
             exp_r = max(abs(ctx.shock_magnitude) / 0.02 * 2.0, 1.8)
             return TradeDecision(
-                action="EXECUTE", instrument_type="EQUITY", direction="LONG",
-                ticker=ctx.ticker, strategy_name="supply_chain_beneficiary",
-                analysis_timeframe="D1", entry_timeframe="D1",
+                action="EXECUTE",
+                instrument_type="EQUITY",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name="supply_chain_beneficiary",
+                analysis_timeframe="D1",
+                entry_timeframe="D1",
                 conviction=min(0.85, _dynamic_conviction(ctx, factor_score) + 0.10),
                 sizing_method="KELLY_EQUITY",
-                max_risk_pct=2.0, stop_loss_method="ATR",
+                max_risk_pct=2.0,
+                stop_loss_method="ATR",
                 take_profit_method="ATR",
                 rationale=f"Supply chain beneficiary of {ctx.shock_source} ({ctx.shock_magnitude:+.1%}), vol_r={ctx.volume_ratio:.1f}",
-                expected_r=exp_r, min_r=1.5,
+                expected_r=exp_r,
+                min_r=1.5,
                 graph_intel=True,
             )
         if (
@@ -1183,15 +1608,21 @@ def _equity_orchestrate_core(ctx: MarketContext) -> TradeDecision:
         ):
             exp_r = max(abs(ctx.shock_magnitude) / 0.02 * 2.5, 1.8)
             return TradeDecision(
-                action="EXECUTE", instrument_type="EQUITY", direction="LONG",
-                ticker=ctx.ticker, strategy_name="supply_chain_oversold_dip",
-                analysis_timeframe="D1", entry_timeframe="D1",
+                action="EXECUTE",
+                instrument_type="EQUITY",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name="supply_chain_oversold_dip",
+                analysis_timeframe="D1",
+                entry_timeframe="D1",
                 conviction=_dynamic_conviction(ctx, factor_score),
                 sizing_method="KELLY_EQUITY",
-                max_risk_pct=1.0, stop_loss_method="ATR",
+                max_risk_pct=1.0,
+                stop_loss_method="ATR",
                 take_profit_method="ATR",
                 rationale=f"Supply chain capitulation dip after {ctx.shock_source} ({ctx.shock_magnitude:+.1%}), RSI={ctx.rsi:.0f}, vol_r={ctx.volume_ratio:.1f}",
-                expected_r=exp_r, min_r=1.5,
+                expected_r=exp_r,
+                min_r=1.5,
                 graph_intel=True,
             )
 
@@ -1207,93 +1638,138 @@ def _equity_orchestrate_core(ctx: MarketContext) -> TradeDecision:
     if is_strategy_regime_blocked(ctx, "deep_value_investment"):
         return _skip(ctx, "priors.json marks deep_value_investment as blocked in this regime")
 
-    rsi_max_long   = get_param(ctx, "max_rsi_entry_long",  30.0, strategy_name="deep_value_investment")
-    z_max_long     = get_param(ctx, "max_z_entry_long",    -1.5, strategy_name="deep_value_investment")
-    ret20_max_long = get_param(ctx, "max_20d_return_long", -0.06, strategy_name="deep_value_investment")
-    min_factor_dv  = get_param(ctx, "min_factor_score",     0.40, strategy_name="deep_value_investment")
-    min_r_trade    = get_param(ctx, "min_expected_r",       1.5,  strategy_name="deep_value_investment")
+    rsi_max_long = get_param(
+        ctx, "max_rsi_entry_long", 30.0, strategy_name="deep_value_investment"
+    )
+    z_max_long = get_param(ctx, "max_z_entry_long", -1.5, strategy_name="deep_value_investment")
+    ret20_max_long = get_param(
+        ctx, "max_20d_return_long", -0.06, strategy_name="deep_value_investment"
+    )
+    min_factor_dv = get_param(ctx, "min_factor_score", 0.40, strategy_name="deep_value_investment")
+    min_r_trade = get_param(ctx, "min_expected_r", 1.5, strategy_name="deep_value_investment")
 
     # Deep value: severely oversold with multi-factor confirmation.
     # Thresholds are Supervisor-provided; in a STRONG_TREND-down regime
     # the Strategist will normally also forbid this strategy outright.
-    if (ctx.rsi < rsi_max_long and ctx.z_score < z_max_long
-            and ctx.ret_20d < ret20_max_long and factor_score >= min_factor_dv):
+    if (
+        ctx.rsi < rsi_max_long
+        and ctx.z_score < z_max_long
+        and ctx.ret_20d < ret20_max_long
+        and factor_score >= min_factor_dv
+    ):
         exp_r = abs(ctx.z_score) * 1.2
         return TradeDecision(
-            action="EXECUTE", instrument_type="EQUITY", direction="LONG",
-            ticker=ctx.ticker, strategy_name="deep_value_investment",
-            analysis_timeframe="D1", entry_timeframe="D1",
+            action="EXECUTE",
+            instrument_type="EQUITY",
+            direction="LONG",
+            ticker=ctx.ticker,
+            strategy_name="deep_value_investment",
+            analysis_timeframe="D1",
+            entry_timeframe="D1",
             conviction=_dynamic_conviction(ctx, factor_score),
             sizing_method="KELLY_EQUITY",
-            max_risk_pct=2.0, stop_loss_method="ATR",
+            max_risk_pct=2.0,
+            stop_loss_method="ATR",
             take_profit_method="ATR",
             rationale=(
                 f"Deep value: RSI={ctx.rsi:.0f}<{rsi_max_long:.0f}, "
                 f"z={ctx.z_score:+.1f}<{z_max_long:+.1f}, "
                 f"20d={ctx.ret_20d:+.1%}<{ret20_max_long:+.1%}, R={exp_r:.1f}"
             ),
-            expected_r=exp_r, min_r=min_r_trade,
+            expected_r=exp_r,
+            min_r=min_r_trade,
         )
 
     # Trend investment — params resolved via the prior for this cell.
     if is_strategy_regime_blocked(ctx, "trend_investment"):
         return _skip(ctx, "priors.json marks trend_investment as blocked in this regime")
     min_trend_long_ti = get_param(
-        ctx, "min_trend_strength_long", 0.25, strategy_name="trend_investment",
+        ctx,
+        "min_trend_strength_long",
+        0.25,
+        strategy_name="trend_investment",
     )
     min_factor_ti = get_param(
-        ctx, "min_factor_score", 0.40, strategy_name="trend_investment",
+        ctx,
+        "min_factor_score",
+        0.40,
+        strategy_name="trend_investment",
     )
     min_r_ti = get_param(
-        ctx, "min_expected_r", 1.5, strategy_name="trend_investment",
+        ctx,
+        "min_expected_r",
+        1.5,
+        strategy_name="trend_investment",
     )
 
     # Trend investment: confirmed uptrend with Hurst > 0.55
-    if (ctx.trend_strength > min_trend_long_ti and ctx.hurst > 0.55
-            and ctx.ret_20d > 0.03 and factor_score >= min_factor_ti):
+    if (
+        ctx.trend_strength > min_trend_long_ti
+        and ctx.hurst > 0.55
+        and ctx.ret_20d > 0.03
+        and factor_score >= min_factor_ti
+    ):
         exp_r = ctx.trend_strength / 0.15 * 1.5
         exp_r = min(exp_r, 5.0)
         return TradeDecision(
-            action="EXECUTE", instrument_type="EQUITY", direction="LONG",
-            ticker=ctx.ticker, strategy_name="trend_investment",
-            analysis_timeframe="D1", entry_timeframe="D1",
+            action="EXECUTE",
+            instrument_type="EQUITY",
+            direction="LONG",
+            ticker=ctx.ticker,
+            strategy_name="trend_investment",
+            analysis_timeframe="D1",
+            entry_timeframe="D1",
             conviction=_dynamic_conviction(ctx, factor_score),
             sizing_method="KELLY_EQUITY",
-            max_risk_pct=2.0, stop_loss_method="ATR",
+            max_risk_pct=2.0,
+            stop_loss_method="ATR",
             take_profit_method="ATR",
             rationale=(
                 f"Trend invest: trend={ctx.trend_strength:+.2f}>{min_trend_long_ti:+.2f}, "
                 f"H={ctx.hurst:.2f}, R={exp_r:.1f}"
             ),
-            expected_r=exp_r, min_r=min_r_ti,
+            expected_r=exp_r,
+            min_r=min_r_ti,
         )
 
     # Mean-reversion bounce — params resolved via the prior for this cell.
     if is_strategy_regime_blocked(ctx, "mr_equity_bounce"):
         return _skip(ctx, "priors.json marks mr_equity_bounce as blocked in this regime")
     rsi_max_mr = get_param(ctx, "max_rsi_entry_long", 30.0, strategy_name="mr_equity_bounce")
-    z_max_mr   = get_param(ctx, "max_z_entry_long",   -1.5, strategy_name="mr_equity_bounce")
+    z_max_mr = get_param(ctx, "max_z_entry_long", -1.5, strategy_name="mr_equity_bounce")
     vol_ratio_min = get_param(ctx, "min_volume_ratio", 1.2, strategy_name="mr_equity_bounce")
-    min_factor_mr = get_param(ctx, "min_factor_score", MIN_FACTOR_SCORE, strategy_name="mr_equity_bounce")
-    min_r_mr      = get_param(ctx, "min_expected_r",   1.5, strategy_name="mr_equity_bounce")
+    min_factor_mr = get_param(
+        ctx, "min_factor_score", MIN_FACTOR_SCORE, strategy_name="mr_equity_bounce"
+    )
+    min_r_mr = get_param(ctx, "min_expected_r", 1.5, strategy_name="mr_equity_bounce")
 
-    if (ctx.z_score < z_max_mr * 0.87 and ctx.rsi < rsi_max_mr + 8
-            and ctx.volume_ratio > vol_ratio_min and ctx.hurst < 0.48
-            and factor_score >= min_factor_mr):
+    if (
+        ctx.z_score < z_max_mr * 0.87
+        and ctx.rsi < rsi_max_mr + 8
+        and ctx.volume_ratio > vol_ratio_min
+        and ctx.hurst < 0.48
+        and factor_score >= min_factor_mr
+    ):
         exp_r = abs(ctx.z_score) * 1.0
         return TradeDecision(
-            action="EXECUTE", instrument_type="EQUITY", direction="LONG",
-            ticker=ctx.ticker, strategy_name="mr_equity_bounce",
-            analysis_timeframe="D1", entry_timeframe="D1",
+            action="EXECUTE",
+            instrument_type="EQUITY",
+            direction="LONG",
+            ticker=ctx.ticker,
+            strategy_name="mr_equity_bounce",
+            analysis_timeframe="D1",
+            entry_timeframe="D1",
             conviction=_dynamic_conviction(ctx, factor_score),
             sizing_method="KELLY_EQUITY",
-            max_risk_pct=1.5, stop_loss_method="ATR",
+            max_risk_pct=1.5,
+            stop_loss_method="ATR",
             take_profit_method="MEAN_REVERSION",
             rationale=(
                 f"MR bounce: z={ctx.z_score:+.1f}, RSI={ctx.rsi:.0f}, "
                 f"vol_r={ctx.volume_ratio:.1f}>{vol_ratio_min:.1f}"
             ),
-            expected_r=exp_r, min_r=min_r_mr,
+            expected_r=exp_r,
+            min_r=min_r_mr,
         )
 
     return _skip(ctx, f"No equity edge (factors={factor_score:.0%})")
@@ -1332,7 +1808,9 @@ def rule_based_orchestrate(ctx: MarketContext) -> TradeDecision:
             )
 
         allowed, reason = _grind_up_gate(
-            ctx, decision.strategy_name, decision.instrument_type,
+            ctx,
+            decision.strategy_name,
+            decision.instrument_type,
         )
         if not allowed:
             log.info(f"[REGIME-GATE] {ctx.ticker}: {reason}")
@@ -1343,9 +1821,7 @@ def rule_based_orchestrate(ctx: MarketContext) -> TradeDecision:
         # primary driver and a rich-IV gate would veto exactly the
         # asymmetric-payoff trades the shock intelligence targets
         # (e.g. SVB-2023 FTSE puts realised +$244k in backtest).
-        causal_shock_active = (
-            ctx.supply_chain_shock and ctx.shock_bias in ("BULLISH", "BEARISH")
-        )
+        causal_shock_active = ctx.supply_chain_shock and ctx.shock_bias in ("BULLISH", "BEARISH")
         if (
             decision.instrument_type in ("INDEX_CALL", "INDEX_PUT")
             and ctx.vrp >= VRP_RICH_THRESHOLD
@@ -1357,7 +1833,7 @@ def rule_based_orchestrate(ctx: MarketContext) -> TradeDecision:
             )
             return _skip(ctx, f"VRP rich ({ctx.vrp:+.2%}); single-leg premium too expensive")
 
-        ev_ok, ev_reason = _orchestrator_ev_gate(ctx, decision)
+        ev_ok, ev_reason = orchestrator_ev_gate(ctx, decision)
         if not ev_ok:
             log.info(f"[EV-GATE] {ctx.ticker}: {ev_reason}")
             return _skip(ctx, ev_reason)
@@ -1386,12 +1862,19 @@ def naive_baseline_orchestrate(ctx: MarketContext) -> TradeDecision:
 
     def _skip_naive(reason: str) -> TradeDecision:
         return TradeDecision(
-            action="SKIP", instrument_type="NONE", direction="NONE",
-            ticker=ctx.ticker, strategy_name="naive_skip",
-            analysis_timeframe="D1", entry_timeframe="D1",
-            conviction=0.0, sizing_method="FIXED_RISK",
-            max_risk_pct=0.0, stop_loss_method="FIXED_PCT",
-            take_profit_method="FIXED_PCT", rationale=reason,
+            action="SKIP",
+            instrument_type="NONE",
+            direction="NONE",
+            ticker=ctx.ticker,
+            strategy_name="naive_skip",
+            analysis_timeframe="D1",
+            entry_timeframe="D1",
+            conviction=0.0,
+            sizing_method="FIXED_RISK",
+            max_risk_pct=0.0,
+            stop_loss_method="FIXED_PCT",
+            take_profit_method="FIXED_PCT",
+            rationale=reason,
         )
 
     if ctx.daily_pnl_pct < -2.0:
@@ -1409,49 +1892,75 @@ def naive_baseline_orchestrate(ctx: MarketContext) -> TradeDecision:
         # Simple z-score + RSI signals only, no regime check
         if ctx.z_score < -1.5 and ctx.rsi < 35 and factor_score >= 0.25:
             return TradeDecision(
-                action="EXECUTE", instrument_type="INDEX_CALL", direction="LONG",
-                ticker=ctx.ticker, strategy_name="naive_zscore_call",
-                analysis_timeframe="D1", entry_timeframe="M5",
+                action="EXECUTE",
+                instrument_type="INDEX_CALL",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name="naive_zscore_call",
+                analysis_timeframe="D1",
+                entry_timeframe="M5",
                 conviction=0.60,
                 sizing_method="KELLY_OPTIONS",
-                max_risk_pct=2.0, stop_loss_method="FIXED_PCT",
+                max_risk_pct=2.0,
+                stop_loss_method="FIXED_PCT",
                 take_profit_method="ATR",
                 rationale=f"Naive: z-score oversold {ctx.z_score:+.1f}, RSI={ctx.rsi:.0f}",
-                strike=round(price * 0.99, 2), expiry_days=14,
-                expected_r=1.2, min_r=1.0,
-                futures_contract=future_name, multiplier=multiplier,
-                country=country, exchange=exchange,
+                strike=round(price * 0.99, 2),
+                expiry_days=14,
+                expected_r=1.2,
+                min_r=1.0,
+                futures_contract=future_name,
+                multiplier=multiplier,
+                country=country,
+                exchange=exchange,
             )
 
         if ctx.z_score > 1.5 and ctx.rsi > 65 and factor_score >= 0.25:
             return TradeDecision(
-                action="EXECUTE", instrument_type="INDEX_PUT", direction="LONG",
-                ticker=ctx.ticker, strategy_name="naive_zscore_put",
-                analysis_timeframe="D1", entry_timeframe="M5",
+                action="EXECUTE",
+                instrument_type="INDEX_PUT",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name="naive_zscore_put",
+                analysis_timeframe="D1",
+                entry_timeframe="M5",
                 conviction=0.60,
                 sizing_method="KELLY_OPTIONS",
-                max_risk_pct=2.0, stop_loss_method="FIXED_PCT",
+                max_risk_pct=2.0,
+                stop_loss_method="FIXED_PCT",
                 take_profit_method="ATR",
                 rationale=f"Naive: z-score overbought {ctx.z_score:+.1f}, RSI={ctx.rsi:.0f}",
-                strike=round(price * 1.01, 2), expiry_days=14,
-                expected_r=1.2, min_r=1.0,
-                futures_contract=future_name, multiplier=multiplier,
-                country=country, exchange=exchange,
+                strike=round(price * 1.01, 2),
+                expiry_days=14,
+                expected_r=1.2,
+                min_r=1.0,
+                futures_contract=future_name,
+                multiplier=multiplier,
+                country=country,
+                exchange=exchange,
             )
 
         if ctx.trend_strength > 0.6 and ctx.ret_5d > 0.01 and factor_score >= 0.25:
             return TradeDecision(
-                action="EXECUTE", instrument_type="INDEX_FUTURE", direction="LONG",
-                ticker=ctx.ticker, strategy_name="naive_trend_long",
-                analysis_timeframe="D1", entry_timeframe="M5",
+                action="EXECUTE",
+                instrument_type="INDEX_FUTURE",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name="naive_trend_long",
+                analysis_timeframe="D1",
+                entry_timeframe="M5",
                 conviction=0.60,
                 sizing_method="KELLY_FUTURES",
-                max_risk_pct=2.0, stop_loss_method="FIXED_PCT",
+                max_risk_pct=2.0,
+                stop_loss_method="FIXED_PCT",
                 take_profit_method="ATR",
                 rationale=f"Naive: trend following long, trend={ctx.trend_strength:.2f}",
-                expected_r=1.2, min_r=1.0,
-                futures_contract=future_name, multiplier=multiplier,
-                country=country, exchange=exchange,
+                expected_r=1.2,
+                min_r=1.0,
+                futures_contract=future_name,
+                multiplier=multiplier,
+                country=country,
+                exchange=exchange,
             )
 
         return _skip_naive(f"Naive: no F&O signal on {future_name}")
@@ -1462,28 +1971,218 @@ def naive_baseline_orchestrate(ctx: MarketContext) -> TradeDecision:
 
     if ctx.rsi < 30 and ctx.z_score < -1.5:
         return TradeDecision(
-            action="EXECUTE", instrument_type="EQUITY", direction="LONG",
-            ticker=ctx.ticker, strategy_name="naive_oversold",
-            analysis_timeframe="D1", entry_timeframe="D1",
+            action="EXECUTE",
+            instrument_type="EQUITY",
+            direction="LONG",
+            ticker=ctx.ticker,
+            strategy_name="naive_oversold",
+            analysis_timeframe="D1",
+            entry_timeframe="D1",
             conviction=0.60,
             sizing_method="KELLY_EQUITY",
-            max_risk_pct=2.0, stop_loss_method="ATR",
+            max_risk_pct=2.0,
+            stop_loss_method="ATR",
             take_profit_method="ATR",
             rationale=f"Naive: oversold dip buy RSI={ctx.rsi:.0f}, z={ctx.z_score:+.1f}",
-            expected_r=1.5, min_r=1.0,
+            expected_r=1.5,
+            min_r=1.0,
         )
 
     if ctx.trend_strength > 0.5 and ctx.ret_5d > 0.01:
         return TradeDecision(
-            action="EXECUTE", instrument_type="EQUITY", direction="LONG",
-            ticker=ctx.ticker, strategy_name="naive_momentum",
-            analysis_timeframe="D1", entry_timeframe="D1",
+            action="EXECUTE",
+            instrument_type="EQUITY",
+            direction="LONG",
+            ticker=ctx.ticker,
+            strategy_name="naive_momentum",
+            analysis_timeframe="D1",
+            entry_timeframe="D1",
             conviction=0.60,
             sizing_method="KELLY_EQUITY",
-            max_risk_pct=2.0, stop_loss_method="ATR",
+            max_risk_pct=2.0,
+            stop_loss_method="ATR",
             take_profit_method="ATR",
             rationale=f"Naive: momentum long, trend={ctx.trend_strength:.2f}",
-            expected_r=1.5, min_r=1.0,
+            expected_r=1.5,
+            min_r=1.0,
         )
 
     return _skip_naive(f"Naive: no equity signal on {ctx.ticker}")
+
+
+# ════════════════════════════════════════════════════════════════════
+# Phase-3 unified orchestrator — the single public entry point.
+# ════════════════════════════════════════════════════════════════════
+#
+# The big-bang consolidation. Pre-Phase-3 the codebase had:
+#   * `orchestrate_trade(ctx)`      → TradeDecision   (LLM mode)
+#   * `rule_based_orchestrate(ctx)` → TradeDecision   (rule mode)
+#   * `naive_baseline_orchestrate(ctx)` → TradeDecision  (ablation)
+# and the LangGraph pipeline separately emitted `TradeSignal`. Two
+# execution contracts, two scoring stacks, two sets of gates.
+#
+# `orchestrate(ctx, *, mode)` below produces ONE `TradeIntent` for
+# both modes. The strategy branches inside `rule_based_orchestrate` /
+# `index_fno_orchestrate` / `_equity_orchestrate_core` are kept intact
+# — they are the fund's alpha — but their output is adapted into the
+# unified contract and supplemented with the deterministic
+# `AlphaScore`. Both modes go through the same final gate
+# (`alpha_scorer.passes_trade_gate`) so there is no "sneak past" path.
+
+
+def _trade_decision_to_intent(
+    ctx: MarketContext,
+    decision: TradeDecision,
+    alpha: AlphaScore,
+) -> TradeIntent:
+    """Adapter: TradeDecision × AlphaScore → TradeIntent.
+
+    Preserves every field the downstream sizing / routing layer needs
+    while collapsing the dual contract into one.
+    """
+    import uuid
+
+    from shared.types import (
+        AssetClass,
+        InstrumentChoice,
+        SignalStatus,
+        SizingMethod,
+        TradeAction,
+        TradeIntent,
+    )
+
+    try:
+        direction = TradeAction(decision.direction)
+    except ValueError:
+        direction = TradeAction.HOLD
+
+    try:
+        instr = InstrumentChoice(decision.instrument_type)
+    except ValueError:
+        instr = InstrumentChoice.EQUITY
+
+    try:
+        sizing = SizingMethod(decision.sizing_method)
+    except ValueError:
+        sizing = SizingMethod.KELLY_EQUITY
+
+    asset_class = AssetClass.EQUITY
+    if instr in (
+        InstrumentChoice.INDEX_FUTURE,
+        InstrumentChoice.INDEX_CALL,
+        InstrumentChoice.INDEX_PUT,
+        InstrumentChoice.INDEX_SPREAD,
+    ):
+        asset_class = AssetClass.INDEX
+
+    return TradeIntent(
+        intent_id=str(uuid.uuid4())[:8],
+        execute=(decision.action == "EXECUTE"),
+        ticker=decision.ticker,
+        direction=direction,
+        asset_class=asset_class,
+        instrument_choice=instr,
+        alpha_score=alpha,
+        sizing_method=sizing,
+        max_risk_pct=decision.max_risk_pct,
+        stop_loss_method=decision.stop_loss_method,
+        take_profit_method=decision.take_profit_method,
+        strike=decision.strike,
+        expiry_days=decision.expiry_days,
+        second_leg=decision.second_leg,
+        futures_contract=decision.futures_contract,
+        multiplier=decision.multiplier,
+        exchange=decision.exchange or "SMART",
+        country=decision.country or ctx.country,
+        strategy_name=decision.strategy_name,
+        graph_intel=decision.graph_intel,
+        rationale=decision.rationale,
+        status=SignalStatus.PENDING,
+    )
+
+
+async def orchestrate(
+    ctx: MarketContext,
+    *,
+    mode: str = "rule",
+    baseline: bool = False,
+) -> TradeIntent:
+    """Unified orchestrator — single public entry point, two modes.
+
+    Args:
+        ctx      : `MarketContext` built via `build_decision_context()`.
+        mode     : "rule" (deterministic Tier-1 strategy tree) or "llm"
+                   (Claude/GPT-driven orchestration). Both modes emit a
+                   TradeIntent that satisfies the SAME gates.
+        baseline : when True with `mode="rule"`, route through
+                   `naive_baseline_orchestrate` for A/B ablations.
+
+    Gate hierarchy applied to EVERY produced intent:
+        1. `rule_based_orchestrate` (or `orchestrate_trade` for LLM mode)
+           already applies Strategist blocklist, grind-up, VRP, EV,
+           VIX / daily-PnL risk dampers, and Supervisor risk multiplier.
+        2. AlphaScorer additionally re-validates direction alignment,
+           unified conviction vs `MIN_CONVICTION_TRADE`, factor score vs
+           `MIN_FACTOR_SCORE`, and expected_r vs `MIN_R_GLOBAL`.
+
+    Intents that fail gate (2) are returned with `execute=False` and a
+    SKIP rationale appended to the audit trail.
+    """
+    from execution_engine.math import alpha_scorer
+    from shared.types import TradeAction
+
+    alpha = alpha_scorer.score(ctx)
+
+    if mode == "llm":
+        decision = await orchestrate_trade(ctx)
+    elif mode == "rule":
+        if baseline:
+            decision = naive_baseline_orchestrate(ctx)
+        else:
+            decision = rule_based_orchestrate(ctx)
+    else:
+        raise ValueError(f"Unknown orchestrate mode: {mode!r}")
+
+    intent = _trade_decision_to_intent(ctx, decision, alpha)
+
+    # Second-pass gate: align the strategy-tree output with the
+    # deterministic AlphaScore. A strategy branch may have emitted
+    # EXECUTE on a narrow criterion that the unified scorer rejects
+    # (e.g., conflicting direction with causal intel). Respect the
+    # stricter of the two — the scorer vetoes but does not promote.
+    if intent.execute:
+        # Direction mismatch is the A6 failure mode. When a strategy
+        # branch fires LONG but AlphaScorer's causal-shock-aware
+        # direction determination says SHORT, we trust the scorer.
+        if alpha.direction != TradeAction.HOLD and alpha.direction != intent.direction:
+            log.info(
+                f"[ALPHA-GATE] {ctx.ticker}: strategy picked "
+                f"{intent.direction.value} but AlphaScorer chose "
+                f"{alpha.direction.value} — vetoing (A6 safeguard)"
+            )
+            intent.execute = False
+            intent.rationale += (
+                f" | ALPHA-GATE: direction mismatch with causal intel "
+                f"(strategy={intent.direction.value}, alpha={alpha.direction.value})"
+            )
+
+        # Conviction floor — one unified number, aligned across the fund.
+        if not alpha_scorer.passes_trade_gate(alpha):
+            log.info(
+                f"[ALPHA-GATE] {ctx.ticker}: unified_conv="
+                f"{alpha.unified_conviction:.2f} factor={alpha.factor_score:.2f} "
+                f"R={alpha.expected_r:.2f} — below gate"
+            )
+            intent.execute = False
+            intent.rationale += (
+                f" | ALPHA-GATE: unified_conviction={alpha.unified_conviction:.2f} below floor"
+            )
+
+    intent.audit_trail["alpha_score"] = alpha.model_dump(mode="json")
+    intent.audit_trail["rule_decision"] = {
+        "action": decision.action,
+        "strategy_name": decision.strategy_name,
+        "conviction": decision.conviction,
+        "expected_r": decision.expected_r,
+    }
+    return intent

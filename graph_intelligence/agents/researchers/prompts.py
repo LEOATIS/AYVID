@@ -1,6 +1,6 @@
 """Prompts for the bull/bear/facilitator trio."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 BULL_SYSTEM = """\
 You are the Bull Advocate in a hedge-fund research debate.

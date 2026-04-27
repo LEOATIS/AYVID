@@ -4,62 +4,97 @@ This is the first node in the LangGraph DAG. It:
 1. Queries Neo4j for causal paths from the shock ticker
 2. Feeds the topology + timeline to the LLM for analysis
 3. Outputs a target ticker and causal reasoning
+
+Phase-3 (P1-J) uses ``with_structured_output`` bound to
+``MapperOutput`` so a malformed LLM response fails at the SDK boundary
+rather than propagating garbage values through ``json.loads``.
 """
+
 from __future__ import annotations
 
 import json
-import re
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
+from pydantic import ValidationError
 
-from shared.config import settings
-from shared.logger import get_logger
+from graph_intelligence.agents.mapper.prompts import MAPPER_ANALYZE_TOPOLOGY, MAPPER_SYSTEM
+from graph_intelligence.agents.mapper.schema import MapperOutput
 from graph_intelligence.graph_state.state import CausalArbitrageState
-from graph_intelligence.agents.mapper.prompts import MAPPER_SYSTEM, MAPPER_ANALYZE_TOPOLOGY
+from shared.logger import get_logger
 
 log = get_logger("agent.mapper")
 
 
-def _extract_json(text: str) -> str:
-    """Strip markdown code fences and extract raw JSON from LLM output."""
-    m = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
-    if m:
-        return m.group(1).strip()
-    start = text.find("{")
-    if start == -1:
-        return text
-    depth = 0
-    for i in range(start, len(text)):
-        if text[i] == "{":
-            depth += 1
-        elif text[i] == "}":
-            depth -= 1
-            if depth == 0:
-                return text[start : i + 1]
-    return text[start:]
-
-
 def _get_llm():
-    """Get the configured LLM for the mapper agent."""
-    if settings.LLM_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
-        return ChatAnthropic(
-            model=settings.ANTHROPIC_MODEL,
-            api_key=settings.ANTHROPIC_API_KEY,
-            temperature=0.1,
-            max_tokens=1000,
-        )
-    return ChatOpenAI(
-        model=settings.OPENAI_MODEL,
-        api_key=settings.OPENAI_API_KEY,
+    """Build a `MapperOutput`-shaped LLM client (P1-J).
+
+    ``with_structured_output`` forces the LLM through an SDK-side
+    validator bound to the Pydantic schema. Malformed / out-of-range
+    values raise ``ValidationError`` which we catch below.
+    """
+    from shared.llm_client import get_langchain_chat_model
+
+    return get_langchain_chat_model(
         temperature=0.1,
         max_tokens=1000,
-    )
+    ).with_structured_output(MapperOutput)
+
+
+def _derive_direction_from_intel(
+    state: CausalArbitrageState,
+    target_ticker: str,
+) -> str:
+    """Deterministic fallback for the mapper's direction field.
+
+    Gap A6 fix: the mapper's JSON schema now requires a `direction`. If
+    the LLM omits it (or returns an unexpected value), we derive it from
+    `causal_intel` rather than silently defaulting to LONG.
+
+    Priority:
+      1. causal_intel.beneficiary_tickers / victim_tickers membership
+      2. causal_intel.index_bias mapping (for index targets)
+      3. shock event_type: SHOCK → SHORT, RECOVERY → LONG
+      4. HOLD (signals the orchestrator to skip)
+    """
+    intel = state.get("causal_intel", {}) or {}
+    beneficiaries = set(intel.get("beneficiary_tickers", []) or [])
+    victims = set(intel.get("victim_tickers", []) or [])
+    if target_ticker in beneficiaries:
+        return "LONG"
+    if target_ticker in victims:
+        return "SHORT"
+
+    index_bias = intel.get("index_bias", {}) or {}
+    bias = (index_bias.get(target_ticker) or "").upper()
+    if bias == "BULLISH":
+        return "LONG"
+    if bias == "BEARISH":
+        return "SHORT"
+
+    # Fall back to the most recent shock's event type. In the N-th order
+    # victim thesis, a SHOCK event almost always makes the downstream
+    # target a SHORT (supply-chain squeeze on the target's earnings);
+    # a RECOVERY event reverses the thesis.
+    timeline = state.get("timeline", []) or []
+    if timeline:
+        latest = timeline[-1]
+        event_type = (latest.get("event_type") or "").upper()
+        if event_type == "RECOVERY":
+            return "LONG"
+        if event_type in ("SHOCK", "COMMODITY_SHOCK", "FX_SHOCK", "REGULATORY"):
+            return "SHORT"
+
+    return "HOLD"
 
 
 async def mapper_node(state: CausalArbitrageState) -> dict:
-    """LangGraph node: Analyze supply chain topology and propose a target."""
+    """LangGraph node: Analyze supply chain topology and propose a target.
+
+    Phase-3: emits `proposed_action` (LONG/SHORT/HOLD) derived from the
+    LLM's JSON `direction` field with deterministic fallback to causal
+    intel. This closes the A6 leak where missing direction silently
+    defaulted to LONG downstream.
+    """
     log.info(f"Mapper analyzing shock on [bold]{state['shock_ticker']}[/bold]")
 
     timeline_str = json.dumps(state["timeline"][:20], indent=2, default=str)
@@ -74,32 +109,64 @@ async def mapper_node(state: CausalArbitrageState) -> dict:
     )
 
     llm = _get_llm()
-    response = await llm.ainvoke([
-        SystemMessage(content=MAPPER_SYSTEM),
-        HumanMessage(content=prompt),
-    ])
-
-    content = response.content
     try:
-        cleaned = _extract_json(content)
-        parsed = json.loads(cleaned)
-        target = parsed.get("target_ticker", "")
-        horizon = parsed.get("alpha_horizon", "3rd_order")
-        reasoning = parsed.get("reasoning", content)
-        compound_risk = parsed.get("compound_risk", 0.0)
-    except (json.JSONDecodeError, TypeError):
-        target = state.get("target_ticker", "")
-        horizon = "3rd_order"
-        reasoning = content
-        compound_risk = 0.0
+        parsed: MapperOutput = await llm.ainvoke(
+            [
+                SystemMessage(content=MAPPER_SYSTEM),
+                HumanMessage(content=prompt),
+            ]
+        )
+    except (ValidationError, ValueError, TypeError) as exc:
+        log.warning(
+            f"Mapper LLM output failed Pydantic validation: {exc}. "
+            f"Degrading to HOLD with causal-intel fallback."
+        )
+        parsed = MapperOutput()
+    except Exception as exc:
+        log.warning(f"Mapper LLM invocation failed: {exc}")
+        parsed = MapperOutput()
 
-    log.info(f"Mapper proposed target: [bold]{target}[/bold] ({horizon})")
+    if not isinstance(parsed, MapperOutput):
+        parsed = MapperOutput()
+
+    target = parsed.target_ticker or state.get("target_ticker", "")
+    horizon = parsed.alpha_horizon
+    compound_risk = parsed.compound_risk  # Pydantic already clamps to [0,1]
+    raw_direction = parsed.direction
+
+    # Direction contract: LLM must emit LONG / SHORT / HOLD. When HOLD
+    # we still run the causal-intel fallback so a defensive default
+    # does not silently become a missed trade opportunity: if causal
+    # intel disagrees with HOLD, we surface the conflict in the log
+    # and defer to the fallback direction. Pure HOLD (with agreeing
+    # causal intel) stays HOLD.
+    if raw_direction in ("LONG", "SHORT"):
+        direction = raw_direction
+    else:
+        direction = _derive_direction_from_intel(state, target)
+        if direction != "HOLD":
+            log.warning(
+                f"Mapper: LLM said HOLD on {target}; causal intel "
+                f"suggests {direction}. Using causal intel."
+            )
+
+    log.info(
+        f"Mapper proposed: [bold]{direction} {target}[/bold] ({horizon}) — "
+        f"compound_risk={compound_risk:.2f}"
+    )
+
+    # Record the structured output as a faux AIMessage so downstream
+    # consumers that look at `messages` still see a coherent trace.
+    from langchain_core.messages import AIMessage
+
+    trace_msg = AIMessage(content=parsed.model_dump_json())
 
     return {
-        "messages": [response],
+        "messages": [trace_msg],
         "target_ticker": target,
         "alpha_horizon": horizon,
-        "rationale": reasoning,
-        "confidence": min(compound_risk * 2, 1.0) if compound_risk else 0.5,
+        "proposed_action": direction,
+        "rationale": parsed.reasoning or "(mapper returned no rationale)",
+        "confidence": min(compound_risk * 2, 1.0) if compound_risk > 0 else 0.5,
         "iteration": state["iteration"] + 1,
     }

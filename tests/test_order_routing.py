@@ -1,17 +1,37 @@
 """Tests for order routing logic — horizon mapping, RTH checks, bracket construction."""
+
 from __future__ import annotations
 
 import pytest
 
 
-def _mk_signal(horizon, *, tier3_shock: bool = False):
-    from shared.types import AlphaHorizon, TradeAction, TradeSignal
-    return TradeSignal(
-        signal_id="r-test",
-        ticker="AAPL",
-        action=TradeAction.LONG,
+def _mk_signal(
+    horizon,
+    *,
+    tier3_shock: bool = False,
+    ticker: str = "AAPL",
+    direction=None,
+    intent_id: str = "r-test",
+    conviction: float = 0.7,
+):
+    from shared.types import AlphaScore, TradeAction, TradeIntent
+
+    if direction is None:
+        direction = TradeAction.LONG
+    return TradeIntent(
+        intent_id=intent_id,
+        ticker=ticker,
+        direction=direction,
         alpha_horizon=horizon,
-        confidence=0.7,
+        alpha_score=AlphaScore(
+            ticker=ticker,
+            direction=direction,
+            factor_score=conviction,
+            bayesian_conviction=conviction,
+            unified_conviction=conviction,
+            expected_r=2.0,
+            min_r=1.5,
+        ),
         rationale="routing test",
         tier3_shock=tier3_shock,
     )
@@ -23,64 +43,79 @@ class TestDetermineOrderType:
     def test_first_order_non_shock_is_passive_limit(self):
         from execution_engine.broker.orders import _determine_order_type
         from shared.types import AlphaHorizon, OrderType
-        assert _determine_order_type(_mk_signal(AlphaHorizon.FIRST_ORDER)) == OrderType.PASSIVE_LIMIT
+
+        assert (
+            _determine_order_type(_mk_signal(AlphaHorizon.FIRST_ORDER)) == OrderType.PASSIVE_LIMIT
+        )
 
     def test_first_order_tier3_shock_is_limit(self):
         from execution_engine.broker.orders import _determine_order_type
         from shared.types import AlphaHorizon, OrderType
-        assert _determine_order_type(
-            _mk_signal(AlphaHorizon.FIRST_ORDER, tier3_shock=True)
-        ) == OrderType.LIMIT
+
+        assert (
+            _determine_order_type(_mk_signal(AlphaHorizon.FIRST_ORDER, tier3_shock=True))
+            == OrderType.LIMIT
+        )
 
     def test_second_order_is_passive_limit(self):
         from execution_engine.broker.orders import _determine_order_type
         from shared.types import AlphaHorizon, OrderType
-        assert _determine_order_type(_mk_signal(AlphaHorizon.SECOND_ORDER)) == OrderType.PASSIVE_LIMIT
+
+        assert (
+            _determine_order_type(_mk_signal(AlphaHorizon.SECOND_ORDER)) == OrderType.PASSIVE_LIMIT
+        )
 
     def test_third_order_is_twap(self):
         from execution_engine.broker.orders import _determine_order_type
         from shared.types import AlphaHorizon, OrderType
+
         assert _determine_order_type(_mk_signal(AlphaHorizon.THIRD_ORDER)) == OrderType.TWAP
 
     def test_fourth_order_is_vwap(self):
         from execution_engine.broker.orders import _determine_order_type
         from shared.types import AlphaHorizon, OrderType
+
         assert _determine_order_type(_mk_signal(AlphaHorizon.FOURTH_ORDER)) == OrderType.VWAP
 
 
 class TestSubmitSignalPaper:
-    @pytest.mark.asyncio
-    async def test_paper_trade_fills_immediately(self):
-        from shared.types import (
-            AlphaHorizon, SignalStatus, TradeAction, TradeSignal,
-        )
-        from execution_engine.broker.orders import submit_signal
+    """Paper-mode submission asserts the FILLED short-circuit. We force
+    ``is_regular_trading_hours`` to True so the test is deterministic
+    regardless of when it's executed (otherwise an after-hours run gets
+    QUEUED, which is correct production behaviour but not what these
+    tests are validating)."""
 
-        signal = TradeSignal(
-            signal_id="test-001",
+    @pytest.mark.asyncio
+    async def test_paper_trade_fills_immediately(self, monkeypatch):
+        import execution_engine.broker.orders as orders_mod
+        from execution_engine.broker.orders import submit_signal
+        from shared.types import AlphaHorizon, SignalStatus, TradeAction
+
+        monkeypatch.setattr(orders_mod, "is_regular_trading_hours", lambda: True)
+
+        signal = _mk_signal(
+            AlphaHorizon.THIRD_ORDER,
             ticker="AAPL",
-            action=TradeAction.LONG,
-            alpha_horizon=AlphaHorizon.THIRD_ORDER,
-            confidence=0.7,
-            rationale="Test signal",
+            direction=TradeAction.LONG,
+            intent_id="test-001",
         )
         result = await submit_signal(signal, 1_000_000, 150.0, 100)
         assert result.status == SignalStatus.FILLED
 
     @pytest.mark.asyncio
-    async def test_paper_trade_short(self):
-        from shared.types import (
-            AlphaHorizon, SignalStatus, TradeAction, TradeSignal,
-        )
+    async def test_paper_trade_short(self, monkeypatch):
+        import execution_engine.broker.orders as orders_mod
         from execution_engine.broker.orders import submit_signal
+        from shared.types import AlphaHorizon, SignalStatus, TradeAction
 
-        signal = TradeSignal(
-            signal_id="test-002",
+        monkeypatch.setattr(orders_mod, "is_regular_trading_hours", lambda: True)
+
+        signal = _mk_signal(
+            AlphaHorizon.SECOND_ORDER,
             ticker="TSLA",
-            action=TradeAction.SHORT,
-            alpha_horizon=AlphaHorizon.SECOND_ORDER,
-            confidence=0.65,
-            rationale="Test short",
+            direction=TradeAction.SHORT,
+            intent_id="test-002",
+            conviction=0.65,
         )
         result = await submit_signal(signal, 1_000_000, 250.0, 50)
         assert result.status == SignalStatus.FILLED

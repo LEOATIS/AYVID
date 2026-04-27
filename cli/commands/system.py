@@ -1,4 +1,5 @@
 """System status & configuration CLI commands."""
+
 from __future__ import annotations
 
 import asyncio
@@ -16,6 +17,7 @@ system_app = typer.Typer(help="System status & configuration", no_args_is_help=T
 @system_app.command("status")
 def status():
     """Show system status and service connectivity."""
+
     async def _run():
         from shared.config import settings
 
@@ -41,26 +43,52 @@ def status():
         # Neo4j
         try:
             from graph_intelligence.tools.neo4j_tools import verify_connection
+
             neo4j_ok = await verify_connection()
-            checks.append(("Neo4j", neo4j_ok, settings.NEO4J_URI if neo4j_ok else "Connection failed"))
+            checks.append(
+                ("Neo4j", neo4j_ok, settings.NEO4J_URI if neo4j_ok else "Connection failed")
+            )
         except Exception as e:
             checks.append(("Neo4j", False, str(e)[:50]))
 
         # Qdrant
         try:
             from graph_intelligence.tools.qdrant_tools import verify_connection
+
             qdrant_ok = await verify_connection()
-            checks.append(("Qdrant", qdrant_ok, settings.QDRANT_URL if qdrant_ok else "Connection failed"))
+            checks.append(
+                ("Qdrant", qdrant_ok, settings.QDRANT_URL if qdrant_ok else "Connection failed")
+            )
         except Exception as e:
             checks.append(("Qdrant", False, str(e)[:50]))
 
         # OpenBB
-        checks.append(("OpenBB FMP", bool(settings.OPENBB_FMP_API_KEY), "Configured" if settings.OPENBB_FMP_API_KEY else "Not set"))
-        checks.append(("OpenBB FRED", bool(settings.OPENBB_FRED_API_KEY), "Configured" if settings.OPENBB_FRED_API_KEY else "Not set"))
+        checks.append(
+            (
+                "OpenBB FMP",
+                bool(settings.OPENBB_FMP_API_KEY),
+                "Configured" if settings.OPENBB_FMP_API_KEY else "Not set",
+            )
+        )
+        checks.append(
+            (
+                "OpenBB FRED",
+                bool(settings.OPENBB_FRED_API_KEY),
+                "Configured" if settings.OPENBB_FRED_API_KEY else "Not set",
+            )
+        )
 
         # IB
-        checks.append(("Paper Trading", settings.PAPER_TRADING, "Enabled" if settings.PAPER_TRADING else "LIVE"))
-        checks.append(("IB Gateway", False, f"{settings.IB_HOST}:{settings.IB_PORT} (not connected)"))
+        checks.append(
+            (
+                "Paper Trading",
+                settings.PAPER_TRADING,
+                "Enabled" if settings.PAPER_TRADING else "LIVE",
+            )
+        )
+        checks.append(
+            ("IB Gateway", False, f"{settings.IB_HOST}:{settings.IB_PORT} (not connected)")
+        )
 
         # Risk
         checks.append(("Max Drawdown", True, f"{settings.MAX_DRAWDOWN_PCT}%"))
@@ -89,8 +117,18 @@ def show_config():
         ("LLM Provider", settings.LLM_PROVIDER),
         ("OpenAI Model", settings.OPENAI_MODEL),
         ("Anthropic Model", settings.ANTHROPIC_MODEL),
-        ("OpenAI Key", "****" + settings.OPENAI_API_KEY[-4:] if settings.OPENAI_API_KEY and len(settings.OPENAI_API_KEY) > 4 else "Not set"),
-        ("Anthropic Key", "****" + settings.ANTHROPIC_API_KEY[-4:] if settings.ANTHROPIC_API_KEY and len(settings.ANTHROPIC_API_KEY) > 4 else "Not set"),
+        (
+            "OpenAI Key",
+            "****" + settings.OPENAI_API_KEY[-4:]
+            if settings.OPENAI_API_KEY and len(settings.OPENAI_API_KEY) > 4
+            else "Not set",
+        ),
+        (
+            "Anthropic Key",
+            "****" + settings.ANTHROPIC_API_KEY[-4:]
+            if settings.ANTHROPIC_API_KEY and len(settings.ANTHROPIC_API_KEY) > 4
+            else "Not set",
+        ),
         ("Neo4j URI", settings.NEO4J_URI),
         ("Qdrant URL", settings.QDRANT_URL),
         ("QuestDB", f"{settings.QUESTDB_HOST}:{settings.QUESTDB_PORT}"),
@@ -119,6 +157,7 @@ def serve(
 ):
     """Start the FastAPI backend server."""
     import uvicorn
+
     console.print(f"\n[bold]Starting AYVID API server on {host}:{port}[/bold]\n")
     uvicorn.run(
         "backend.core.main:app",
@@ -132,10 +171,10 @@ def serve(
 @system_app.command("latency")
 def latency():
     """Show pipeline node latencies and fast-path execution speed."""
-    from graph_intelligence.pipeline import get_pipeline_latency
-    from execution_engine.signal_book import get_signal_book
     from backend.services.orchestrator import get_fast_execute_latency_ms
+    from execution_engine.signal_book import get_signal_book
     from graph_intelligence.agents.analyst.node import get_swarm_latency_ms
+    from graph_intelligence.pipeline import get_pipeline_latency
 
     pipeline = get_pipeline_latency()
     book_stats = get_signal_book().get_stats()
@@ -190,7 +229,8 @@ def latency():
         "2. Fast Path",
         f"[green]{fast_ms:.1f}ms[/green]" if fast_ms else "[green]<0.1ms[/green]",
         f"Hit rate: {book_stats['hit_rate']:.0f}% ({book_stats['hits']}/{book_stats['lookups']})"
-        if book_stats["lookups"] > 0 else "[dim]No lookups yet[/dim]",
+        if book_stats["lookups"] > 0
+        else "[dim]No lookups yet[/dim]",
     )
 
     # Tier 3: Live LLM
@@ -217,8 +257,7 @@ def latency():
     pending_line = ""
     if pending:
         pending_line = (
-            f"\n  [red bold]OVERRIDE ACTIVE: {', '.join(pending)} "
-            f"(fast path blocked)[/red bold]"
+            f"\n  [red bold]OVERRIDE ACTIVE: {', '.join(pending)} (fast path blocked)[/red bold]"
         )
 
     console.print(
@@ -237,29 +276,44 @@ def latency():
 
 @system_app.command("killswitch")
 def killswitch():
-    """Show kill switch status and mmap file location."""
-    from execution_engine.kill_switch.memory_map import (
-        _MMAP_PATH,
-        read_risk_snapshot,
-        initialize_mmap,
+    """Show kill switch status and read the seqlock mmap file."""
+    from pathlib import Path
+
+    from execution_engine.watchdog.mmap_bridge import (
+        _MMAP_PATH_DEFAULT,
+        RiskMmapBridge,
     )
 
-    console.print(Panel(
-        f"  Mmap Path:    {_MMAP_PATH}\n"
-        f"  File Exists:  {_MMAP_PATH.exists()}\n"
-        f"  C++ Watchdog: [dim]Compile with: g++ -O2 -o watchdog watchdog.cpp[/dim]\n"
-        f"  Run:          [dim]./watchdog {_MMAP_PATH} 3.0 <python_pid>[/dim]",
-        title="[bold yellow]Kill Switch Status[/bold yellow]",
-        border_style="yellow",
-    ))
+    mmap_path = Path(_MMAP_PATH_DEFAULT)
+    console.print(
+        Panel(
+            f"  Mmap Path:    {mmap_path}\n"
+            f"  File Exists:  {mmap_path.exists()}\n"
+            f"  C++ Watchdog: [dim]auto-compiled from execution_engine/watchdog/kill_switch.cpp[/dim]\n"
+            f"  Writer Loop:  [dim]10Hz — started by backend lifespan[/dim]",
+            title="[bold yellow]Kill Switch Status[/bold yellow]",
+            border_style="yellow",
+        )
+    )
 
-    if _MMAP_PATH.exists():
+    if mmap_path.exists():
         try:
-            initialize_mmap()
-            data = read_risk_snapshot()
+            reader = RiskMmapBridge.__new__(RiskMmapBridge)
+            import mmap as _mmap
+
+            reader._path = mmap_path
+            reader._fd = open(mmap_path, "r+b")
+            reader._mm = _mmap.mmap(reader._fd.fileno(), 0)
+            reader._seq = 0
+            data = reader.read()
+            reader.close()
             if data:
-                console.print(f"  Current VaR:  {data.get('value_at_risk_95', 0):.4f}")
-                console.print(f"  Drawdown:     {data.get('current_drawdown_pct', 0):.2f}%")
-                console.print(f"  Armed:        {data.get('kill_switch_armed', False)}")
+                console.print(f"  Drawdown:     {data.get('drawdown_pct', 0):.2f}%")
+                console.print(f"  VaR95:        {data.get('var_95', 0):.4f}")
+                console.print(f"  Equity:       ${data.get('portfolio_equity', 0):,.0f}")
+                console.print(f"  Armed:        {data.get('armed', False)}")
+                console.print(f"  Python PID:   {data.get('python_pid', 0)}")
+            else:
+                console.print("  [dim]Torn read — writer is actively updating[/dim]")
         except Exception as e:
             console.print(f"  [dim]Cannot read mmap: {e}[/dim]")

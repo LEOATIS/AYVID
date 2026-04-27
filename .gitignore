@@ -2,7 +2,15 @@
 .env
 .env.*
 !.env.example
+# `.env.production` only holds NEXT_PUBLIC_* (baked into client bundle,
+# safe to commit). Real secrets live in GCP Secret Manager.
+!frontend/.env.production
 Secrets/
+
+# Local deploy state — generated API keys, last-pushed image tag, etc.
+# Never commit; deploy_bootstrap.sh writes here.
+.deploy_state/
+.last_image_tag
 
 # Python
 __pycache__/
@@ -71,3 +79,5 @@ execution_engine/watchdog/kill_switch
 .vscode/
 
 live/
+
+Dumps/

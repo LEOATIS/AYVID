@@ -60,7 +60,7 @@ export function ConsoleGate({ children }: { children: ReactNode }) {
           href="/"
           className="text-[11px] uppercase tracking-[0.18em] text-subtle hover:text-fg"
         >
-          ← Back to ayvid.com
+          ← Back to ayvid.ai
         </Link>
       </header>
 
@@ -83,7 +83,7 @@ export function ConsoleGate({ children }: { children: ReactNode }) {
           <p className="prose-body mt-4 max-w-prose">
             If you&rsquo;re from YC, an LP, or otherwise expected, you&rsquo;ve already
             been given the passphrase. Otherwise, the public materials at{" "}
-            <Link href="/" className="link-arrow">ayvid.com</Link> describe everything we
+            <Link href="/" className="link-arrow">ayvid.ai</Link> describe everything we
             disclose externally.
           </p>
         </section>

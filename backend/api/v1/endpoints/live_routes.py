@@ -1,22 +1,30 @@
 """Live read-only data routes — exposes the artifacts the paper runner
 and backtester land on disk (`live/*.jsonl`, `document/backtests/*.json`,
 `data_store/signal_book.json`) so the Next.js frontend can render the
-same data the CLI shows. No API key is required: this is read-only
-diagnostic data and the frontend is the primary consumer.
+same data the CLI shows.
+
+P1-15: while the payloads are read-only diagnostic data, they include
+equity-curve snapshots, open-position counts, and signal-book entries
+— everything an attacker needs to reverse-engineer the strategy. The
+router is now guarded by ``verify_api_key``; in dev (no keys
+registered, ``AYVID_REQUIRE_AUTH=False``) the dependency passes
+through so local development keeps working.
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from backend.core.security import verify_api_key
 from shared.logger import get_logger
 
 log = get_logger("api.live")
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 LIVE_DIR = PROJECT_ROOT / "live"
@@ -155,25 +163,84 @@ async def trades(
 async def positions() -> dict[str, Any]:
     """Currently-open positions snapshot.
 
+    The paper runner historically stored positions as a ``dict`` keyed
+    by ticker (O(1) lookup on the execution path). The frontend, and
+    the public API contract, expect a list of position rows — so we
+    normalise here, preserving the ticker key as ``ticker`` on the row.
+    This keeps legacy ``positions.json`` files on disk renderable
+    without a runner restart.
+
     Source: ``live/positions.json`` if present, else empty list.
     """
     path = LIVE_DIR / "positions.json"
+    empty = {"positions": [], "count": 0, "as_of": None, "cash": None}
     if not path.exists():
-        return {"positions": [], "count": 0, "as_of": None}
+        return empty
     try:
         data = json.loads(path.read_text())
     except json.JSONDecodeError:
-        return {"positions": [], "count": 0, "as_of": None}
+        return empty
+
     if isinstance(data, list):
-        return {"positions": data, "count": len(data), "as_of": None}
-    if isinstance(data, dict):
-        positions_list = data.get("positions", [])
         return {
-            "positions": positions_list,
-            "count": len(positions_list),
-            "as_of": data.get("as_of") or data.get("timestamp"),
+            "positions": data,
+            "count": len(data),
+            "as_of": None,
+            "cash": None,
         }
-    return {"positions": [], "count": 0, "as_of": None}
+    if not isinstance(data, dict):
+        return empty
+
+    raw = data.get("positions", [])
+    rows: list[dict[str, Any]] = []
+    if isinstance(raw, list):
+        rows = [r for r in raw if isinstance(r, dict)]
+    elif isinstance(raw, dict):
+        for ticker, pos in raw.items():
+            if not isinstance(pos, dict):
+                continue
+            qty = pos.get("shares", pos.get("quantity", pos.get("qty", 0)))
+            try:
+                qty_num = float(qty)
+            except (TypeError, ValueError):
+                qty_num = 0.0
+            entry_price = pos.get("entry_price", pos.get("avg_price"))
+            market_price = pos.get("market_price", pos.get("mark", entry_price))
+            try:
+                mv = float(market_price) * qty_num if market_price is not None else None
+            except (TypeError, ValueError):
+                mv = None
+            try:
+                upnl = (
+                    (float(market_price) - float(entry_price)) * qty_num
+                    if market_price is not None and entry_price is not None
+                    else 0.0
+                )
+            except (TypeError, ValueError):
+                upnl = 0.0
+            rows.append(
+                {
+                    "ticker": ticker,
+                    "quantity": qty_num,
+                    "side": "LONG" if qty_num >= 0 else "SHORT",
+                    "avg_price": entry_price,
+                    "market_price": market_price,
+                    "market_value": mv,
+                    "unrealized_pnl": pos.get("unrealized_pnl", round(upnl, 2)),
+                    "realized_pnl": pos.get("realized_pnl", 0.0),
+                    "entered_at": pos.get("entered_at"),
+                    "strategy": pos.get("strategy"),
+                    "source": pos.get("source"),
+                    "rationale": pos.get("rationale"),
+                }
+            )
+
+    return {
+        "positions": rows,
+        "count": len(rows),
+        "as_of": data.get("as_of") or data.get("timestamp"),
+        "cash": data.get("cash"),
+    }
 
 
 @router.get("/signals")
@@ -228,38 +295,44 @@ def _summarize_backtest(data: dict[str, Any]) -> dict[str, Any]:
     }
     if "windows" in data and isinstance(data["windows"], list):
         out["kind"] = "walkforward"
-        out.update({
-            "span": f"{data.get('start_date')} → {data.get('end_date')}",
-            "windows": data.get("n_valid_windows", len(data["windows"])),
-            "avg_return_pct": data.get("avg_return_pct"),
-            "median_return_pct": data.get("median_return_pct"),
-            "compounded_return_pct": data.get("aggregate_compounded_return_pct"),
-            "cagr_pct": data.get("aggregate_cagr_pct"),
-            "pct_positive": data.get("pct_positive_windows"),
-            "median_sharpe": data.get("median_sharpe"),
-            "pooled_trades": data.get("pooled_total_trades"),
-        })
+        out.update(
+            {
+                "span": f"{data.get('start_date')} → {data.get('end_date')}",
+                "windows": data.get("n_valid_windows", len(data["windows"])),
+                "avg_return_pct": data.get("avg_return_pct"),
+                "median_return_pct": data.get("median_return_pct"),
+                "compounded_return_pct": data.get("aggregate_compounded_return_pct"),
+                "cagr_pct": data.get("aggregate_cagr_pct"),
+                "pct_positive": data.get("pct_positive_windows"),
+                "median_sharpe": data.get("median_sharpe"),
+                "pooled_trades": data.get("pooled_total_trades"),
+            }
+        )
     elif "scenarios" in data and isinstance(data["scenarios"], list):
         out["kind"] = "shock_driven"
-        out.update({
-            "span": f"{data.get('span_start')} → {data.get('span_end')}",
-            "scenarios": data.get("n_valid", len(data["scenarios"])),
-            "avg_return_pct": data.get("avg_return_pct"),
-            "median_return_pct": data.get("median_return_pct"),
-            "compounded_return_pct": data.get("aggregate_compounded_return_pct"),
-            "cagr_pct": data.get("aggregate_cagr_pct"),
-            "pct_positive": data.get("pct_positive_scenarios"),
-            "median_sharpe": data.get("median_sharpe"),
-            "pooled_trades": data.get("pooled_total_trades"),
-        })
+        out.update(
+            {
+                "span": f"{data.get('span_start')} → {data.get('span_end')}",
+                "scenarios": data.get("n_valid", len(data["scenarios"])),
+                "avg_return_pct": data.get("avg_return_pct"),
+                "median_return_pct": data.get("median_return_pct"),
+                "compounded_return_pct": data.get("aggregate_compounded_return_pct"),
+                "cagr_pct": data.get("aggregate_cagr_pct"),
+                "pct_positive": data.get("pct_positive_scenarios"),
+                "median_sharpe": data.get("median_sharpe"),
+                "pooled_trades": data.get("pooled_total_trades"),
+            }
+        )
     elif "total_return_pct" in data:
         out["kind"] = "single_window"
-        out.update({
-            "total_return_pct": data.get("total_return_pct"),
-            "sharpe_ratio": data.get("sharpe_ratio"),
-            "max_drawdown_pct": data.get("max_drawdown_pct"),
-            "total_trades": data.get("total_trades"),
-        })
+        out.update(
+            {
+                "total_return_pct": data.get("total_return_pct"),
+                "sharpe_ratio": data.get("sharpe_ratio"),
+                "max_drawdown_pct": data.get("max_drawdown_pct"),
+                "total_trades": data.get("total_trades"),
+            }
+        )
     return out
 
 
@@ -284,21 +357,23 @@ async def shock_scenarios() -> dict[str, Any]:
     items = []
     for sid, scen in SHOCK_SCENARIOS.items():
         causal = scen.get("causal_intel", {}) or {}
-        items.append({
-            "id": sid,
-            "name": scen.get("name"),
-            "start_date": scen.get("start_date"),
-            "end_date": scen.get("end_date"),
-            "description": scen.get("description"),
-            "tickers": scen.get("tickers", []),
-            "indices": scen.get("indices", []),
-            "shock_type": causal.get("shock_type"),
-            "expected_direction": causal.get("expected_direction"),
-            "beneficiary_tickers": causal.get("beneficiary_tickers", []),
-            "victim_tickers": causal.get("victim_tickers", []),
-            "index_bias": causal.get("index_bias", {}),
-            "causal_chain": causal.get("causal_chain"),
-        })
+        items.append(
+            {
+                "id": sid,
+                "name": scen.get("name"),
+                "start_date": scen.get("start_date"),
+                "end_date": scen.get("end_date"),
+                "description": scen.get("description"),
+                "tickers": scen.get("tickers", []),
+                "indices": scen.get("indices", []),
+                "shock_type": causal.get("shock_type"),
+                "expected_direction": causal.get("expected_direction"),
+                "beneficiary_tickers": causal.get("beneficiary_tickers", []),
+                "victim_tickers": causal.get("victim_tickers", []),
+                "index_bias": causal.get("index_bias", {}),
+                "causal_chain": causal.get("causal_chain"),
+            }
+        )
     items.sort(key=lambda x: x.get("start_date") or "")
     return {"scenarios": items, "count": len(items)}
 
@@ -351,9 +426,7 @@ async def system_status() -> dict[str, Any]:
     from shared.config import settings
 
     llm_provider = getattr(settings, "LLM_PROVIDER", None)
-    llm_model = getattr(settings, "LLM_MODEL", None) or getattr(
-        settings, "OPENAI_MODEL", None
-    )
+    llm_model = getattr(settings, "LLM_MODEL", None) or getattr(settings, "OPENAI_MODEL", None)
     has_key = False
     if llm_provider:
         key_attr = {

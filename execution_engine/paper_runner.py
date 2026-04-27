@@ -25,6 +25,7 @@ These artifacts are designed to be easy to chart with the companion
 single piece of YC evidence the partner will look at: a daily,
 post-cost equity curve from a real (paper) deployment.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -72,6 +73,9 @@ class ShadowState:
     cycle: int = 0
     cumulative_pnl: float = 0.0
     last_equity: float = 0.0
+    # Track signal-book keys already consumed so one signal
+    # produces exactly one fill across the runner's lifetime.
+    consumed_signals: set[str] = field(default_factory=set)
 
 
 def _ensure_dirs() -> None:
@@ -100,6 +104,7 @@ def _write_meta(mode: str, initial_equity: float, interval_seconds: int) -> None
 # ────────────────────────────────────────────────────────────────
 # IB MODE
 # ────────────────────────────────────────────────────────────────
+
 
 async def _snapshot_from_ib(ib: Any, cycle: int, last_equity: float) -> EquitySnapshot:
     """Pull NetLiquidation + cash + positions from the IB paper account.
@@ -149,7 +154,9 @@ async def _run_ib_mode(interval_seconds: int) -> None:
     from execution_engine.broker.connection import connect
 
     ib = await connect()
-    log.info(f"IB paper mode: polling every {interval_seconds}s, account={settings.IB_ACCOUNT or 'default'}")
+    log.info(
+        f"IB paper mode: polling every {interval_seconds}s, account={settings.IB_ACCOUNT or 'default'}"
+    )
 
     cycle = 0
     initial_equity = 0.0
@@ -177,7 +184,7 @@ async def _run_ib_mode(interval_seconds: int) -> None:
 
         try:
             await asyncio.wait_for(_stop_event.wait(), timeout=interval_seconds)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             continue
 
 
@@ -185,15 +192,132 @@ async def _run_ib_mode(interval_seconds: int) -> None:
 # SHADOW MODE (no IB connection required)
 # ────────────────────────────────────────────────────────────────
 
+_SIGNAL_BOOK_PATH = Path("data_store/signal_book.json")
+
+
+def _consume_signal_book(
+    state: ShadowState,
+    latest_close: dict[str, float],
+    *,
+    cycle: int,
+) -> list[dict[str, Any]]:
+    """Turn live signal-book entries into shadow fills.
+
+    Contract:
+      * Only EQUITY signals are honoured here (shadow runner does not
+        synthesise option legs).
+      * LONG → BUY, SHORT → SELL. We allow SHORT in shadow because the
+        cost model already handles both sides and a SHORT signal failing
+        to produce a fill would be more confusing than a simulated entry.
+      * Sizing uses the signal's conviction + expected_r with a single
+        Kelly fraction, capped at 5% of cash — identical cap to the
+        orchestrator-scan path below so the two sources are interchangeable.
+      * Each (ticker, regime_fingerprint) key fires at most once per
+        runner lifetime; the `consumed_signals` set is the dedupe guard.
+    """
+    if not _SIGNAL_BOOK_PATH.exists():
+        return []
+    try:
+        book = json.loads(_SIGNAL_BOOK_PATH.read_text())
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(book, dict) or not book:
+        return []
+
+    from execution_engine.math.kelly import (
+        compute_position_size,
+        kelly_fraction_single,
+    )
+
+    fills: list[dict[str, Any]] = []
+    for key, sig in book.items():
+        if not isinstance(sig, dict):
+            continue
+        if key in state.consumed_signals:
+            continue
+        if str(sig.get("instrument_type", "")).upper() != "EQUITY":
+            continue
+        ticker = str(sig.get("ticker") or "").upper()
+        if not ticker or ticker in state.positions:
+            continue
+
+        direction = str(sig.get("direction", "LONG")).upper()
+        side = "SELL" if direction == "SHORT" else "BUY"
+
+        # Prefer the current mark so the fill is honest vs. "now". Fall
+        # back to the signal's committed entry_price_at_compute if we
+        # have no local bar for this symbol (e.g. universe drift).
+        mark = latest_close.get(ticker) or float(sig.get("entry_price_at_compute") or 0.0)
+        if mark <= 0:
+            continue
+
+        conv = float(sig.get("conviction", 0.0) or 0.0)
+        exp_r = max(float(sig.get("expected_r", 1.0) or 1.0), 1.0)
+        frac = min(kelly_fraction_single(conv, exp_r), 0.05)
+        shares = compute_position_size(state.cash, frac, mark)
+        if shares < 1 or shares * mark > state.cash * 0.4:
+            continue
+
+        slip = 1.0005 if side == "BUY" else 0.9995
+        entry = mark * slip
+        cost = entry * shares
+        if side == "BUY" and cost > state.cash:
+            continue
+
+        # Cash semantics: BUY debits, SELL (short) credits proceeds into cash.
+        # Mark-to-market in the cycle handler reconciles the final equity.
+        state.cash += -cost if side == "BUY" else cost
+        state.positions[ticker] = {
+            "entry_price": round(entry, 4),
+            "shares": shares if side == "BUY" else -shares,
+            "entered_at": dt.datetime.now(dt.UTC).isoformat(),
+            "rationale": str(sig.get("rationale") or "signal_book entry"),
+            "source": "signal_book",
+            "signal_key": key,
+            "strategy": sig.get("strategy_name"),
+        }
+        state.consumed_signals.add(key)
+        fills.append(
+            {
+                "timestamp": dt.datetime.now(dt.UTC).isoformat(),
+                "mode": "shadow",
+                "ticker": ticker,
+                "side": side,
+                "shares": shares,
+                "fill_price": round(entry, 4),
+                "notional": round(entry * shares, 2),
+                "rationale": str(sig.get("rationale") or "signal_book entry"),
+                "strategy": sig.get("strategy_name"),
+                "conviction": conv,
+                "expected_r": exp_r,
+                "source": "signal_book",
+                "signal_key": key,
+                "cycle": cycle,
+                "status": "FILLED",
+            }
+        )
+        log.info(
+            f"shadow fill (signal_book): {side} {shares} {ticker} @ ${entry:.2f} "
+            f"(conv={conv:.2f}, exp_r={exp_r:.1f}, key={key})"
+        )
+
+    return fills
+
+
 async def _shadow_cycle(state: ShadowState) -> EquitySnapshot:
     """Run one shadow trading cycle against most recent local data.
 
-    Loads the latest OHLCV bars from data_store/, runs the orchestrator
-    on each ticker, simulates entries at last close minus IBKR slippage,
-    and marks open positions to the latest close. Writes new fills to
-    live/trades.jsonl.
+    Execution order:
+      1. Consume live entries from ``data_store/signal_book.json`` —
+         these are pre-computed LLM decisions; shadow mints a fill.
+      2. Scan local bars with ``rule_based_orchestrate`` as a cold-start
+         fallback when the signal book is empty.
+      3. Mark open positions to the latest close and emit a snapshot.
+
+    All fills land in ``live/trades.jsonl``; positions in
+    ``live/positions.json``; equity snapshots in
+    ``live/equity_curve.jsonl``.
     """
-    from backtesting.cost_model import equity_costs
     from backtesting.engine import _load_local_bars
     from execution_engine.math.kelly import compute_position_size, kelly_fraction_single
     from graph_intelligence.agents.strategy_orchestrator import (
@@ -240,14 +364,22 @@ async def _shadow_cycle(state: ShadowState) -> EquitySnapshot:
             continue
         latest_close[sym] = bars[-1].close
 
-    # Mark open positions to current price.
-    position_value = 0.0
-    for sym, pos in state.positions.items():
-        last = latest_close.get(sym, pos["entry_price"])
-        position_value += last * pos["shares"]
-
-    # Try to scan for new entries on a few tickers (cheap pass).
     new_fills: list[dict[str, Any]] = []
+
+    # 1) Consume pre-computed signal book. This is the "morning meeting"
+    #    path — heavy LLM analysis already landed a trade decision; shadow
+    #    mode mints a simulated fill so the live frontend (Orders Routed
+    #    card) reflects signals even without an IB Gateway.
+    book_fills = _consume_signal_book(
+        state,
+        latest_close,
+        cycle=state.cycle,
+    )
+    new_fills.extend(book_fills)
+
+    # 2) Fall back to fresh orchestrator scan on local bars — useful when
+    #    the signal book is empty (cold start) or only covers symbols we
+    #    already hold.
     for sym in available[:10]:
         bars = _load_local_bars(sym)
         if len(bars) < 30:
@@ -300,27 +432,77 @@ async def _shadow_cycle(state: ShadowState) -> EquitySnapshot:
             "shares": shares,
             "entered_at": last_bar.timestamp.isoformat(),
             "rationale": decision.rationale,
+            "source": "orchestrator_scan",
         }
-        position_value += last_bar.close * shares
-        new_fills.append({
-            "timestamp": dt.datetime.now(dt.UTC).isoformat(),
-            "mode": "shadow",
-            "ticker": sym,
-            "side": "BUY",
-            "shares": shares,
-            "fill_price": round(entry, 4),
-            "rationale": decision.rationale,
-            "cycle": state.cycle,
-        })
+        new_fills.append(
+            {
+                "timestamp": dt.datetime.now(dt.UTC).isoformat(),
+                "mode": "shadow",
+                "ticker": sym,
+                "side": "BUY",
+                "shares": shares,
+                "fill_price": round(entry, 4),
+                "notional": round(entry * shares, 2),
+                "rationale": decision.rationale,
+                "source": "orchestrator_scan",
+                "cycle": state.cycle,
+                "status": "FILLED",
+            }
+        )
+
+    # 3) Mark every position (including freshly-opened ones) to the
+    #    current close using SIGNED share counts, so shorts produce
+    #    negative position value and correctly net against the cash
+    #    credit we booked on entry. Running this AFTER both fill
+    #    sources keeps equity accounting coherent regardless of mix.
+    position_value = 0.0
+    for sym, pos in state.positions.items():
+        last = latest_close.get(sym, pos["entry_price"])
+        position_value += last * pos["shares"]
 
     for fill in new_fills:
         _append_jsonl(TRADES_PATH, fill)
 
-    POSITIONS_PATH.write_text(json.dumps({
-        "as_of": dt.datetime.now(dt.UTC).isoformat(),
-        "cash": round(state.cash, 2),
-        "positions": state.positions,
-    }, indent=2, default=str))
+    # Persist positions as a list of enriched rows — this is the shape
+    # the frontend Portfolio page renders directly. Keep the in-memory
+    # dict (state.positions) as the source of truth for execution
+    # logic; serialize a denormalized view for the UI.
+    position_rows: list[dict[str, Any]] = []
+    for sym, pos in state.positions.items():
+        shares = float(pos.get("shares", 0))
+        entry = float(pos.get("entry_price", 0.0))
+        mark = float(latest_close.get(sym, entry))
+        mv = mark * shares
+        upnl = (mark - entry) * shares
+        position_rows.append(
+            {
+                "ticker": sym,
+                "quantity": shares,
+                "side": "LONG" if shares >= 0 else "SHORT",
+                "avg_price": round(entry, 4),
+                "market_price": round(mark, 4),
+                "market_value": round(mv, 2),
+                "unrealized_pnl": round(upnl, 2),
+                "realized_pnl": 0.0,
+                "entered_at": pos.get("entered_at"),
+                "strategy": pos.get("strategy"),
+                "source": pos.get("source"),
+                "rationale": pos.get("rationale"),
+                "signal_key": pos.get("signal_key"),
+            }
+        )
+
+    POSITIONS_PATH.write_text(
+        json.dumps(
+            {
+                "as_of": dt.datetime.now(dt.UTC).isoformat(),
+                "cash": round(state.cash, 2),
+                "positions": position_rows,
+            },
+            indent=2,
+            default=str,
+        )
+    )
 
     equity = state.cash + position_value
     daily_pnl = equity - state.last_equity if state.last_equity > 0 else 0.0
@@ -348,7 +530,9 @@ async def _run_shadow_mode(initial_equity: float, interval_seconds: int) -> None
         f"Shadow mode: ${initial_equity:,.0f} initial equity, "
         f"polling every {interval_seconds}s (no IB connection)"
     )
-    state = ShadowState(initial_equity=initial_equity, cash=initial_equity, last_equity=initial_equity)
+    state = ShadowState(
+        initial_equity=initial_equity, cash=initial_equity, last_equity=initial_equity
+    )
 
     while not _stop_event.is_set():
         state.cycle += 1
@@ -366,13 +550,14 @@ async def _run_shadow_mode(initial_equity: float, interval_seconds: int) -> None
 
         try:
             await asyncio.wait_for(_stop_event.wait(), timeout=interval_seconds)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             continue
 
 
 # ────────────────────────────────────────────────────────────────
 # Public entrypoint
 # ────────────────────────────────────────────────────────────────
+
 
 async def run(
     shadow: bool = False,
@@ -423,6 +608,7 @@ def render_curve(out_path: Path = Path("live/equity_curve.png")) -> Path:
         raise ValueError("equity_curve.jsonl is empty")
 
     import datetime as _dt
+
     parsed_ts: list[_dt.datetime] = []
     equity: list[float] = []
     for r in rows:
@@ -458,7 +644,8 @@ def render_curve(out_path: Path = Path("live/equity_curve.png")) -> Path:
             f"AYVID — Live Paper Trading Equity Curve  ·  "
             f"{parsed_ts[0]:%Y-%m-%d} → {parsed_ts[-1]:%Y-%m-%d}  ·  "
             f"{len(equity)} snapshots",
-            fontsize=12, weight="bold",
+            fontsize=12,
+            weight="bold",
         )
         ax.set_xlabel("Time (UTC)")
         ax.set_ylabel("Net Liquidation ($)")
@@ -466,7 +653,9 @@ def render_curve(out_path: Path = Path("live/equity_curve.png")) -> Path:
 
         # Smart axis formatting: by hour if same-day, by day otherwise
         if span.total_seconds() < 86400:
-            ax.xaxis.set_major_locator(mdates.HourLocator(interval=max(1, int(span.total_seconds() // 3600 // 8))))
+            ax.xaxis.set_major_locator(
+                mdates.HourLocator(interval=max(1, int(span.total_seconds() // 3600 // 8)))
+            )
             ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
         elif span.days < 14:
             ax.xaxis.set_major_locator(mdates.DayLocator(interval=max(1, span.days // 8)))
@@ -486,11 +675,21 @@ def render_curve(out_path: Path = Path("live/equity_curve.png")) -> Path:
             f"DD:      {drawdown_pct:.2f}%"
         )
         ax.text(
-            0.99, 0.02, stats_text,
-            transform=ax.transAxes, fontsize=9, family="monospace",
-            verticalalignment="bottom", horizontalalignment="right",
-            bbox=dict(boxstyle="round,pad=0.5", facecolor="#f5f5f5",
-                      edgecolor=return_color, linewidth=1.2, alpha=0.9),
+            0.99,
+            0.02,
+            stats_text,
+            transform=ax.transAxes,
+            fontsize=9,
+            family="monospace",
+            verticalalignment="bottom",
+            horizontalalignment="right",
+            bbox=dict(
+                boxstyle="round,pad=0.5",
+                facecolor="#f5f5f5",
+                edgecolor=return_color,
+                linewidth=1.2,
+                alpha=0.9,
+            ),
         )
 
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -514,7 +713,7 @@ def render_curve(out_path: Path = Path("live/equity_curve.png")) -> Path:
             f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}">'
             f'<polyline fill="none" stroke="#0a84ff" stroke-width="1.6" points="{pts}"/>'
             f'<text x="10" y="20" font-family="Helvetica" font-size="12" fill="#444">'
-            f'AYVID Paper Equity Curve  |  ${emin:,.0f}–${emax:,.0f}</text></svg>'
+            f"AYVID Paper Equity Curve  |  ${emin:,.0f}–${emax:,.0f}</text></svg>"
         )
         out_path.write_text(svg)
 

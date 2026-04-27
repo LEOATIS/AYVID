@@ -3,6 +3,7 @@
 Fetches message streams for tickers and aggregates bull/bear sentiment
 ratios as an alternative signal source.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -62,14 +63,16 @@ async def fetch_stocktwits_sentiment(
                 except (ValueError, AttributeError):
                     ts = dt.datetime.now(dt.UTC)
 
-                items.append(NewsItem(
-                    timestamp=ts,
-                    title=body[:200],
-                    source="stocktwits",
-                    symbols=[ticker.upper()],
-                    text=body,
-                    sentiment=score,
-                ))
+                items.append(
+                    NewsItem(
+                        timestamp=ts,
+                        title=body[:200],
+                        source="stocktwits",
+                        symbols=[ticker.upper()],
+                        text=body,
+                        sentiment=score,
+                    )
+                )
 
             agg["total"] = len(messages)
             if agg["total"] > 0:
@@ -85,6 +88,7 @@ async def fetch_stocktwits_batch(
     tickers: list[str],
 ) -> dict[str, dict[str, Any]]:
     """Fetch aggregate sentiment for multiple tickers in parallel."""
+
     async def _single(ticker: str) -> tuple[str, dict[str, Any]]:
         _, agg = await fetch_stocktwits_sentiment(ticker, limit=30)
         return ticker, agg

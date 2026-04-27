@@ -16,23 +16,21 @@ Each iteration:
 Stops after ``alpha`` iterations or when a stable high-confidence
 DAG is reached.
 """
+
 from __future__ import annotations
 
-import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable
 
 import numpy as np
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
 from pydantic import BaseModel, Field, ValidationError
 
-from shared.config import settings
-from shared.logger import get_logger
 from graph_intelligence.causal_falsification.falsification_tests import (
-    FalsificationReport, run_all_tests,
+    FalsificationReport,
+    run_all_tests,
 )
+from shared.logger import get_logger
 
 log = get_logger("causal.refinery")
 
@@ -47,6 +45,7 @@ class EdgeProposal(BaseModel):
 
 class RefinementDecision(BaseModel):
     """LLM output per iteration."""
+
     refined_edges: list[EdgeProposal] = Field(default_factory=list)
     removed_edges: list[tuple[str, str]] = Field(default_factory=list)
     rationale: str = ""
@@ -56,6 +55,7 @@ class RefinementDecision(BaseModel):
 @dataclass
 class RefinedDAG:
     """Final output of the refinery loop."""
+
     edges: list[EdgeProposal] = field(default_factory=list)
     iterations_run: int = 0
     last_report: FalsificationReport | None = None
@@ -102,8 +102,7 @@ def _render_report(report: FalsificationReport) -> str:
     """Compact human/LLM-readable rendering of the falsification report."""
     parts = [
         f"edges_tested: {report.edges_tested}",
-        f"ci_violations: {len(report.ci_violations)} "
-        f"(fraction {report.ci_fraction_violated:.2%})",
+        f"ci_violations: {len(report.ci_violations)} (fraction {report.ci_fraction_violated:.2%})",
         f"unnecessary_edges: {len(report.unnecessary_edges)}",
         f"random_benchmark_p: {report.random_benchmark_p:.3f}",
         f"falsifiable: {report.falsifiable}",
@@ -120,30 +119,18 @@ def _render_report(report: FalsificationReport) -> str:
     if report.unnecessary_edges:
         parts.append("\nSample unnecessary edges:")
         for m in report.unnecessary_edges[:8]:
-            parts.append(
-                f"  {m.src} → {m.dst} (p after removal = "
-                f"{m.p_value_after_removal:.3f})"
-            )
+            parts.append(f"  {m.src} → {m.dst} (p after removal = {m.p_value_after_removal:.3f})")
     return "\n".join(parts)
 
 
 def _build_llm():
     """LLM bound to RefinementDecision. Uses the deep-reasoning tier."""
-    if settings.LLM_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
-        base = ChatAnthropic(
-            model=settings.ANTHROPIC_MODEL,
-            api_key=settings.ANTHROPIC_API_KEY,
-            temperature=0.05,
-            max_tokens=2000,
-        )
-    else:
-        base = ChatOpenAI(
-            model=settings.OPENAI_MODEL,
-            api_key=settings.OPENAI_API_KEY,
-            temperature=0.05,
-            max_tokens=2000,
-        )
-    return base.with_structured_output(RefinementDecision)
+    from shared.llm_client import get_langchain_chat_model
+
+    return get_langchain_chat_model(
+        temperature=0.05,
+        max_tokens=2000,
+    ).with_structured_output(RefinementDecision)
 
 
 # ── Loop orchestrator ────────────────────────────────────────────────
@@ -217,33 +204,34 @@ async def refine_dag(
 
         # Short-circuit: already valid.
         if report.is_valid:
-            rationale_trail.append(
-                f"iter {iteration}: DAG passes falsification; stopping early."
-            )
+            rationale_trail.append(f"iter {iteration}: DAG passes falsification; stopping early.")
             return RefinedDAG(
-                edges=current_edges, iterations_run=iteration,
-                last_report=report, converged=True,
+                edges=current_edges,
+                iterations_run=iteration,
+                last_report=report,
+                converged=True,
                 rationale_trail=rationale_trail,
             )
 
         # Ask LLM to propose refinements.
         prompt = (
             f"Current edge count: {len(current_edges)}\n"
-            f"Current edges (first 40):\n" +
-            "\n".join(
-                f"  {e.src} → {e.dst} (conf={e.confidence:.2f})"
-                for e in current_edges[:40]
-            ) +
-            f"\n\nFalsification report:\n{_render_report(report)}\n\n"
+            f"Current edges (first 40):\n"
+            + "\n".join(
+                f"  {e.src} → {e.dst} (conf={e.confidence:.2f})" for e in current_edges[:40]
+            )
+            + f"\n\nFalsification report:\n{_render_report(report)}\n\n"
             "Propose refinements: edges to keep with updated confidence, "
             "edges to remove, and a rationale. Output JSON."
         )
 
         try:
-            decision: RefinementDecision = await llm.ainvoke([
-                SystemMessage(content=_REFINERY_SYSTEM),
-                HumanMessage(content=prompt),
-            ])
+            decision: RefinementDecision = await llm.ainvoke(
+                [
+                    SystemMessage(content=_REFINERY_SYSTEM),
+                    HumanMessage(content=prompt),
+                ]
+            )
         except (ValidationError, ValueError, TypeError) as exc:
             log.warning(f"refinery iter {iteration}: LLM validation failed ({exc})")
             rationale_trail.append(f"iter {iteration}: validation failure")
@@ -258,8 +246,7 @@ async def refine_dag(
             break
 
         rationale_trail.append(
-            f"iter {iteration} (conf={decision.self_confidence:.2f}): "
-            f"{decision.rationale[:200]}"
+            f"iter {iteration} (conf={decision.self_confidence:.2f}): {decision.rationale[:200]}"
         )
 
         if decision.self_confidence < gamma:
@@ -288,8 +275,10 @@ async def refine_dag(
                     f"iter {iteration}: refinement accepted AND valid; stopping."
                 )
                 return RefinedDAG(
-                    edges=current_edges, iterations_run=iteration,
-                    last_report=tentative_report, converged=True,
+                    edges=current_edges,
+                    iterations_run=iteration,
+                    last_report=tentative_report,
+                    converged=True,
                     rationale_trail=rationale_trail,
                 )
         else:
@@ -300,7 +289,9 @@ async def refine_dag(
             )
 
     return RefinedDAG(
-        edges=current_edges, iterations_run=alpha,
-        last_report=last_report, converged=False,
+        edges=current_edges,
+        iterations_run=alpha,
+        last_report=last_report,
+        converged=False,
         rationale_trail=rationale_trail,
     )

@@ -3,6 +3,7 @@
 Uses the free-tier Finnhub API (60 calls/min). All functions degrade gracefully
 when the API key is missing or the endpoint errors out.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -49,11 +50,15 @@ async def fetch_finnhub_news(ticker: str, days_back: int = 7) -> list[NewsItem]:
         headers={"User-Agent": _USER_AGENT},
         timeout=httpx.Timeout(15.0),
     ) as client:
-        data = await _get(client, "/company-news", {
-            "symbol": ticker.upper(),
-            "from": from_date.isoformat(),
-            "to": today.isoformat(),
-        })
+        data = await _get(
+            client,
+            "/company-news",
+            {
+                "symbol": ticker.upper(),
+                "from": from_date.isoformat(),
+                "to": today.isoformat(),
+            },
+        )
 
     if not isinstance(data, list):
         return []
@@ -64,15 +69,17 @@ async def fetch_finnhub_news(ticker: str, days_back: int = 7) -> list[NewsItem]:
         headline = article.get("headline")
         if not ts_epoch or not headline:
             continue
-        items.append(NewsItem(
-            timestamp=dt.datetime.fromtimestamp(ts_epoch, tz=dt.timezone.utc),
-            title=headline,
-            source="finnhub",
-            symbols=[ticker.upper()],
-            text=article.get("summary") or None,
-            url=article.get("url"),
-            sentiment=None,
-        ))
+        items.append(
+            NewsItem(
+                timestamp=dt.datetime.fromtimestamp(ts_epoch, tz=dt.UTC),
+                title=headline,
+                source="finnhub",
+                symbols=[ticker.upper()],
+                text=article.get("summary") or None,
+                url=article.get("url"),
+                sentiment=None,
+            )
+        )
 
     items.sort(key=lambda n: n.timestamp)
     log.info(f"Finnhub: {len(items)} news articles for {ticker}")

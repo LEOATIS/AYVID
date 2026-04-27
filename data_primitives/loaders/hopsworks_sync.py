@@ -4,6 +4,7 @@ Hurst exponent, and Ornstein-Uhlenbeck mean-reversion speed.
 When Hopsworks is unavailable (no API key), computes features locally
 using NumPy and caches them in-memory for the Kelly Criterion engine.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -20,6 +21,49 @@ log = get_logger("data.hopsworks")
 
 _feature_cache: dict[str, dict[str, Any]] = {}
 _covariance_cache: dict[str, dict[str, Any]] = {}
+
+# Package-availability cache. ``hopsworks`` is an **optional** Python
+# dep — not everyone has it installed, and we must not spam
+# ``ERROR    Hopsworks volatility sync FAILED ... No module named
+# 'hopsworks'`` 32 times per ingestion cycle. We probe once, remember
+# the verdict, and downgrade the subsequent "unavailable" path to a
+# single startup WARN. Real Hopsworks failures (auth, network,
+# feature-group conflict) still log at ERROR per-symbol.
+_HOPSWORKS_AVAILABLE: bool | None = None
+
+
+def _hopsworks_available() -> bool:
+    """Return True only if ``hopsworks`` imports AND a key is configured.
+
+    The verdict is cached so we don't pay the ``import hopsworks``
+    probe-cost on every write, and so we don't repeat the "not
+    installed / not configured" warning on every symbol.
+    """
+    global _HOPSWORKS_AVAILABLE
+    if _HOPSWORKS_AVAILABLE is not None:
+        return _HOPSWORKS_AVAILABLE
+    try:
+        import hopsworks  # noqa: F401 — probe only
+    except ImportError:
+        log.warning(
+            "Hopsworks Python package not installed — feature store "
+            "sync will be skipped. All volatility/covariance features "
+            "are computed locally and cached in-memory instead. "
+            "Install `hopsworks` and set HOPSWORKS_API_KEY to enable "
+            "cluster-side sync."
+        )
+        _HOPSWORKS_AVAILABLE = False
+        return False
+    if not getattr(settings, "HOPSWORKS_API_KEY", None):
+        log.info(
+            "Hopsworks package installed but HOPSWORKS_API_KEY is "
+            "unset — skipping feature-store sync. Local cache only."
+        )
+        _HOPSWORKS_AVAILABLE = False
+        return False
+    _HOPSWORKS_AVAILABLE = True
+    return True
+
 
 _VOLATILITY_WINDOWS: tuple[int, ...] = (5, 10, 30, 60)
 _FEATURE_VECTOR_KEYS: tuple[str, ...] = (
@@ -40,12 +84,24 @@ def compute_rolling_volatility(
     bars: list[OHLCVBar],
     window: int = 30,
 ) -> float:
-    """Annualized rolling volatility from OHLCV bars."""
+    """Annualized rolling volatility from OHLCV bars.
+
+    Thin bars-to-returns adapter over the canonical
+    `_primitives.compute_realized_vol`. Bit-exact with the previous
+    in-place implementation on seeded inputs — see
+    ``tests/test_primitives.py``.
+    """
     if len(bars) < window + 1:
         return 0.0
-    closes = np.array([b.close for b in bars[-(window + 1):]])
-    log_returns = np.diff(np.log(closes))
-    return float(np.std(log_returns, ddof=1)) * np.sqrt(252)
+    from execution_engine.math._primitives import (
+        compute_realized_vol,
+    )
+    from execution_engine.math._primitives import (
+        log_returns as _log_returns,
+    )
+
+    closes = np.array([b.close for b in bars[-(window + 1) :]])
+    return compute_realized_vol(_log_returns(closes), window=window)
 
 
 def compute_multi_window_volatility(
@@ -68,7 +124,7 @@ def compute_expected_returns(
     """Annualized expected return from recent price data."""
     if len(bars) < 2:
         return 0.0
-    recent = bars[-min(window, len(bars)):]
+    recent = bars[-min(window, len(bars)) :]
     total_return = recent[-1].close / recent[0].close - 1.0
     days = max((recent[-1].timestamp - recent[0].timestamp).days, 1)
     return total_return * (252 / days)
@@ -82,6 +138,17 @@ def compute_hurst_exponent(
     max_lag: int = 20,
 ) -> float:
     """Hurst exponent via rescaled-range (R/S) analysis on log-returns.
+
+    LEGACY_VARIANT: This implementation uses a different lag grid and
+    omits the `+1e-10` epsilon present in `_primitives.compute_hurst`.
+    It is *numerically distinct* from the canonical primitive and from
+    `backtesting.engine._compute_hurst_fast` by design — all three
+    produce subtly different values on the same input.
+
+    Unifying these three variants would shift the published YC screening
+    universe and walk-forward numbers, so they are kept separate until
+    Phase 3 of the refactor (where a deliberate re-calibration of the
+    min-conviction floors will absorb the drift).
 
     H < 0.5 → mean-reverting, H ≈ 0.5 → random walk, H > 0.5 → trending.
     """
@@ -137,7 +204,7 @@ def compute_ou_kappa(
     if len(bars) < window + 1:
         return 0.0
 
-    closes = np.array([b.close for b in bars[-(window + 1):]])
+    closes = np.array([b.close for b in bars[-(window + 1) :]])
     log_prices = np.log(closes)
     y = np.diff(log_prices)
     x = log_prices[:-1] - np.mean(log_prices[:-1])
@@ -199,7 +266,7 @@ def compute_pairwise_features(
         pair_key = f"{tickers[i]}_{tickers[j]}"
         record = {
             "pair_key": pair_key,
-            "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "timestamp": dt.datetime.now(dt.UTC).isoformat(),
             "ticker_a": tickers[i],
             "ticker_b": tickers[j],
             "correlation_30d": float(np.clip(correlation, -1.0, 1.0)),
@@ -220,9 +287,7 @@ def _build_returns_matrix(
 ) -> np.ndarray:
     returns_list: list[np.ndarray] = []
     for t in tickers:
-        closes = np.array(
-            [b.close for b in multi_bars[t][-(effective_window + 1):]]
-        )
+        closes = np.array([b.close for b in multi_bars[t][-(effective_window + 1) :]])
         returns_list.append(np.diff(np.log(closes)))
 
     min_ret_len = min(len(r) for r in returns_list)
@@ -282,7 +347,7 @@ async def sync_features(
 
     features: dict[str, Any] = {
         "symbol": symbol,
-        "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "timestamp": dt.datetime.now(dt.UTC).isoformat(),
         **vols,
         "expected_return_annualized": expected_ret,
         "hurst_exponent": hurst,
@@ -330,6 +395,11 @@ async def _push_volatility_to_hopsworks(
     symbol: str,
     features: dict[str, Any],
 ) -> None:
+    # Gate on availability (package + key). When either is missing we
+    # return silently — ``_hopsworks_available`` has already logged a
+    # single startup line explaining the situation.
+    if not _hopsworks_available():
+        return
     try:
         import hopsworks
         import pandas as pd
@@ -348,12 +418,25 @@ async def _push_volatility_to_hopsworks(
         fg.insert(pd.DataFrame([features]))
         log.info(f"Pushed volatility features to Hopsworks for {symbol}")
     except Exception as exc:
-        log.warning(f"Hopsworks volatility sync failed for {symbol}: {exc}")
+        # A REAL Hopsworks sync failure (auth, network, feature-group
+        # conflict) means the feature store silently drifts from the
+        # local cache; downstream backtests remain internally
+        # consistent but can no longer be reproduced on the cluster.
+        # These log at ERROR so operators notice.
+        log.error(
+            f"Hopsworks volatility sync FAILED for {symbol}: {exc}. "
+            f"Feature store is now stale vs local cache — next "
+            f"successful sync will re-emit this symbol's snapshot."
+        )
 
 
 async def _push_covariance_to_hopsworks(
     pairs: list[dict[str, Any]],
 ) -> None:
+    # Same availability gate as the volatility path — see
+    # `_hopsworks_available` docstring for the rationale.
+    if not _hopsworks_available():
+        return
     try:
         import hopsworks
         import pandas as pd
@@ -372,4 +455,7 @@ async def _push_covariance_to_hopsworks(
         fg.insert(pd.DataFrame(pairs))
         log.info(f"Pushed {len(pairs)} covariance pairs to Hopsworks")
     except Exception as exc:
-        log.warning(f"Hopsworks covariance sync failed: {exc}")
+        log.error(
+            f"Hopsworks covariance sync FAILED for {len(pairs)} pairs: "
+            f"{exc}. Covariance feature group is now stale."
+        )

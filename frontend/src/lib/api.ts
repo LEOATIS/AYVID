@@ -1,32 +1,193 @@
 /**
  * AYVID API client — typed thin wrapper around the FastAPI backend.
- * All paths go through the Next rewrite proxy at `/api/...` so calls
- * work in both dev (port 3000 → 8000) and standalone deploy.
+ *
+ * Production-grade contract:
+ *   • Deadlines (AbortController) so no fetch can hang a tab.
+ *   • Retry-with-backoff on network errors and 5xx ONLY. 4xx errors
+ *     are deterministic ("auth", "not found", "desync") and must
+ *     surface immediately — retrying them burns cycles without hope.
+ *   • Typed error classes (`ApiAuthError`, `ApiNotFoundError`,
+ *     `ApiDesyncError`, `ApiServerError`) so UI code can `instanceof`
+ *     instead of inspecting strings.
+ *   • Request-ID echo so a support ticket can copy-paste one string
+ *     that ties directly to the backend log trail. The backend's
+ *     observability layer stamps `X-Request-ID` on every response.
  */
 
-const BASE = "/api/v1";
+// Resolve the API base at build time. In local dev (`next dev`) we leave
+// it at `/api/v1` so Next's same-origin proxying / rewrites keep working.
+// In production the Vercel-hosted frontend lives at `ayvid.ai` and the
+// FastAPI backend at `api.ayvid.ai`, so `NEXT_PUBLIC_API_BASE` is set in
+// `frontend/.env.production` (and again in Vercel project env) to the
+// fully-qualified URL. Strip a trailing slash to keep concatenation
+// predictable: callers always pass paths starting with `/`.
+const _RAW_BASE = (process.env.NEXT_PUBLIC_API_BASE || "/api/v1").trim();
+const BASE = _RAW_BASE.endsWith("/") ? _RAW_BASE.slice(0, -1) : _RAW_BASE;
 
+// Conservative defaults. Callers that need different values can
+// override per-request via `init` (AbortSignal) or via the
+// `fetchJSON` options object.
+const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_MAX_ATTEMPTS = 3;
+const DEFAULT_BASE_BACKOFF_MS = 300;
+
+/** Base class — every AYVID API error derives from this. */
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  public readonly requestId: string | null;
+  constructor(
+    public status: number,
+    message: string,
+    requestId: string | null = null,
+  ) {
     super(message);
+    this.name = "ApiError";
+    this.requestId = requestId;
   }
 }
 
-export async function getJSON<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = path.startsWith("http") ? path : `${BASE}${path}`;
-  const res = await fetch(url, {
-    cache: "no-store",
-    headers: { Accept: "application/json", ...(init?.headers ?? {}) },
-    ...init,
-  });
-  if (!res.ok) {
-    let body = "";
-    try {
-      body = await res.text();
-    } catch {}
-    throw new ApiError(res.status, `${res.status} ${res.statusText} ${body.slice(0, 200)}`);
+/** 401 / 403 — caller sent wrong or missing credentials. */
+export class ApiAuthError extends ApiError {
+  constructor(status: number, message: string, requestId: string | null) {
+    super(status, message, requestId);
+    this.name = "ApiAuthError";
   }
-  return res.json() as Promise<T>;
+}
+
+/** 404 — resource does not exist. Never retried. */
+export class ApiNotFoundError extends ApiError {
+  constructor(message: string, requestId: string | null) {
+    super(404, message, requestId);
+    this.name = "ApiNotFoundError";
+  }
+}
+
+/** 409 — data-plane desync / business-rule rejection. */
+export class ApiDesyncError extends ApiError {
+  constructor(message: string, requestId: string | null) {
+    super(409, message, requestId);
+    this.name = "ApiDesyncError";
+  }
+}
+
+/** 5xx — server-side fault. Retriable (and retried). */
+export class ApiServerError extends ApiError {
+  constructor(status: number, message: string, requestId: string | null) {
+    super(status, message, requestId);
+    this.name = "ApiServerError";
+  }
+}
+
+export interface FetchOptions extends RequestInit {
+  /** Hard deadline in milliseconds. Default `DEFAULT_TIMEOUT_MS`. */
+  timeoutMs?: number;
+  /** Max total attempts. `1` disables retry. Default `DEFAULT_MAX_ATTEMPTS`. */
+  maxAttempts?: number;
+  /** Base backoff in ms. Each retry waits `base × 2^n`. Default 300. */
+  baseBackoffMs?: number;
+}
+
+function _sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function _mapHttpError(
+  status: number,
+  statusText: string,
+  body: string,
+  requestId: string | null,
+): ApiError {
+  const detail = body.slice(0, 400);
+  if (status === 401 || status === 403) {
+    return new ApiAuthError(status, `${status} ${statusText}: ${detail}`, requestId);
+  }
+  if (status === 404) {
+    return new ApiNotFoundError(`${statusText}: ${detail}`, requestId);
+  }
+  if (status === 409) {
+    return new ApiDesyncError(`${statusText}: ${detail}`, requestId);
+  }
+  if (status >= 500) {
+    return new ApiServerError(status, `${status} ${statusText}: ${detail}`, requestId);
+  }
+  return new ApiError(status, `${status} ${statusText}: ${detail}`, requestId);
+}
+
+async function _fetchOnce(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    // Respect an upstream AbortSignal if the caller passed one; otherwise
+    // attach our own so the timeout fires.
+    const signal = init.signal ?? controller.signal;
+    return await fetch(url, { ...init, signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function getJSON<T>(
+  path: string,
+  init?: FetchOptions,
+): Promise<T> {
+  const url = path.startsWith("http") ? path : `${BASE}${path}`;
+  const timeoutMs = init?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const maxAttempts = Math.max(1, init?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS);
+  const baseBackoffMs = init?.baseBackoffMs ?? DEFAULT_BASE_BACKOFF_MS;
+
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await _fetchOnce(
+        url,
+        {
+          cache: "no-store",
+          ...init,
+          headers: { Accept: "application/json", ...(init?.headers ?? {}) },
+        },
+        timeoutMs,
+      );
+      const requestId = res.headers.get("X-Request-ID");
+      if (res.ok) {
+        return (await res.json()) as T;
+      }
+
+      let body = "";
+      try {
+        body = await res.text();
+      } catch {
+        // swallow — body may have been consumed or malformed
+      }
+      const err = _mapHttpError(res.status, res.statusText, body, requestId);
+
+      // Retry 5xx; surface 4xx immediately.
+      if (err instanceof ApiServerError && attempt < maxAttempts) {
+        lastErr = err;
+        await _sleep(baseBackoffMs * 2 ** (attempt - 1));
+        continue;
+      }
+      throw err;
+    } catch (exc) {
+      // Network-level failure (TypeError from fetch, AbortError from
+      // timeout). Retriable same as 5xx.
+      if (exc instanceof ApiError) {
+        throw exc; // already an HTTP error — do not re-wrap
+      }
+      lastErr = exc;
+      if (attempt < maxAttempts) {
+        await _sleep(baseBackoffMs * 2 ** (attempt - 1));
+        continue;
+      }
+      const msg = exc instanceof Error ? exc.message : String(exc);
+      throw new ApiError(0, `network error after ${attempt} attempts: ${msg}`, null);
+    }
+  }
+  // Unreachable — the loop above always throws or returns. Kept for the
+  // type-checker.
+  throw (lastErr ?? new ApiError(0, "api client: unknown fault", null));
 }
 
 /* ─── Types ─────────────────────────────────────────────────────────── */

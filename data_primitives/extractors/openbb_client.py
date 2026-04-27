@@ -2,6 +2,7 @@
 
 This is the foundational raw data fabric — everything flows from here.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -11,7 +12,7 @@ from typing import Any
 
 import pandas as pd
 from openbb import obb
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from shared.config import settings
 from shared.exceptions import OpenBBFetchError
@@ -23,8 +24,14 @@ log = get_logger("data.openbb")
 # yfinance's curl_cffi backend picks up system/macOS proxy settings and
 # Yahoo Finance rejects the CONNECT tunnel with 403.  Strip proxy env
 # vars so yfinance connects directly.
-for _proxy_var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY",
-                   "ALL_PROXY", "all_proxy"):
+for _proxy_var in (
+    "http_proxy",
+    "https_proxy",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "all_proxy",
+):
     os.environ.pop(_proxy_var, None)
 
 # ── Credential injection ─────────────────────────────────────
@@ -62,6 +69,7 @@ async def _obb_call(func, **kwargs):
 
 
 # ── Price Data ────────────────────────────────────────────────
+
 
 @retry(
     stop=stop_after_attempt(3),
@@ -112,15 +120,17 @@ async def fetch_ohlcv(
         df = result.to_df().reset_index()
         bars: list[OHLCVBar] = []
         for _, row in df.iterrows():
-            bars.append(OHLCVBar(
-                timestamp=pd.Timestamp(row.get("date", row.name)).to_pydatetime(),
-                symbol=symbol,
-                open=float(row["open"]),
-                high=float(row["high"]),
-                low=float(row["low"]),
-                close=float(row["close"]),
-                volume=int(row["volume"]),
-            ))
+            bars.append(
+                OHLCVBar(
+                    timestamp=pd.Timestamp(row.get("date", row.name)).to_pydatetime(),
+                    symbol=symbol,
+                    open=float(row["open"]),
+                    high=float(row["high"]),
+                    low=float(row["low"]),
+                    close=float(row["close"]),
+                    volume=int(row["volume"]),
+                )
+            )
         tf_label = f" ({interval})" if interval else ""
         log.info(f"Fetched {len(bars)} OHLCV bars{tf_label} for [bold]{symbol}[/bold]")
         return bars
@@ -141,23 +151,28 @@ async def fetch_intraday(
     days = min(days, max_days.get(interval, 60))
     try:
         import yfinance as yf
+
         ticker = yf.Ticker(symbol)
         df = await asyncio.to_thread(
-            ticker.history, period=f"{days}d", interval=interval,
+            ticker.history,
+            period=f"{days}d",
+            interval=interval,
         )
         if df.empty:
             return []
         bars: list[OHLCVBar] = []
         for ts, row in df.iterrows():
-            bars.append(OHLCVBar(
-                timestamp=pd.Timestamp(ts).to_pydatetime(),
-                symbol=symbol,
-                open=float(row["Open"]),
-                high=float(row["High"]),
-                low=float(row["Low"]),
-                close=float(row["Close"]),
-                volume=int(row["Volume"]),
-            ))
+            bars.append(
+                OHLCVBar(
+                    timestamp=pd.Timestamp(ts).to_pydatetime(),
+                    symbol=symbol,
+                    open=float(row["Open"]),
+                    high=float(row["High"]),
+                    low=float(row["Low"]),
+                    close=float(row["Close"]),
+                    volume=int(row["Volume"]),
+                )
+            )
         log.info(f"Fetched {len(bars)} intraday {interval} bars for {symbol}")
         return bars
     except Exception as exc:
@@ -228,6 +243,7 @@ async def fetch_current_price(symbol: str) -> float:
 
 # ── Corporate News ────────────────────────────────────────────
 
+
 async def fetch_company_news(
     symbol: str,
     limit: int = 20,
@@ -244,14 +260,18 @@ async def fetch_company_news(
         df = result.to_df().reset_index()
         items: list[NewsItem] = []
         for _, row in df.iterrows():
-            items.append(NewsItem(
-                timestamp=pd.Timestamp(row.get("date", row.get("published", dt.datetime.now(dt.timezone.utc)))).to_pydatetime(),
-                title=str(row.get("title", "")),
-                source=str(row.get("source", provider)),
-                symbols=[symbol],
-                text=str(row.get("text", row.get("description", ""))),
-                url=str(row.get("url", row.get("link", ""))),
-            ))
+            items.append(
+                NewsItem(
+                    timestamp=pd.Timestamp(
+                        row.get("date", row.get("published", dt.datetime.now(dt.UTC)))
+                    ).to_pydatetime(),
+                    title=str(row.get("title", "")),
+                    source=str(row.get("source", provider)),
+                    symbols=[symbol],
+                    text=str(row.get("text", row.get("description", ""))),
+                    url=str(row.get("url", row.get("link", ""))),
+                )
+            )
         log.info(f"Fetched {len(items)} news items for [bold]{symbol}[/bold]")
         return items
     except Exception as exc:
@@ -259,6 +279,7 @@ async def fetch_company_news(
 
 
 # ── SEC Filings ───────────────────────────────────────────────
+
 
 async def fetch_sec_filings(
     symbol: str,
@@ -282,6 +303,7 @@ async def fetch_sec_filings(
 
 # ── Fundamental Ratios ────────────────────────────────────────
 
+
 async def fetch_financial_ratios(
     symbol: str,
     provider: str = "fmp",
@@ -304,6 +326,7 @@ async def fetch_financial_ratios(
 
 
 # ── Macro Calendar ────────────────────────────────────────────
+
 
 async def fetch_economic_calendar(
     days_ahead: int = 30,
@@ -332,12 +355,14 @@ async def fetch_economic_calendar(
     try:
         earnings = await fetch_earnings_calendar(days_ahead=days_ahead)
         for e in earnings[:30]:
-            events.append({
-                "date": e.get("report_date", ""),
-                "event": f"{e.get('symbol', '?')} Earnings",
-                "country": "US",
-                "category": "earnings",
-            })
+            events.append(
+                {
+                    "date": e.get("report_date", ""),
+                    "event": f"{e.get('symbol', '?')} Earnings",
+                    "country": "US",
+                    "category": "earnings",
+                }
+            )
     except Exception:
         pass
 
@@ -349,6 +374,7 @@ async def fetch_economic_calendar(
 
 
 # ── Supply Chain / Company Search ─────────────────────────────
+
 
 async def search_companies(query: str, limit: int = 10) -> list[dict[str, Any]]:
     """Search for companies by name or ticker."""
@@ -373,6 +399,7 @@ def _cleanup_yfinance_cache() -> None:
     """Close stale yfinance/sqlite3 connections to prevent fd leaks."""
     import gc
     import sqlite3
+
     gc.collect()
     for obj in gc.get_objects():
         if isinstance(obj, sqlite3.Connection):
@@ -395,7 +422,10 @@ async def fetch_multi_ohlcv(
         async with semaphore:
             try:
                 bars = await fetch_ohlcv(
-                    sym, days, start_date=start_date, end_date=end_date,
+                    sym,
+                    days,
+                    start_date=start_date,
+                    end_date=end_date,
                 )
                 return sym, bars
             except Exception as exc:
@@ -419,6 +449,7 @@ async def fetch_multi_ohlcv(
 
 # ── Global Index Data ─────────────────────────────────────────
 
+
 def _df_to_bars(df: pd.DataFrame, symbol: str) -> list[OHLCVBar]:
     """Convert a price DataFrame to OHLCVBar list, dropping rows with NaN close."""
     import math
@@ -429,15 +460,17 @@ def _df_to_bars(df: pd.DataFrame, symbol: str) -> list[OHLCVBar]:
         close_val = float(row.get("close", 0))
         if math.isnan(close_val):
             continue
-        bars.append(OHLCVBar(
-            timestamp=pd.Timestamp(row.get("date", row.name)).to_pydatetime(),
-            symbol=symbol,
-            open=float(row.get("open", 0)),
-            high=float(row.get("high", 0)),
-            low=float(row.get("low", 0)),
-            close=close_val,
-            volume=int(row.get("volume", 0)),
-        ))
+        bars.append(
+            OHLCVBar(
+                timestamp=pd.Timestamp(row.get("date", row.name)).to_pydatetime(),
+                symbol=symbol,
+                open=float(row.get("open", 0)),
+                high=float(row.get("high", 0)),
+                low=float(row.get("low", 0)),
+                close=close_val,
+                volume=int(row.get("volume", 0)),
+            )
+        )
     return bars
 
 
@@ -480,6 +513,7 @@ async def fetch_index_historical(
 
 # ── Forex Data ────────────────────────────────────────────────
 
+
 async def fetch_fx_historical(
     pair: str,
     days: int = 90,
@@ -503,6 +537,7 @@ async def fetch_fx_historical(
 
 
 # ── Crypto Data ───────────────────────────────────────────────
+
 
 async def fetch_crypto_historical(
     symbol: str,
@@ -529,6 +564,7 @@ async def fetch_crypto_historical(
 
 # ── ETF Data ──────────────────────────────────────────────────
 
+
 async def fetch_etf_info(symbol: str, provider: str = "yfinance") -> dict[str, Any]:
     """Fetch ETF metadata and holdings."""
     try:
@@ -548,6 +584,7 @@ async def fetch_etf_info(symbol: str, provider: str = "yfinance") -> dict[str, A
 
 # ── Commodity / Futures Data ──────────────────────────────────
 
+
 async def fetch_commodity_historical(
     symbol: str,
     days: int = 90,
@@ -557,13 +594,29 @@ async def fetch_commodity_historical(
     Maps common futures symbols to yfinance tickers (CL=F, GC=F, etc.).
     """
     yahoo_map = {
-        "CL": "CL=F", "BZ": "BZ=F", "NG": "NG=F",
-        "GC": "GC=F", "SI": "SI=F", "HG": "HG=F",
-        "PL": "PL=F", "PA": "PA=F",
-        "ZC": "ZC=F", "ZS": "ZS=F", "ZW": "ZW=F",
-        "CT": "CT=F", "KC": "KC=F", "SB": "SB=F", "CC": "CC=F",
-        "ES": "ES=F", "NQ": "NQ=F", "YM": "YM=F", "RTY": "RTY=F",
-        "ZB": "ZB=F", "ZN": "ZN=F", "ZF": "ZF=F", "ZT": "ZT=F",
+        "CL": "CL=F",
+        "BZ": "BZ=F",
+        "NG": "NG=F",
+        "GC": "GC=F",
+        "SI": "SI=F",
+        "HG": "HG=F",
+        "PL": "PL=F",
+        "PA": "PA=F",
+        "ZC": "ZC=F",
+        "ZS": "ZS=F",
+        "ZW": "ZW=F",
+        "CT": "CT=F",
+        "KC": "KC=F",
+        "SB": "SB=F",
+        "CC": "CC=F",
+        "ES": "ES=F",
+        "NQ": "NQ=F",
+        "YM": "YM=F",
+        "RTY": "RTY=F",
+        "ZB": "ZB=F",
+        "ZN": "ZN=F",
+        "ZF": "ZF=F",
+        "ZT": "ZT=F",
     }
     yahoo_sym = yahoo_map.get(symbol, f"{symbol}=F")
     return await fetch_ohlcv(yahoo_sym, days=days)
@@ -603,16 +656,18 @@ async def fetch_world_news(limit: int = 50) -> list[NewsItem]:
                 else:
                     symbols = []
 
-                items.append(NewsItem(
-                    timestamp=pd.Timestamp(
-                        row.get("date", row.get("published", dt.datetime.now(dt.timezone.utc)))
-                    ).to_pydatetime(),
-                    title=str(row.get("title", "")),
-                    source=str(row.get("source", provider)),
-                    symbols=symbols,
-                    text=str(row.get("text", row.get("description", ""))),
-                    url=str(row.get("url", row.get("link", ""))),
-                ))
+                items.append(
+                    NewsItem(
+                        timestamp=pd.Timestamp(
+                            row.get("date", row.get("published", dt.datetime.now(dt.UTC)))
+                        ).to_pydatetime(),
+                        title=str(row.get("title", "")),
+                        source=str(row.get("source", provider)),
+                        symbols=symbols,
+                        text=str(row.get("text", row.get("description", ""))),
+                        url=str(row.get("url", row.get("link", ""))),
+                    )
+                )
             log.info(f"Fetched {len(items)} global news items (provider={provider})")
             return items
         except Exception as exc:
@@ -651,13 +706,15 @@ async def fetch_sector_performance() -> list[dict[str, Any]]:
             if valid and len(valid) >= 2:
                 chg_1d = (valid[-1].close / valid[-2].close - 1) * 100
                 chg_period = (valid[-1].close / valid[0].close - 1) * 100
-                results.append({
-                    "sector": sector_name,
-                    "etf": etf,
-                    "change_1d": round(chg_1d, 2),
-                    "change_30d": round(chg_period, 2),
-                    "last": round(valid[-1].close, 2),
-                })
+                results.append(
+                    {
+                        "sector": sector_name,
+                        "etf": etf,
+                        "change_1d": round(chg_1d, 2),
+                        "change_30d": round(chg_period, 2),
+                        "last": round(valid[-1].close, 2),
+                    }
+                )
         results.sort(key=lambda r: r.get("change_1d", 0), reverse=True)
         return results
     except Exception as exc:
@@ -666,6 +723,7 @@ async def fetch_sector_performance() -> list[dict[str, Any]]:
 
 
 # ── Earnings Calendar ─────────────────────────────────────────
+
 
 async def fetch_earnings_calendar(days_ahead: int = 7) -> list[dict[str, Any]]:
     """Fetch upcoming earnings announcements."""
@@ -688,6 +746,7 @@ async def fetch_earnings_calendar(days_ahead: int = 7) -> list[dict[str, Any]]:
 
 # ── IPO Calendar ──────────────────────────────────────────────
 
+
 async def fetch_ipo_calendar() -> list[dict[str, Any]]:
     """Fetch upcoming and recent IPOs."""
     try:
@@ -703,17 +762,49 @@ async def fetch_ipo_calendar() -> list[dict[str, Any]]:
 
 # ── Treasury / Rates ──────────────────────────────────────────
 
+
 async def fetch_treasury_rates() -> list[dict[str, Any]]:
-    """Fetch current US Treasury yield curve."""
-    try:
-        result = await _obb_call(
-            obb.fixedincome.rate.treasury,
-            provider="fmp",
-        )
-        return result.to_df().to_dict("records")
-    except Exception as exc:
-        log.warning(f"Treasury rates fetch failed: {exc}")
-        return []
+    """Fetch current US Treasury yield curve.
+
+    OpenBB moved this endpoint in a recent release — ``obb.fixedincome.
+    rate.treasury`` no longer exists; the canonical path is now
+    ``obb.fixedincome.government.treasury_rates``. The old path was
+    raising ``AttributeError: 'ROUTER_fixedincome_rate' object has no
+    attribute 'treasury'`` once per ingestion cycle. We walk the
+    well-known paths so the call keeps working through future
+    renames without another code change.
+    """
+    endpoint_candidates = (
+        (
+            "government.treasury_rates",
+            getattr(
+                getattr(obb.fixedincome, "government", None),
+                "treasury_rates",
+                None,
+            ),
+        ),
+        (
+            "rate.treasury",
+            getattr(
+                getattr(obb.fixedincome, "rate", None),
+                "treasury",
+                None,
+            ),
+        ),
+    )
+    last_exc: Exception | None = None
+    for name, endpoint in endpoint_candidates:
+        if endpoint is None:
+            continue
+        try:
+            result = await _obb_call(endpoint, provider="fmp")
+            return result.to_df().to_dict("records")
+        except Exception as exc:  # pragma: no cover — network / API drift
+            last_exc = exc
+            log.debug(f"Treasury rates path '{name}' failed: {exc}")
+            continue
+    log.warning(f"Treasury rates fetch failed on all known endpoints: {last_exc}")
+    return []
 
 
 # ── Options & Derivatives ────────────────────────────────────
@@ -737,22 +828,28 @@ async def fetch_options_chain(
         )
         df = result.to_df()
         for _, row in df.iterrows():
-            snapshots.append(OptionsChainSnapshot(
-                underlying=symbol,
-                expiry=pd.Timestamp(row.get("expiration", row.get("expiry", dt.date.today()))).date(),
-                strike=float(row.get("strike", 0)),
-                right="CALL" if str(row.get("option_type", "call")).upper().startswith("C") else "PUT",
-                bid=float(row.get("bid", 0)),
-                ask=float(row.get("ask", 0)),
-                last=float(row.get("last_price", row.get("close", 0))),
-                volume=int(row.get("volume", 0)),
-                open_interest=int(row.get("open_interest", 0)),
-                implied_volatility=float(row.get("implied_volatility", 0)),
-                delta=float(row.get("delta", 0)),
-                gamma=float(row.get("gamma", 0)),
-                theta=float(row.get("theta", 0)),
-                vega=float(row.get("vega", 0)),
-            ))
+            snapshots.append(
+                OptionsChainSnapshot(
+                    underlying=symbol,
+                    expiry=pd.Timestamp(
+                        row.get("expiration", row.get("expiry", dt.date.today()))
+                    ).date(),
+                    strike=float(row.get("strike", 0)),
+                    right="CALL"
+                    if str(row.get("option_type", "call")).upper().startswith("C")
+                    else "PUT",
+                    bid=float(row.get("bid", 0)),
+                    ask=float(row.get("ask", 0)),
+                    last=float(row.get("last_price", row.get("close", 0))),
+                    volume=int(row.get("volume", 0)),
+                    open_interest=int(row.get("open_interest", 0)),
+                    implied_volatility=float(row.get("implied_volatility", 0)),
+                    delta=float(row.get("delta", 0)),
+                    gamma=float(row.get("gamma", 0)),
+                    theta=float(row.get("theta", 0)),
+                    vega=float(row.get("vega", 0)),
+                )
+            )
         log.info(f"Fetched {len(snapshots)} options for {symbol}")
     except Exception as exc:
         log.warning(f"Options chain fetch failed for {symbol}: {exc}")
@@ -776,21 +873,35 @@ async def _fetch_options_yfinance(symbol: str) -> list[OptionsChainSnapshot]:
             chain = await asyncio.to_thread(ticker.option_chain, exp_str)
             exp_date = dt.datetime.strptime(exp_str, "%Y-%m-%d").date()
             for _, row in chain.calls.iterrows():
-                snapshots.append(OptionsChainSnapshot(
-                    underlying=symbol, expiry=exp_date, strike=float(row["strike"]),
-                    right="CALL", bid=float(row.get("bid", 0)), ask=float(row.get("ask", 0)),
-                    last=float(row.get("lastPrice", 0)), volume=int(row.get("volume", 0) or 0),
-                    open_interest=int(row.get("openInterest", 0) or 0),
-                    implied_volatility=float(row.get("impliedVolatility", 0) or 0),
-                ))
+                snapshots.append(
+                    OptionsChainSnapshot(
+                        underlying=symbol,
+                        expiry=exp_date,
+                        strike=float(row["strike"]),
+                        right="CALL",
+                        bid=float(row.get("bid", 0)),
+                        ask=float(row.get("ask", 0)),
+                        last=float(row.get("lastPrice", 0)),
+                        volume=int(row.get("volume", 0) or 0),
+                        open_interest=int(row.get("openInterest", 0) or 0),
+                        implied_volatility=float(row.get("impliedVolatility", 0) or 0),
+                    )
+                )
             for _, row in chain.puts.iterrows():
-                snapshots.append(OptionsChainSnapshot(
-                    underlying=symbol, expiry=exp_date, strike=float(row["strike"]),
-                    right="PUT", bid=float(row.get("bid", 0)), ask=float(row.get("ask", 0)),
-                    last=float(row.get("lastPrice", 0)), volume=int(row.get("volume", 0) or 0),
-                    open_interest=int(row.get("openInterest", 0) or 0),
-                    implied_volatility=float(row.get("impliedVolatility", 0) or 0),
-                ))
+                snapshots.append(
+                    OptionsChainSnapshot(
+                        underlying=symbol,
+                        expiry=exp_date,
+                        strike=float(row["strike"]),
+                        right="PUT",
+                        bid=float(row.get("bid", 0)),
+                        ask=float(row.get("ask", 0)),
+                        last=float(row.get("lastPrice", 0)),
+                        volume=int(row.get("volume", 0) or 0),
+                        open_interest=int(row.get("openInterest", 0) or 0),
+                        implied_volatility=float(row.get("impliedVolatility", 0) or 0),
+                    )
+                )
         log.info(f"Fetched {len(snapshots)} options for {symbol} via yfinance")
         return snapshots
     except Exception as exc:
@@ -835,12 +946,18 @@ async def fetch_futures_chain(symbol: str) -> list[FuturesQuote]:
                     month, year = 1, year + 1
                 front_expiry = dt.date(year, month, 21)
 
-            quotes.append(FuturesQuote(
-                symbol=symbol, underlying=symbol, exchange=exchange,
-                expiry=front_expiry, multiplier=multiplier,
-                last_price=last_bar.close, volume=last_bar.volume,
-                currency="USD",
-            ))
+            quotes.append(
+                FuturesQuote(
+                    symbol=symbol,
+                    underlying=symbol,
+                    exchange=exchange,
+                    expiry=front_expiry,
+                    multiplier=multiplier,
+                    last_price=last_bar.close,
+                    volume=last_bar.volume,
+                    currency="USD",
+                )
+            )
         log.info(f"Fetched futures quote for {symbol}")
     except Exception as exc:
         log.warning(f"Futures chain fetch failed for {symbol}: {exc}")
@@ -856,22 +973,26 @@ async def fetch_vix_term_structure() -> list[dict[str, Any]]:
         for sym in vix_contracts:
             bars = await fetch_ohlcv(sym, days=30)
             if bars:
-                results.append({
-                    "symbol": sym,
-                    "last": bars[-1].close,
-                    "high_30d": max(b.high for b in bars),
-                    "low_30d": min(b.low for b in bars),
-                    "avg_30d": sum(b.close for b in bars) / len(bars),
-                    "bars": len(bars),
-                })
+                results.append(
+                    {
+                        "symbol": sym,
+                        "last": bars[-1].close,
+                        "high_30d": max(b.high for b in bars),
+                        "low_30d": min(b.low for b in bars),
+                        "avg_30d": sum(b.close for b in bars) / len(bars),
+                        "bars": len(bars),
+                    }
+                )
         if len(results) >= 2:
             spot = results[0]["last"]
             three_m = results[1]["last"]
-            results.append({
-                "contango": three_m > spot,
-                "term_spread": three_m - spot,
-                "term_spread_pct": (three_m / spot - 1) * 100 if spot > 0 else 0,
-            })
+            results.append(
+                {
+                    "contango": three_m > spot,
+                    "term_spread": three_m - spot,
+                    "term_spread_pct": (three_m / spot - 1) * 100 if spot > 0 else 0,
+                }
+            )
     except Exception as exc:
         log.warning(f"VIX term structure fetch failed: {exc}")
     return results

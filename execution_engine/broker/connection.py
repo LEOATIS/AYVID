@@ -5,6 +5,7 @@ Handles:
 - Thread isolation (THE ONE RULE: never block the IB event loop)
 - Daily 23:45 ET reset recovery with exponential backoff
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -19,6 +20,12 @@ log = get_logger("broker.conn")
 _ib = None
 _connected = False
 _last_client_id_collision = False
+# Single-flight reconnect: P0-G guard. Populated only when a recovery
+# coroutine is in flight; cleared by `_clear_recovery_task` when that
+# coroutine terminates (success OR failure). Subsequent disconnect
+# events during this window are ignored so we never schedule parallel
+# `full_recovery_sequence` runs racing on `discard` of orphans.
+_recovery_task: asyncio.Task | None = None
 
 
 async def connect(connect_timeout: float = 8.0, max_client_id_retries: int = 10) -> Any:
@@ -69,10 +76,8 @@ async def connect(connect_timeout: float = 8.0, max_client_id_retries: int = 10)
             # caller has explicitly opted into a non-primary sub-account.
             if account and settings.IB_SUBSCRIBE_ACCOUNT_UPDATES:
                 try:
-                    await asyncio.wait_for(
-                        _ib.reqAccountUpdatesAsync(account), timeout=3.0
-                    )
-                except asyncio.TimeoutError:
+                    await asyncio.wait_for(_ib.reqAccountUpdatesAsync(account), timeout=3.0)
+                except TimeoutError:
                     log.warning(
                         f"reqAccountUpdatesAsync({account}) timed out — "
                         f"continuing with auto-subscribed primary account"
@@ -87,7 +92,7 @@ async def connect(connect_timeout: float = 8.0, max_client_id_retries: int = 10)
             # cache so the first poll cycle has real data, not zeros.
             try:
                 await asyncio.wait_for(_wait_for_first_account_value(_ib), timeout=5.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 log.warning(
                     "IB account values not populated within 5s — first cycle "
                     "may report 0. Check that the account is funded and "
@@ -95,19 +100,16 @@ async def connect(connect_timeout: float = 8.0, max_client_id_retries: int = 10)
                 )
             return _ib
 
-        except (asyncio.TimeoutError, Exception) as exc:
+        except (TimeoutError, Exception) as exc:
             last_exc = exc
             _safe_disconnect()
             msg = str(exc).lower()
             collision = (
-                _last_client_id_collision
-                or "326" in msg
-                or "client id is already in use" in msg
+                _last_client_id_collision or "326" in msg or "client id is already in use" in msg
             )
             if collision:
                 log.warning(
-                    f"clientId={client_id} already in use; retrying with "
-                    f"clientId={client_id + 1}"
+                    f"clientId={client_id} already in use; retrying with clientId={client_id + 1}"
                 )
                 await asyncio.sleep(1.0)
                 continue
@@ -168,14 +170,13 @@ async def reconnect_with_backoff(max_retries: int = 10) -> Any:
 
     for attempt in range(1, max_retries + 1):
         delay = min(base_delay * (2 ** (attempt - 1)), 300.0)
-        log.warning(
-            f"Reconnection attempt {attempt}/{max_retries} in {delay:.0f}s..."
-        )
+        log.warning(f"Reconnection attempt {attempt}/{max_retries} in {delay:.0f}s...")
         await asyncio.sleep(delay)
 
         try:
             ib = await connect()
             from execution_engine.broker.recovery import full_recovery_sequence
+
             recovered = await full_recovery_sequence(ib)
             log.info(
                 f"Full recovery complete: {len(recovered)} positions reconciled, "
@@ -185,9 +186,7 @@ async def reconnect_with_backoff(max_retries: int = 10) -> Any:
         except Exception as exc:
             log.warning(f"Attempt {attempt} failed: {exc}")
 
-    raise IBKRDisconnectError(
-        f"Failed to reconnect after {max_retries} attempts"
-    )
+    raise IBKRDisconnectError(f"Failed to reconnect after {max_retries} attempts")
 
 
 async def _wait_for_first_account_value(ib: Any) -> None:
@@ -196,12 +195,59 @@ async def _wait_for_first_account_value(ib: Any) -> None:
         await asyncio.sleep(0.1)
 
 
+def _clear_recovery_task(task: asyncio.Task) -> None:
+    """Done-callback for the single-flight recovery task.
+
+    Fires when ``reconnect_with_backoff`` terminates (returns or
+    raises). Always clears the module-level reference so the next
+    legitimate disconnect can spawn a fresh recovery run. Surfaces
+    the failure at WARNING so operators see it without the callback
+    itself raising.
+    """
+    global _recovery_task
+    _recovery_task = None
+    try:
+        exc = task.exception()
+    except asyncio.CancelledError:
+        log.warning("IB recovery task was cancelled")
+        return
+    if exc is not None:
+        log.warning(f"IB recovery task ended with error: {exc}")
+
+
 def _on_disconnect() -> None:
-    """Handle IB disconnect event (Error 1100)."""
-    global _connected
+    """Handle IB disconnect event (Error 1100).
+
+    P0-G single-flight guard: if a recovery task is already in flight
+    we skip. Without this guard a flapping connection scheduled an
+    unbounded fan-out of ``reconnect_with_backoff`` tasks, each
+    running its own ``full_recovery_sequence`` in parallel — racing
+    on bracket orphan discovery, order cancellation, and clientId
+    reassignment.
+    """
+    global _connected, _recovery_task
     _connected = False
+
+    if _recovery_task is not None and not _recovery_task.done():
+        log.info(
+            "IB Gateway disconnected — recovery already in flight "
+            f"(task={_recovery_task.get_name()}), suppressing duplicate"
+        )
+        return
+
     log.warning("IB Gateway disconnected — initiating recovery")
-    asyncio.create_task(reconnect_with_backoff())
+    try:
+        _recovery_task = asyncio.create_task(
+            reconnect_with_backoff(),
+            name="ibkr_recovery",
+        )
+    except RuntimeError as exc:
+        # No running event loop (e.g. callback fired on a non-asyncio
+        # thread during teardown). Nothing we can do from here.
+        log.error(f"Cannot schedule IB recovery — no running loop: {exc}")
+        _recovery_task = None
+        return
+    _recovery_task.add_done_callback(_clear_recovery_task)
 
 
 def _on_error(reqId: int, errorCode: int, errorString: str, contract: Any) -> None:

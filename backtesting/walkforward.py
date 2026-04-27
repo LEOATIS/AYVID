@@ -18,6 +18,7 @@ Usage:
 CLI:
     ayvid data walkforward --start 2018-01-01 --window-months 6
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -30,12 +31,13 @@ from typing import Any
 import numpy as np
 
 from backtesting.engine import (
-    SHOCK_SCENARIOS,
     _DATA_DIR,
     _INDEX_DIR,
+    SHOCK_SCENARIOS,
     run_backtest,
     run_scenario_backtest,
 )
+from shared.config import settings
 from shared.logger import get_logger
 
 log = get_logger("walkforward")
@@ -215,7 +217,7 @@ async def run_walk_forward(
     initial_equity: float = 1_000_000.0,
     universe: list[str] | None = None,
     output_dir: Path = Path("."),
-    min_conviction: float = 0.55,
+    min_conviction: float | None = None,
     report_filename: str = "walkforward_report",
 ) -> WalkForwardSummary:
     """Run an out-of-sample walk-forward across a historical span.
@@ -225,6 +227,8 @@ async def run_walk_forward(
     aggregate return as if windows were chained sequentially (more
     representative of a live deployment).
     """
+    if min_conviction is None:
+        min_conviction = settings.BACKTEST_MIN_CONVICTION
     start_d = dt.date.fromisoformat(start)
     end_d = dt.date.fromisoformat(end) if end else dt.date.today()
     windows = _iter_windows(start_d, end_d, window_months, step_months)
@@ -249,43 +253,47 @@ async def run_walk_forward(
             )
         except Exception as exc:
             log.warning(f"window {ws} → {we} failed: {exc}")
-            results.append(WindowResult(
-                start_date=ws.isoformat(),
-                end_date=we.isoformat(),
-                initial_equity=initial_equity,
-                final_equity=initial_equity,
-                total_return_pct=0.0,
-                sharpe_ratio=0.0,
-                max_drawdown_pct=0.0,
-                win_rate=0.0,
-                profit_factor=0.0,
-                total_trades=0,
-                fno_trades=0,
-                equity_trades=0,
-                fno_pnl=0.0,
-                cost_drag_pct=0.0,
-                notes=f"FAILED: {exc}",
-            ))
+            results.append(
+                WindowResult(
+                    start_date=ws.isoformat(),
+                    end_date=we.isoformat(),
+                    initial_equity=initial_equity,
+                    final_equity=initial_equity,
+                    total_return_pct=0.0,
+                    sharpe_ratio=0.0,
+                    max_drawdown_pct=0.0,
+                    win_rate=0.0,
+                    profit_factor=0.0,
+                    total_trades=0,
+                    fno_trades=0,
+                    equity_trades=0,
+                    fno_pnl=0.0,
+                    cost_drag_pct=0.0,
+                    notes=f"FAILED: {exc}",
+                )
+            )
             continue
 
         tx = r.extra_stats.get("transaction_costs", {}) or {}
-        compounded_equity *= (1.0 + r.total_return_pct / 100.0)
-        results.append(WindowResult(
-            start_date=ws.isoformat(),
-            end_date=we.isoformat(),
-            initial_equity=initial_equity,
-            final_equity=round(r.final_equity, 2),
-            total_return_pct=round(r.total_return_pct, 2),
-            sharpe_ratio=round(r.sharpe_ratio, 2),
-            max_drawdown_pct=round(r.max_drawdown_pct, 2),
-            win_rate=round(r.win_rate, 2),
-            profit_factor=round(r.profit_factor, 2),
-            total_trades=r.total_trades,
-            fno_trades=r.extra_stats.get("fno_trades", 0),
-            equity_trades=r.extra_stats.get("equity_trades", 0),
-            fno_pnl=round(r.extra_stats.get("fno_pnl", 0.0), 2),
-            cost_drag_pct=round(tx.get("cost_drag_pct", 0.0), 3),
-        ))
+        compounded_equity *= 1.0 + r.total_return_pct / 100.0
+        results.append(
+            WindowResult(
+                start_date=ws.isoformat(),
+                end_date=we.isoformat(),
+                initial_equity=initial_equity,
+                final_equity=round(r.final_equity, 2),
+                total_return_pct=round(r.total_return_pct, 2),
+                sharpe_ratio=round(r.sharpe_ratio, 2),
+                max_drawdown_pct=round(r.max_drawdown_pct, 2),
+                win_rate=round(r.win_rate, 2),
+                profit_factor=round(r.profit_factor, 2),
+                total_trades=r.total_trades,
+                fno_trades=r.extra_stats.get("fno_trades", 0),
+                equity_trades=r.extra_stats.get("equity_trades", 0),
+                fno_pnl=round(r.extra_stats.get("fno_pnl", 0.0), 2),
+                cost_drag_pct=round(tx.get("cost_drag_pct", 0.0), 3),
+            )
+        )
 
     valid = [w for w in results if not w.notes.startswith("FAILED")]
     rets = [w.total_return_pct for w in valid]
@@ -296,7 +304,11 @@ async def run_walk_forward(
 
     span_years = max((end_d - start_d).days / 365.25, 1e-6)
     aggregate_compounded = (compounded_equity / initial_equity - 1.0) * 100.0
-    cagr = ((compounded_equity / initial_equity) ** (1.0 / span_years) - 1.0) * 100.0 if span_years > 0 else 0.0
+    cagr = (
+        ((compounded_equity / initial_equity) ** (1.0 / span_years) - 1.0) * 100.0
+        if span_years > 0
+        else 0.0
+    )
 
     summary = WalkForwardSummary(
         start_date=start_d.isoformat(),
@@ -308,9 +320,7 @@ async def run_walk_forward(
         n_valid_windows=len(valid),
         avg_return_pct=round(statistics.mean(rets), 2) if rets else 0.0,
         median_return_pct=round(statistics.median(rets), 2) if rets else 0.0,
-        pct_positive_windows=round(
-            len([r for r in rets if r > 0]) / max(len(rets), 1) * 100, 1
-        ),
+        pct_positive_windows=round(len([r for r in rets if r > 0]) / max(len(rets), 1) * 100, 1),
         avg_sharpe=round(statistics.mean(sharpes), 2) if sharpes else 0.0,
         median_sharpe=round(statistics.median(sharpes), 2) if sharpes else 0.0,
         sharpe_above_one_pct=round(
@@ -325,9 +335,9 @@ async def run_walk_forward(
         return_p75=round(float(np.percentile(rets, 75)), 2) if rets else 0.0,
         return_p90=round(float(np.percentile(rets, 90)), 2) if rets else 0.0,
         return_std=round(float(np.std(rets, ddof=1)), 2) if len(rets) > 1 else 0.0,
-        avg_cost_drag_pct=round(
-            statistics.mean(w.cost_drag_pct for w in valid), 3
-        ) if valid else 0.0,
+        avg_cost_drag_pct=round(statistics.mean(w.cost_drag_pct for w in valid), 3)
+        if valid
+        else 0.0,
         aggregate_compounded_return_pct=round(aggregate_compounded, 2),
         aggregate_cagr_pct=round(cagr, 2),
         windows=results,
@@ -352,7 +362,12 @@ async def run_walk_forward(
     return summary
 
 
-def _render_markdown(summary: WalkForwardSummary, min_conviction: float = 0.55) -> str:
+def _render_markdown(
+    summary: WalkForwardSummary,
+    min_conviction: float | None = None,
+) -> str:
+    if min_conviction is None:
+        min_conviction = settings.BACKTEST_MIN_CONVICTION
     lines: list[str] = []
     lines.append("# AYVID Walk-Forward Out-of-Sample Report")
     lines.append("")
@@ -384,9 +399,11 @@ def _render_markdown(summary: WalkForwardSummary, min_conviction: float = 0.55) 
     lines.append(f"| Avg return per window | {summary.avg_return_pct:+.2f}% |")
     lines.append(f"| Median return per window | {summary.median_return_pct:+.2f}% |")
     lines.append(f"| Std dev of returns | {summary.return_std:.2f}% |")
-    lines.append(f"| 10th / 25th / 75th / 90th pct | "
-                 f"{summary.return_p10:+.2f}% / {summary.return_p25:+.2f}% / "
-                 f"{summary.return_p75:+.2f}% / {summary.return_p90:+.2f}% |")
+    lines.append(
+        f"| 10th / 25th / 75th / 90th pct | "
+        f"{summary.return_p10:+.2f}% / {summary.return_p25:+.2f}% / "
+        f"{summary.return_p75:+.2f}% / {summary.return_p90:+.2f}% |"
+    )
     lines.append(f"| % positive windows | {summary.pct_positive_windows:.1f}% |")
     lines.append(f"| Avg Sharpe | {summary.avg_sharpe:.2f} |")
     lines.append(f"| Median Sharpe | {summary.median_sharpe:.2f} |")
@@ -412,9 +429,7 @@ def _render_markdown(summary: WalkForwardSummary, min_conviction: float = 0.55) 
     lines.append("|--------|--------|--------|--------|----------|--------|-----------|")
     for w in summary.windows:
         if w.notes:
-            lines.append(
-                f"| {w.start_date} → {w.end_date} | — | — | — | — | — | {w.notes} |"
-            )
+            lines.append(f"| {w.start_date} → {w.end_date} | — | — | — | — | — | {w.notes} |")
         else:
             lines.append(
                 f"| {w.start_date} → {w.end_date} | "
@@ -434,7 +449,7 @@ async def run_shock_driven_walkforward(
     start: str = "2018-01-01",
     end: str | None = None,
     initial_equity: float = 1_000_000.0,
-    min_conviction: float = 0.55,
+    min_conviction: float | None = None,
     output_dir: Path = Path("."),
     report_filename: str = "shock_driven_report",
     only: list[str] | None = None,
@@ -453,6 +468,8 @@ async def run_shock_driven_walkforward(
     the system is *designed* to do — selective, event-driven trades on
     causally-linked tickers only.
     """
+    if min_conviction is None:
+        min_conviction = settings.BACKTEST_MIN_CONVICTION
     span_start = dt.date.fromisoformat(start)
     span_end = dt.date.fromisoformat(end) if end else dt.date.today()
 
@@ -468,10 +485,7 @@ async def run_shock_driven_walkforward(
 
     eligible.sort(key=lambda x: x[1]["start_date"])
 
-    log.info(
-        f"Shock-driven walk-forward: {len(eligible)} scenarios in "
-        f"{span_start} → {span_end}"
-    )
+    log.info(f"Shock-driven walk-forward: {len(eligible)} scenarios in {span_start} → {span_end}")
 
     results: list[ShockResult] = []
     portfolio_equity = initial_equity
@@ -486,28 +500,30 @@ async def run_shock_driven_walkforward(
         )
 
         if not cached_eq and not cached_idx:
-            results.append(ShockResult(
-                scenario_id=sid,
-                name=scen["name"],
-                start_date=scen["start_date"],
-                end_date=scen["end_date"],
-                initial_equity=initial_equity,
-                final_equity=initial_equity,
-                total_return_pct=0.0,
-                sharpe_ratio=0.0,
-                max_drawdown_pct=0.0,
-                win_rate=0.0,
-                profit_factor=0.0,
-                total_trades=0,
-                fno_trades=0,
-                equity_trades=0,
-                fno_pnl=0.0,
-                cost_drag_pct=0.0,
-                cached_tickers=0,
-                cached_indices=0,
-                shock_type=scen.get("causal_intel", {}).get("shock_type", ""),
-                notes="SKIPPED: no cached data",
-            ))
+            results.append(
+                ShockResult(
+                    scenario_id=sid,
+                    name=scen["name"],
+                    start_date=scen["start_date"],
+                    end_date=scen["end_date"],
+                    initial_equity=initial_equity,
+                    final_equity=initial_equity,
+                    total_return_pct=0.0,
+                    sharpe_ratio=0.0,
+                    max_drawdown_pct=0.0,
+                    win_rate=0.0,
+                    profit_factor=0.0,
+                    total_trades=0,
+                    fno_trades=0,
+                    equity_trades=0,
+                    fno_pnl=0.0,
+                    cost_drag_pct=0.0,
+                    cached_tickers=0,
+                    cached_indices=0,
+                    shock_type=scen.get("causal_intel", {}).get("shock_type", ""),
+                    notes="SKIPPED: no cached data",
+                )
+            )
             continue
 
         try:
@@ -518,53 +534,57 @@ async def run_shock_driven_walkforward(
             )
         except Exception as exc:
             log.warning(f"  scenario {sid} failed: {exc}")
-            results.append(ShockResult(
+            results.append(
+                ShockResult(
+                    scenario_id=sid,
+                    name=scen["name"],
+                    start_date=scen["start_date"],
+                    end_date=scen["end_date"],
+                    initial_equity=initial_equity,
+                    final_equity=initial_equity,
+                    total_return_pct=0.0,
+                    sharpe_ratio=0.0,
+                    max_drawdown_pct=0.0,
+                    win_rate=0.0,
+                    profit_factor=0.0,
+                    total_trades=0,
+                    fno_trades=0,
+                    equity_trades=0,
+                    fno_pnl=0.0,
+                    cost_drag_pct=0.0,
+                    cached_tickers=len(cached_eq),
+                    cached_indices=len(cached_idx),
+                    shock_type=scen.get("causal_intel", {}).get("shock_type", ""),
+                    notes=f"FAILED: {exc}",
+                )
+            )
+            continue
+
+        tx = r.extra_stats.get("transaction_costs", {}) or {}
+        portfolio_equity *= 1.0 + r.total_return_pct / 100.0
+        results.append(
+            ShockResult(
                 scenario_id=sid,
                 name=scen["name"],
                 start_date=scen["start_date"],
                 end_date=scen["end_date"],
                 initial_equity=initial_equity,
-                final_equity=initial_equity,
-                total_return_pct=0.0,
-                sharpe_ratio=0.0,
-                max_drawdown_pct=0.0,
-                win_rate=0.0,
-                profit_factor=0.0,
-                total_trades=0,
-                fno_trades=0,
-                equity_trades=0,
-                fno_pnl=0.0,
-                cost_drag_pct=0.0,
+                final_equity=round(r.final_equity, 2),
+                total_return_pct=round(r.total_return_pct, 2),
+                sharpe_ratio=round(r.sharpe_ratio, 2),
+                max_drawdown_pct=round(r.max_drawdown_pct, 2),
+                win_rate=round(r.win_rate, 2),
+                profit_factor=round(r.profit_factor, 2),
+                total_trades=r.total_trades,
+                fno_trades=r.extra_stats.get("fno_trades", 0),
+                equity_trades=r.extra_stats.get("equity_trades", 0),
+                fno_pnl=round(r.extra_stats.get("fno_pnl", 0.0), 2),
+                cost_drag_pct=round(tx.get("cost_drag_pct", 0.0), 3),
                 cached_tickers=len(cached_eq),
                 cached_indices=len(cached_idx),
                 shock_type=scen.get("causal_intel", {}).get("shock_type", ""),
-                notes=f"FAILED: {exc}",
-            ))
-            continue
-
-        tx = r.extra_stats.get("transaction_costs", {}) or {}
-        portfolio_equity *= (1.0 + r.total_return_pct / 100.0)
-        results.append(ShockResult(
-            scenario_id=sid,
-            name=scen["name"],
-            start_date=scen["start_date"],
-            end_date=scen["end_date"],
-            initial_equity=initial_equity,
-            final_equity=round(r.final_equity, 2),
-            total_return_pct=round(r.total_return_pct, 2),
-            sharpe_ratio=round(r.sharpe_ratio, 2),
-            max_drawdown_pct=round(r.max_drawdown_pct, 2),
-            win_rate=round(r.win_rate, 2),
-            profit_factor=round(r.profit_factor, 2),
-            total_trades=r.total_trades,
-            fno_trades=r.extra_stats.get("fno_trades", 0),
-            equity_trades=r.extra_stats.get("equity_trades", 0),
-            fno_pnl=round(r.extra_stats.get("fno_pnl", 0.0), 2),
-            cost_drag_pct=round(tx.get("cost_drag_pct", 0.0), 3),
-            cached_tickers=len(cached_eq),
-            cached_indices=len(cached_idx),
-            shock_type=scen.get("causal_intel", {}).get("shock_type", ""),
-        ))
+            )
+        )
 
     valid = [s for s in results if not (s.notes or "").startswith(("FAILED", "SKIPPED"))]
     rets = [s.total_return_pct for s in valid]
@@ -586,9 +606,7 @@ async def run_shock_driven_walkforward(
         initial_equity=initial_equity,
         avg_return_pct=round(statistics.mean(rets), 2) if rets else 0.0,
         median_return_pct=round(statistics.median(rets), 2) if rets else 0.0,
-        pct_positive_scenarios=round(
-            len([r for r in rets if r > 0]) / max(len(rets), 1) * 100, 1
-        ),
+        pct_positive_scenarios=round(len([r for r in rets if r > 0]) / max(len(rets), 1) * 100, 1),
         avg_sharpe=round(statistics.mean(sharpes), 2) if sharpes else 0.0,
         median_sharpe=round(statistics.median(sharpes), 2) if sharpes else 0.0,
         sharpe_above_one_pct=round(
@@ -598,9 +616,9 @@ async def run_shock_driven_walkforward(
         avg_drawdown_pct=round(statistics.mean(dds), 2) if dds else 0.0,
         pooled_total_trades=n_total_trades,
         pooled_win_rate=round(pooled_wins / max(n_total_trades, 1) * 100, 1),
-        avg_cost_drag_pct=round(
-            statistics.mean(s.cost_drag_pct for s in valid), 3
-        ) if valid else 0.0,
+        avg_cost_drag_pct=round(statistics.mean(s.cost_drag_pct for s in valid), 3)
+        if valid
+        else 0.0,
         aggregate_compounded_return_pct=round(aggregate_compounded, 2),
         aggregate_cagr_pct=round(cagr, 2),
         avg_trades_per_scenario=round(n_total_trades / max(len(valid), 1), 1),
@@ -627,7 +645,12 @@ async def run_shock_driven_walkforward(
     return summary
 
 
-def _render_shock_markdown(summary: ShockDrivenSummary, min_conviction: float = 0.55) -> str:
+def _render_shock_markdown(
+    summary: ShockDrivenSummary,
+    min_conviction: float | None = None,
+) -> str:
+    if min_conviction is None:
+        min_conviction = settings.BACKTEST_MIN_CONVICTION
     lines: list[str] = []
     lines.append("# AYVID Shock-Driven Walk-Forward Report")
     lines.append("")

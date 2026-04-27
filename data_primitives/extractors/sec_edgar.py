@@ -3,6 +3,7 @@
 Uses the EDGAR EFTS full-text search API and filing download endpoints.
 No API key required — SEC EDGAR is a free, public data source.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -14,7 +15,7 @@ from typing import Any
 import httpx
 
 from shared.config import settings
-from shared.exceptions import DataPipelineError, LLMProviderError
+from shared.exceptions import LLMProviderError
 from shared.logger import get_logger
 
 log = get_logger("data.edgar")
@@ -24,8 +25,6 @@ _COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 _CIK_CACHE_PATH = Path(__file__).resolve().parent.parent.parent / "data_store" / "cik_cache.json"
 
 _cik_map: dict[str, str] | None = None
-_openai_client = None
-_anthropic_client = None
 
 
 def _get_headers() -> dict[str, str]:
@@ -33,42 +32,15 @@ def _get_headers() -> dict[str, str]:
 
 
 async def _llm_json_call(system: str, user: str) -> str:
-    """Dispatch JSON-mode LLM call to the configured provider."""
-    if settings.LLM_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
-        return await _anthropic_call(system, user)
-    return await _openai_call(system, user)
+    """Thin wrapper so this module keeps its 0.1-temperature contract.
 
+    The SEC edge proposer needs a little more creativity than the default
+    strict-zero temperature used elsewhere; we override here rather than
+    poking the module-global dispatch.
+    """
+    from shared.llm_client import json_call
 
-async def _openai_call(system: str, user: str) -> str:
-    global _openai_client
-    if _openai_client is None:
-        from openai import AsyncOpenAI
-        _openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-    response = await _openai_client.chat.completions.create(
-        model=settings.OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        temperature=0.1,
-        response_format={"type": "json_object"},
-    )
-    return response.choices[0].message.content or "{}"
-
-
-async def _anthropic_call(system: str, user: str) -> str:
-    global _anthropic_client
-    if _anthropic_client is None:
-        from anthropic import AsyncAnthropic
-        _anthropic_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-    response = await _anthropic_client.messages.create(
-        model=settings.ANTHROPIC_MODEL,
-        max_tokens=1500,
-        system=system + "\n\nYou MUST respond with valid JSON only. No markdown, no explanation.",
-        messages=[{"role": "user", "content": user}],
-        temperature=0.1,
-    )
-    return response.content[0].text if response.content else "{}"
+    return await json_call(system, user, max_tokens=1500, temperature=0.1)
 
 
 def _load_cik_cache() -> dict[str, str]:
@@ -165,23 +137,21 @@ async def fetch_recent_filings(
         url = ""
         if cik_stripped and accession and primary_doc:
             url = (
-                f"https://www.sec.gov/Archives/edgar/data/"
-                f"{cik_stripped}/{accession}/{primary_doc}"
+                f"https://www.sec.gov/Archives/edgar/data/{cik_stripped}/{accession}/{primary_doc}"
             )
 
-        filings.append({
-            "accession": source.get("accession_no", ""),
-            "form_type": form_type,
-            "filing_date": filing_date,
-            "company_name": company_name,
-            "url": url,
-            "file_num": file_num,
-        })
+        filings.append(
+            {
+                "accession": source.get("accession_no", ""),
+                "form_type": form_type,
+                "filing_date": filing_date,
+                "company_name": company_name,
+                "url": url,
+                "file_num": file_num,
+            }
+        )
 
-    log.info(
-        f"Found {len(filings)} EDGAR filings for [bold]{ticker}[/bold] "
-        f"({forms_joined})"
-    )
+    log.info(f"Found {len(filings)} EDGAR filings for [bold]{ticker}[/bold] ({forms_joined})")
     return filings
 
 
@@ -201,7 +171,9 @@ async def download_filing_text(url: str, max_chars: int = 50_000) -> str:
     if not url:
         return ""
 
-    async with httpx.AsyncClient(headers=_get_headers(), timeout=60, follow_redirects=True) as client:
+    async with httpx.AsyncClient(
+        headers=_get_headers(), timeout=60, follow_redirects=True
+    ) as client:
         resp = await client.get(url)
         resp.raise_for_status()
 
@@ -232,6 +204,14 @@ Extract the following into a JSON object:
   "risk_factors": ["key risk factors related to supply chain, operations, or geopolitics"],
   "key_customers": ["major customers if disclosed"],
   "key_suppliers": ["major suppliers if disclosed"],
+  "key_competitors": ["named competitors mentioned in the filing"],
+  "key_products": [
+    {{"name": "product or service line name", "category": "broad category (semiconductors, software, etc.)"}}
+  ],
+  "key_facilities": [
+    {{"name": "facility name or city", "facility_type": "fab|refinery|warehouse|port|mine|datacenter|unknown",
+      "country": "ISO-2 country code if known"}}
+  ],
   "geographic_exposure": [
     {{"region": "region name", "revenue_pct": approximate percentage or null}}
   ],
@@ -248,10 +228,19 @@ async def analyze_filing_with_llm(
     if not filing_text:
         return {"error": "empty_filing_text", "ticker": ticker}
 
+    # P1-P: SEC filing bodies are attacker-reachable through the EDGAR
+    # submission pipeline. A filer embedding hidden HTML, NFKC tricks,
+    # or homoglyph prompt-injection spans gets those bytes delivered
+    # into an LLM `json_call`. The sanitiser normalises unicode,
+    # strips hidden markup, and redacts script-switched tokens before
+    # the filing text goes anywhere near the model.
+    from data_primitives.security.text_sanitizer import sanitize_news_text
+
+    clean_text = sanitize_news_text(filing_text[:40_000])
     user_prompt = _ANALYSIS_USER_TEMPLATE.format(
         form_type=form_type,
         ticker=ticker,
-        filing_text=filing_text[:40_000],
+        filing_text=clean_text,
     )
 
     try:
@@ -267,16 +256,12 @@ async def analyze_filing_with_llm(
         log.error(f"Failed to parse LLM JSON for {ticker}: {exc}")
         return {"error": "json_parse_failure", "ticker": ticker}
     except Exception as exc:
-        raise LLMProviderError(
-            f"EDGAR analysis failed for {ticker}: {exc}"
-        ) from exc
+        raise LLMProviderError(f"EDGAR analysis failed for {ticker}: {exc}") from exc
 
 
 async def full_edgar_pipeline(ticker: str) -> list[dict[str, Any]]:
     """Fetch recent 10-K and 10-Q filings, download text, and analyze each."""
-    filings = await fetch_recent_filings(
-        ticker, form_types=["10-K", "10-Q"], limit=5
-    )
+    filings = await fetch_recent_filings(ticker, form_types=["10-K", "10-Q"], limit=5)
     if not filings:
         log.warning(f"No EDGAR filings found for {ticker}")
         return []

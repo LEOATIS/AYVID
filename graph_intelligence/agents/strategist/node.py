@@ -5,6 +5,7 @@ Runs before the mapper. Its `forbidden_strategies` output is surfaced
 into the state object so the orchestrator / supervisor can strictly
 respect it further down the DAG (Tier-1 regime-gated execution).
 """
+
 from __future__ import annotations
 
 import json
@@ -12,21 +13,17 @@ import re
 
 import numpy as np
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
 from pydantic import ValidationError
 
-from shared.config import settings
-from shared.logger import get_logger
-from graph_intelligence.graph_state.state import CausalArbitrageState
 from graph_intelligence.agents.strategist.prompts import (
-    STRATEGIST_SYSTEM,
     STRATEGIST_ANALYZE,
+    STRATEGIST_SYSTEM,
 )
 from graph_intelligence.agents.strategist.schema import (
     StrategistOutput,
-    CANONICAL_STRATEGIES,
 )
+from graph_intelligence.graph_state.state import CausalArbitrageState
+from shared.logger import get_logger
 
 log = get_logger("agent.strategist")
 
@@ -51,19 +48,9 @@ def _extract_json(text: str) -> str:
 
 
 def _get_llm():
-    if settings.LLM_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
-        return ChatAnthropic(
-            model=settings.ANTHROPIC_MODEL,
-            api_key=settings.ANTHROPIC_API_KEY,
-            temperature=0.1,
-            max_tokens=1500,
-        )
-    return ChatOpenAI(
-        model=settings.OPENAI_MODEL,
-        api_key=settings.OPENAI_API_KEY,
-        temperature=0.1,
-        max_tokens=1500,
-    )
+    from shared.llm_client import get_langchain_chat_model
+
+    return get_langchain_chat_model(temperature=0.1, max_tokens=1500)
 
 
 async def _fetch_macro_context() -> str:
@@ -72,11 +59,11 @@ async def _fetch_macro_context() -> str:
 
     try:
         from data_primitives.extractors.openbb_client import fetch_sector_performance
+
         sectors = await fetch_sector_performance()
         if sectors:
             sector_str = ", ".join(
-                f"{s.get('sector', '?')}: {s.get('change_1d', 0):.2f}%"
-                for s in sectors[:10]
+                f"{s.get('sector', '?')}: {s.get('change_1d', 0):.2f}%" for s in sectors[:10]
             )
             context_parts.append(f"Sector Performance: {sector_str}")
     except Exception as exc:
@@ -84,6 +71,7 @@ async def _fetch_macro_context() -> str:
 
     try:
         from data_primitives.extractors.openbb_client import fetch_treasury_rates
+
         rates = await fetch_treasury_rates()
         if rates:
             latest = rates[-1] if rates else {}
@@ -93,6 +81,7 @@ async def _fetch_macro_context() -> str:
 
     try:
         from data_primitives.extractors.openbb_client import fetch_index_historical
+
         vix = await fetch_index_historical("^VIX", days=5)
         if vix:
             context_parts.append(f"VIX: {vix[-1].close:.2f}")
@@ -124,11 +113,19 @@ async def _compute_regime_block(ticker: str) -> str:
 
         log_rets = np.diff(np.log(closes))
         hurst = compute_hurst_exponent(log_rets)
-        iv_proxy = float(np.std(log_rets[-20:], ddof=1) * np.sqrt(252)) \
-                   + abs(float(closes[-1] / closes[-6] - 1)) * 2.0 + 0.02
+        iv_proxy = (
+            float(np.std(log_rets[-20:], ddof=1) * np.sqrt(252))
+            + abs(float(closes[-1] / closes[-6] - 1)) * 2.0
+            + 0.02
+        )
 
         rs = classify_regime(
-            closes, highs, lows, volumes, hurst=hurst, implied_vol=iv_proxy,
+            closes,
+            highs,
+            lows,
+            volumes,
+            hurst=hurst,
+            implied_vol=iv_proxy,
         )
         ret_20d = float(closes[-1] / closes[-21] - 1) if len(closes) >= 21 else 0.0
 
@@ -169,10 +166,12 @@ async def strategist_node(state: CausalArbitrageState) -> dict:
     )
 
     llm = _get_llm()
-    response = await llm.ainvoke([
-        SystemMessage(content=STRATEGIST_SYSTEM),
-        HumanMessage(content=prompt),
-    ])
+    response = await llm.ainvoke(
+        [
+            SystemMessage(content=STRATEGIST_SYSTEM),
+            HumanMessage(content=prompt),
+        ]
+    )
 
     content = response.content
     parsed: StrategistOutput

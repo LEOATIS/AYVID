@@ -12,11 +12,12 @@ Profits*, arXiv 2601.13082v1).
 This module is the single mandatory pre-LLM gate for every news-
 derived string that reaches a model call.
 """
+
 from data_primitives.security.text_sanitizer import (
     SanitizedText,
-    sanitize_news_text,
     is_safe,
     safe_for_ticker_extraction,
+    sanitize_news_text,
 )
 
 __all__ = [

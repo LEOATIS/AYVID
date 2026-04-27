@@ -6,9 +6,9 @@ Provides a real-time terminal dashboard showing:
 - Risk metrics and kill switch status
 - System health
 """
+
 from __future__ import annotations
 
-import asyncio
 import datetime as dt
 
 from rich.console import Console
@@ -71,7 +71,9 @@ def _build_portfolio_panel() -> Panel:
         f"P&L: ${state.total_pnl:+,.0f} | DD: {state.drawdown_pct:.1f}%"
     )
 
-    return Panel(table, title="[bold blue]Portfolio[/bold blue]", subtitle=subtitle, border_style="blue")
+    return Panel(
+        table, title="[bold blue]Portfolio[/bold blue]", subtitle=subtitle, border_style="blue"
+    )
 
 
 def _build_signals_panel() -> Panel:
@@ -111,8 +113,10 @@ def _build_risk_panel() -> Panel:
     from backend.services.orchestrator import get_risk_snapshot
 
     risk = get_risk_snapshot()
-    dd_style = "green" if risk.current_drawdown_pct < 1 else (
-        "yellow" if risk.current_drawdown_pct < 2 else "bold red"
+    dd_style = (
+        "green"
+        if risk.current_drawdown_pct < 1
+        else ("yellow" if risk.current_drawdown_pct < 2 else "bold red")
     )
 
     content = (
@@ -127,7 +131,7 @@ def _build_risk_panel() -> Panel:
 
 
 def _build_system_panel() -> Panel:
-    from execution_engine.broker.orders import is_regular_trading_hours, get_queued_orders
+    from execution_engine.broker.orders import get_queued_orders, is_regular_trading_hours
 
     rth = is_regular_trading_hours()
     queued = len(get_queued_orders())
@@ -182,6 +186,7 @@ def run_dashboard() -> None:
             while True:
                 live.update(_build_layout())
                 import time
+
                 time.sleep(_REFRESH_SECONDS)
     except KeyboardInterrupt:
         console.print("\n[dim]Dashboard stopped.[/dim]")

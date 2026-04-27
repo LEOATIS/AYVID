@@ -37,6 +37,7 @@ Design choices
   n≥5 carry a 95% Sharpe confidence interval (normal approximation;
   bootstrap is future work).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -46,7 +47,7 @@ import itertools
 import json
 import math
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -54,10 +55,10 @@ import numpy as np
 
 from backtesting.engine import (
     SHOCK_SCENARIOS,
-    BacktestTrade,
     BacktestResult,
-    _load_local_bars,
+    BacktestTrade,
     _load_index_bars,
+    _load_local_bars,
     run_scenario_backtest,
 )
 from execution_engine.math.regime import (
@@ -76,26 +77,26 @@ log = get_logger("calibrate")
 
 # Full grid (matches user spec). 5×4×4×5 = 400 configs.
 FULL_GRID: dict[str, list[float]] = {
-    "max_rsi_entry_long":  [15.0, 20.0, 25.0, 30.0, 35.0],
-    "max_z_entry_long":    [-2.5, -2.0, -1.5, -1.0],
-    "min_factor_score":    [0.25, 0.35, 0.45, 0.55],
-    "min_expected_r":      [1.2, 1.5, 2.0, 2.5, 3.0],
+    "max_rsi_entry_long": [15.0, 20.0, 25.0, 30.0, 35.0],
+    "max_z_entry_long": [-2.5, -2.0, -1.5, -1.0],
+    "min_factor_score": [0.25, 0.35, 0.45, 0.55],
+    "min_expected_r": [1.2, 1.5, 2.0, 2.5, 3.0],
 }
 
 # Medium-resolution grid — 3×2×2×3 = 36 configs — weekly-refresh friendly.
 MEDIUM_GRID: dict[str, list[float]] = {
-    "max_rsi_entry_long":  [20.0, 25.0, 32.0],
-    "max_z_entry_long":    [-2.0, -1.2],
-    "min_factor_score":    [0.30, 0.45],
-    "min_expected_r":      [1.2, 1.8, 2.5],
+    "max_rsi_entry_long": [20.0, 25.0, 32.0],
+    "max_z_entry_long": [-2.0, -1.2],
+    "min_factor_score": [0.30, 0.45],
+    "min_expected_r": [1.2, 1.8, 2.5],
 }
 
 # Smoke grid — 2×2×2×2 = 16 configs — fast CI validation.
 QUICK_GRID: dict[str, list[float]] = {
-    "max_rsi_entry_long":  [22.0, 32.0],
-    "max_z_entry_long":    [-2.0, -1.2],
-    "min_factor_score":    [0.30, 0.45],
-    "min_expected_r":      [1.5, 2.5],
+    "max_rsi_entry_long": [22.0, 32.0],
+    "max_z_entry_long": [-2.0, -1.2],
+    "min_factor_score": [0.30, 0.45],
+    "min_expected_r": [1.5, 2.5],
 }
 
 GRID_PRESETS: dict[str, dict[str, list[float]]] = {
@@ -114,8 +115,11 @@ MIN_CELL_SAMPLES = 5
 #  Regime bucketing
 # ═══════════════════════════════════════════════════════════════════
 
+
 def regime_key(
-    trend_regime: str, vol_regime: str, ret_20d: float,
+    trend_regime: str,
+    vol_regime: str,
+    ret_20d: float,
 ) -> str:
     """Compose the priors.json regime bucket string.
 
@@ -144,7 +148,9 @@ _bars_cache: dict[str, list[Any]] = {}
 
 
 async def _fetch_historical_bars_async(
-    ticker: str, is_index: bool, entry_date: dt.date,
+    ticker: str,
+    is_index: bool,
+    entry_date: dt.date,
 ) -> list[Any]:
     """Fetch 120 days of history ending at or before `entry_date`.
 
@@ -155,10 +161,12 @@ async def _fetch_historical_bars_async(
     """
     try:
         from data_primitives.extractors.openbb_client import fetch_ohlcv
+
         end = entry_date + dt.timedelta(days=1)
         start = entry_date - dt.timedelta(days=180)
         bars = await fetch_ohlcv(
-            ticker, days=180,
+            ticker,
+            days=180,
             start_date=start.isoformat(),
             end_date=end.isoformat(),
         )
@@ -169,7 +177,9 @@ async def _fetch_historical_bars_async(
 
 
 async def _cached_bars_async(
-    ticker: str, is_index: bool, entry_date: dt.date,
+    ticker: str,
+    is_index: bool,
+    entry_date: dt.date,
 ) -> list[Any]:
     """Async cached-bars accessor with network fallback.
 
@@ -206,7 +216,9 @@ def _merge_bars(a: list[Any], b: list[Any]) -> list[Any]:
 
 
 async def regime_at_entry_async(
-    ticker: str, entry_date: dt.date, is_index: bool,
+    ticker: str,
+    entry_date: dt.date,
+    is_index: bool,
 ) -> str:
     """Reconstruct the regime a trade was entered into (async version).
 
@@ -229,11 +241,11 @@ async def regime_at_entry_async(
     hurst = compute_hurst_exponent(log_rets)
     vol_regime_enum, _, _ = classify_volatility(log_rets)
     trend_regime_enum, _ = classify_trend(highs, lows, closes, hurst)
-    ret_20d = (
-        float(closes[-1] / closes[-21] - 1) if len(closes) >= 21 else 0.0
-    )
+    ret_20d = float(closes[-1] / closes[-21] - 1) if len(closes) >= 21 else 0.0
     return regime_key(
-        trend_regime_enum.value, vol_regime_enum.value, ret_20d,
+        trend_regime_enum.value,
+        vol_regime_enum.value,
+        ret_20d,
     )
 
 
@@ -266,11 +278,11 @@ def regime_at_entry(ticker: str, entry_date: dt.date, is_index: bool) -> str:
     hurst = compute_hurst_exponent(log_rets)
     vol_regime_enum, _, _ = classify_volatility(log_rets)
     trend_regime_enum, _ = classify_trend(highs, lows, closes, hurst)
-    ret_20d = (
-        float(closes[-1] / closes[-21] - 1) if len(closes) >= 21 else 0.0
-    )
+    ret_20d = float(closes[-1] / closes[-21] - 1) if len(closes) >= 21 else 0.0
     return regime_key(
-        trend_regime_enum.value, vol_regime_enum.value, ret_20d,
+        trend_regime_enum.value,
+        vol_regime_enum.value,
+        ret_20d,
     )
 
 
@@ -278,13 +290,15 @@ def regime_at_entry(ticker: str, entry_date: dt.date, is_index: bool) -> str:
 #  Sweep data model
 # ═══════════════════════════════════════════════════════════════════
 
+
 @dataclass
 class TradeRecord:
     """Single trade tagged with the regime and params that produced it."""
+
     strategy: str
     regime: str
     pnl_pct: float
-    config: tuple                # hashable param tuple
+    config: tuple  # hashable param tuple
     scenario: str = ""
     ticker: str = ""
     entry_date: str = ""
@@ -309,6 +323,7 @@ def _enumerate_configs(grid: dict[str, list[float]]) -> list[dict[str, float]]:
 # ═══════════════════════════════════════════════════════════════════
 #  Sweep driver
 # ═══════════════════════════════════════════════════════════════════
+
 
 async def _run_one_config(
     scenario_name: str,
@@ -344,45 +359,54 @@ async def _run_one_config(
             if not trade.is_closed:
                 continue
             regime = await regime_at_entry_async(
-                trade.signal.ticker, trade.entry_date.date(), is_index=False,
+                trade.signal.ticker,
+                trade.entry_date.date(),
+                is_index=False,
             )
             if regime == "UNKNOWN":
                 continue
-            records.append(TradeRecord(
-                strategy=_infer_strategy_name(trade),
-                regime=regime,
-                pnl_pct=float(trade.pnl_pct),
-                config=config_key,
-                scenario=scenario_name,
-                ticker=trade.signal.ticker,
-                entry_date=str(trade.entry_date.date()),
-                bars_in_scenario=bar_count,
-            ))
+            records.append(
+                TradeRecord(
+                    strategy=_infer_strategy_name(trade),
+                    regime=regime,
+                    pnl_pct=float(trade.pnl_pct),
+                    config=config_key,
+                    scenario=scenario_name,
+                    ticker=trade.signal.ticker,
+                    entry_date=str(trade.entry_date.date()),
+                    bars_in_scenario=bar_count,
+                )
+            )
 
         for fno in result.fno_trade_log:
             strategy = getattr(fno, "strategy", "")
             if not strategy:
                 continue
             regime = await regime_at_entry_async(
-                fno.underlying, fno.entry_date, is_index=True,
+                fno.underlying,
+                fno.entry_date,
+                is_index=True,
             )
             if regime == "UNKNOWN":
                 continue
-            records.append(TradeRecord(
-                strategy=strategy,
-                regime=regime,
-                pnl_pct=float(fno.pnl_pct),
-                config=config_key,
-                scenario=scenario_name,
-                ticker=fno.underlying,
-                entry_date=str(fno.entry_date),
-                bars_in_scenario=bar_count,
-            ))
+            records.append(
+                TradeRecord(
+                    strategy=strategy,
+                    regime=regime,
+                    pnl_pct=float(fno.pnl_pct),
+                    config=config_key,
+                    scenario=scenario_name,
+                    ticker=fno.underlying,
+                    entry_date=str(fno.entry_date),
+                    bars_in_scenario=bar_count,
+                )
+            )
 
         return records
 
 
 import re as _re
+
 _STRATEGY_BRACKET_RE = _re.compile(r"^\s*\[([a-z0-9_]+)\]", _re.IGNORECASE)
 
 
@@ -400,12 +424,12 @@ def _infer_strategy_name(trade: BacktestTrade) -> str:
 
     rationale = raw.lower()
     for prefix, canonical in [
-        ("deep value",          "deep_value_investment"),
-        ("supply chain benef",  "supply_chain_beneficiary"),
-        ("supply chain capit",  "supply_chain_oversold_dip"),
+        ("deep value", "deep_value_investment"),
+        ("supply chain benef", "supply_chain_beneficiary"),
+        ("supply chain capit", "supply_chain_oversold_dip"),
         ("supply chain overso", "supply_chain_oversold_dip"),
-        ("trend invest",        "trend_investment"),
-        ("mr bounce",           "mr_equity_bounce"),
+        ("trend invest", "trend_investment"),
+        ("mr bounce", "mr_equity_bounce"),
     ]:
         if prefix in rationale:
             return canonical
@@ -437,9 +461,11 @@ async def run_sweep(
             log.warning(f"Unknown scenario '{scen}' — skipping")
             continue
         for params in configs:
-            tasks.append(asyncio.create_task(
-                _run_one_config(scen, spec, params, sem, initial_equity),
-            ))
+            tasks.append(
+                asyncio.create_task(
+                    _run_one_config(scen, spec, params, sem, initial_equity),
+                )
+            )
 
     all_records: list[TradeRecord] = []
     completed = 0
@@ -466,6 +492,7 @@ async def run_sweep(
 # ═══════════════════════════════════════════════════════════════════
 #  Aggregation → priors
 # ═══════════════════════════════════════════════════════════════════
+
 
 def _per_trade_sharpe(pnl_pcts: list[float]) -> float:
     """Per-trade Sharpe = mean(R) / std(R). R is realised return per trade.
@@ -541,23 +568,21 @@ def aggregate_priors(
     # Step 3 — emit the structured priors payload.
     for (strategy, regime), (config, sharpe, n, ci) in best_per_cell.items():
         params = _extract_params_from_config(config)
-        wins = len([
-            p for p in buckets[(strategy, regime, config)] if p > 0
-        ])
+        wins = len([p for p in buckets[(strategy, regime, config)] if p > 0])
         total = len(buckets[(strategy, regime, config)])
         win_rate = wins / total if total > 0 else 0.0
         total_bars = sum(bars_per_scenario.values()) or 1
         trades_per_100 = round(total / total_bars * 100.0, 2)
 
         priors.setdefault(strategy, {})[regime] = {
-            "max_rsi":           params.get("max_rsi_entry_long"),
-            "max_z":             params.get("max_z_entry_long"),
-            "min_factor_score":  params.get("min_factor_score"),
-            "min_expected_r":    params.get("min_expected_r"),
-            "sharpe":            round(sharpe, 3),
-            "ci":                list(ci),
-            "n":                 n,
-            "win_rate":          round(win_rate, 3),
+            "max_rsi": params.get("max_rsi_entry_long"),
+            "max_z": params.get("max_z_entry_long"),
+            "min_factor_score": params.get("min_factor_score"),
+            "min_expected_r": params.get("min_expected_r"),
+            "sharpe": round(sharpe, 3),
+            "ci": list(ci),
+            "n": n,
+            "win_rate": round(win_rate, 3),
             "trades_per_100bars": trades_per_100,
         }
 
@@ -583,9 +608,7 @@ def aggregate_priors(
             priors.setdefault(strategy, {})[regime] = {
                 "blocked_by_regime": True,
                 "n": max((len(p) for p, _ in cell_configs), default=0),
-                "best_sharpe_seen": round(
-                    max((sh for _, sh in cell_configs), default=0.0), 3
-                ),
+                "best_sharpe_seen": round(max((sh for _, sh in cell_configs), default=0.0), 3),
             }
 
     return priors
@@ -595,7 +618,7 @@ def write_priors(priors: dict[str, Any], path: Path) -> None:
     """Persist priors to disk with a timestamp + metadata header."""
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "_generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "_generated_at": dt.datetime.now(dt.UTC).isoformat(),
         "_min_samples": MIN_CELL_SAMPLES,
         "_schema_version": 1,
         "priors": priors,
@@ -633,8 +656,10 @@ async def calibrate(
             scenarios = list(SHOCK_SCENARIOS.keys())
 
     records = await run_sweep(
-        grid=grid, scenarios=scenarios,
-        concurrency=concurrency, initial_equity=initial_equity,
+        grid=grid,
+        scenarios=scenarios,
+        concurrency=concurrency,
+        initial_equity=initial_equity,
     )
     priors = aggregate_priors(records)
     write_priors(priors, output)
@@ -646,7 +671,9 @@ def _cli() -> None:
     parser.add_argument("--mode", choices=list(GRID_PRESETS.keys()), default="quick")
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument(
-        "--scenarios", type=str, default=None,
+        "--scenarios",
+        type=str,
+        default=None,
         help="Comma-separated scenario keys; defaults depend on --mode.",
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_PRIORS_PATH)
@@ -654,17 +681,18 @@ def _cli() -> None:
     args = parser.parse_args()
 
     scenarios = (
-        [s.strip() for s in args.scenarios.split(",") if s.strip()]
-        if args.scenarios else None
+        [s.strip() for s in args.scenarios.split(",") if s.strip()] if args.scenarios else None
     )
 
-    asyncio.run(calibrate(
-        mode=args.mode,
-        scenarios=scenarios,
-        concurrency=args.concurrency,
-        output=args.output,
-        initial_equity=args.initial_equity,
-    ))
+    asyncio.run(
+        calibrate(
+            mode=args.mode,
+            scenarios=scenarios,
+            concurrency=args.concurrency,
+            output=args.output,
+            initial_equity=args.initial_equity,
+        )
+    )
 
 
 if __name__ == "__main__":

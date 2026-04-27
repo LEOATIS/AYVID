@@ -63,7 +63,7 @@ We are **not** claiming the reg path is zero-cost; we are claiming we have a con
 | Two-track trading (index F&O across 20 markets + equities) | Shipped | `graph_intelligence/agents/strategy_orchestrator.py` |
 | IB integration (paper + live) with bracket orders, recovery, sequence validation | Shipped | `execution_engine/broker/` |
 | C++-grade kill switch w/ seqlock mmap IPC (10 Hz watchdog) | Shipped | `execution_engine/{kill_switch,watchdog}/` |
-| **Full IBKR-Tiered transaction-cost model (commissions + symbol-aware slippage)** | Shipped | `backtesting/cost_model.py` |
+| **Full IBKR-Tiered transaction-cost model (commissions + symbol-aware slippage)** | Shipped | `shared/cost_model.py` |
 | **Naive walk-forward backtester (rolling 9-month windows, 2018→2025)** | Shipped | `backtesting/walkforward.py` · `ayvid data walkforward` |
 | **Shock-driven walk-forward (20 named shocks 2018-2025, graph-aware ticker selection)** | Shipped | `backtesting/walkforward.py:run_shock_driven_walkforward` · `ayvid data shock-walkforward` |
 | **Live paper-trading runner (IB + shadow modes) emitting a daily equity-curve artifact** | Shipped | `execution_engine/paper_runner.py` · `ayvid trade paper-start` / `paper-status` / `paper-render` |

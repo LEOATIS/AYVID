@@ -10,6 +10,7 @@ Latency optimization: uses streaming with early direction extraction so the
 debate can begin as soon as direction+confidence are known, without waiting
 for the full thesis text.
 """
+
 from __future__ import annotations
 
 import json
@@ -17,12 +18,7 @@ import re
 import time
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
 
-from shared.config import settings
-from shared.logger import get_logger
-from graph_intelligence.graph_state.state import CausalArbitrageState
 from graph_intelligence.agents.analyst.prompts import (
     ANALYST_DEEP_DIVE,
     FUNDAMENTALS_SYSTEM,
@@ -30,6 +26,8 @@ from graph_intelligence.agents.analyst.prompts import (
     SUPPLY_CHAIN_SYSTEM,
     TECHNICALS_SYSTEM,
 )
+from graph_intelligence.graph_state.state import CausalArbitrageState
+from shared.logger import get_logger
 
 log = get_logger("agent.analyst")
 
@@ -68,12 +66,8 @@ def _try_early_extract(partial_text: str) -> dict | None:
     even before the full response is complete. This lets the debate
     protocol start aggregating as soon as the critical fields appear.
     """
-    direction_match = re.search(
-        r'"direction"\s*:\s*"(LONG|SHORT|HOLD)"', partial_text
-    )
-    confidence_match = re.search(
-        r'"confidence"\s*:\s*(0\.\d+|1\.0|0|1)', partial_text
-    )
+    direction_match = re.search(r'"direction"\s*:\s*"(LONG|SHORT|HOLD)"', partial_text)
+    confidence_match = re.search(r'"confidence"\s*:\s*(0\.\d+|1\.0|0|1)', partial_text)
 
     if direction_match and confidence_match:
         return {
@@ -84,19 +78,9 @@ def _try_early_extract(partial_text: str) -> dict | None:
 
 
 def _get_llm(temperature: float = 0.1):
-    if settings.LLM_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
-        return ChatAnthropic(
-            model=settings.ANTHROPIC_MODEL,
-            api_key=settings.ANTHROPIC_API_KEY,
-            temperature=temperature,
-            max_tokens=1500,
-        )
-    return ChatOpenAI(
-        model=settings.OPENAI_MODEL,
-        api_key=settings.OPENAI_API_KEY,
-        temperature=temperature,
-        max_tokens=1500,
-    )
+    from shared.llm_client import get_langchain_chat_model
+
+    return get_langchain_chat_model(temperature=temperature, max_tokens=1500)
 
 
 async def _run_specialist_streaming(
@@ -112,10 +96,19 @@ async def _run_specialist_streaming(
     For the debate protocol, direction+confidence is all that matters;
     the thesis text is logged but doesn't affect the trading decision.
     """
+    # P1-L: inject the researcher debate consensus so each specialist
+    # analyst sees the bull/bear facilitator verdict as an additional
+    # input. Previously the consensus was computed and dropped — the
+    # swarm ran blind to the debate.
+    from graph_intelligence.agents.researchers.nodes import (
+        render_researcher_consensus_block,
+    )
+
     prompt = ANALYST_DEEP_DIVE.format(
         shock_ticker=state["shock_ticker"],
         target_ticker=state.get("target_ticker", "UNKNOWN"),
         direction=state.get("proposed_action", "UNKNOWN"),
+        researcher_consensus_block=render_researcher_consensus_block(state),
         quant_data=quant_data,
         timeline=json.dumps(state["timeline"][:10], indent=2, default=str),
         topology=state.get("graph_topology_json", "No topology")[:2000],
@@ -200,9 +193,7 @@ async def _run_specialist(
     analyst_name: str,
 ) -> dict:
     """Run a single specialist — uses streaming for lower latency."""
-    return await _run_specialist_streaming(
-        system_prompt, state, quant_data, analyst_name
-    )
+    return await _run_specialist_streaming(system_prompt, state, quant_data, analyst_name)
 
 
 async def run_analyst_swarm(
@@ -217,6 +208,7 @@ async def run_analyst_swarm(
     conviction score.
     """
     import asyncio
+
     global _swarm_latency_ms
 
     log.info(
@@ -240,8 +232,7 @@ async def run_analyst_swarm(
     from graph_intelligence.agents.pattern import pattern_analyst_opinion
 
     tasks = [
-        _run_specialist(sys_prompt, state, quant_data, name)
-        for sys_prompt, name in analysts
+        _run_specialist(sys_prompt, state, quant_data, name) for sys_prompt, name in analysts
     ] + [pattern_analyst_opinion(state, quant_data)]
 
     results = await asyncio.gather(*tasks, return_exceptions=True)

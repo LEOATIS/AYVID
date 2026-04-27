@@ -11,13 +11,31 @@ Implements institutional-grade signal generation using:
 
 The core insight: only trade when multiple independent factors align.
 Higher accuracy comes from extreme selectivity, not more trades.
+
+NOTE: All low-level math primitives (Hurst, RSI, ATR, OU, volume profile,
+trend strength, Bayesian update) live in ``execution_engine.math._primitives``.
+This module re-exports them so the existing public API (``compute_rsi``,
+``compute_atr``, ``compute_hurst_exponent``, …) continues to work, and then
+layers the higher-level ``score_signal`` composite on top.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 import numpy as np
 
+from execution_engine.math._primitives import (
+    bayesian_conviction_update,
+    compute_atr,
+    compute_rsi,
+    compute_trend_strength,
+    compute_volume_profile,
+    estimate_ou_parameters,
+)
+from execution_engine.math._primitives import (
+    compute_hurst as _compute_hurst_primitive,
+)
 from shared.logger import get_logger
 
 log = get_logger("math.signals")
@@ -26,6 +44,7 @@ log = get_logger("math.signals")
 @dataclass
 class SignalScore:
     """Multi-factor composite signal with full decomposition."""
+
     ticker: str
     composite_score: float
     conviction: float
@@ -47,222 +66,30 @@ class SignalScore:
 
 
 def compute_hurst_exponent(series: np.ndarray, max_lag: int = 20) -> float:
-    """Rescaled range (R/S) Hurst exponent.
+    """Public alias retained for backward compatibility.
 
-    H < 0.5 → mean-reverting (tradeable)
-    H ≈ 0.5 → random walk (avoid)
-    H > 0.5 → trending (momentum tradeable)
+    Delegates to the canonical `_primitives.compute_hurst`.
     """
-    n = len(series)
-    if n < max_lag * 2:
-        return 0.5
-
-    lags = range(2, min(max_lag, n // 2))
-    rs_values = []
-    lag_values = []
-
-    for lag in lags:
-        rs_per_segment: list[float] = []
-        num_segments = n // lag
-        for i in range(num_segments):
-            segment = series[i * lag : (i + 1) * lag]
-            mean = np.mean(segment)
-            deviate = np.cumsum(segment - mean)
-            r = np.max(deviate) - np.min(deviate)
-            s = np.std(segment, ddof=1) if np.std(segment, ddof=1) > 0 else 1e-10
-            rs_per_segment.append(r / s)
-        if rs_per_segment:
-            rs_values.append(np.mean(rs_per_segment))
-            lag_values.append(lag)
-
-    if len(rs_values) < 3:
-        return 0.5
-
-    log_lags = np.log(lag_values)
-    log_rs = np.log(np.array(rs_values) + 1e-10)
-
-    try:
-        coeffs = np.polyfit(log_lags, log_rs, 1)
-        return float(np.clip(coeffs[0], 0.0, 1.0))
-    except (np.linalg.LinAlgError, ValueError):
-        return 0.5
+    return _compute_hurst_primitive(series, max_lag=max_lag)
 
 
-def estimate_ou_parameters(
-    prices: np.ndarray, dt_step: float = 1.0 / 252.0,
-) -> tuple[float, float, float]:
-    """Estimate Ornstein-Uhlenbeck process parameters via MLE.
-
-    dX_t = θ(μ - X_t)dt + σ dW_t
-
-    Returns (theta, mu, sigma):
-        theta: mean-reversion speed (higher = faster reversion)
-        mu: long-run equilibrium level
-        sigma: volatility of the process
-    """
-    log_prices = np.log(prices)
-    n = len(log_prices)
-    if n < 10:
-        return 0.0, float(np.mean(log_prices)), 0.2
-
-    x = log_prices[:-1]
-    y = log_prices[1:]
-
-    try:
-        sx = np.sum(x)
-        sy = np.sum(y)
-        sxx = np.sum(x * x)
-        sxy = np.sum(x * y)
-        n_pts = len(x)
-
-        denom = n_pts * sxx - sx * sx
-        if abs(denom) < 1e-12:
-            return 0.0, float(np.mean(log_prices)), 0.2
-
-        a = (n_pts * sxy - sx * sy) / denom
-        b = (sy - a * sx) / n_pts
-
-        if a >= 1.0 or a <= 0.0:
-            return 0.0, float(np.mean(log_prices)), 0.2
-
-        theta = -np.log(a) / dt_step
-        mu = b / (1.0 - a)
-        residuals = y - (a * x + b)
-        sigma_sq = np.var(residuals) * 2.0 * theta / (1.0 - a * a)
-        sigma = float(np.sqrt(max(sigma_sq, 1e-10)))
-
-        return float(max(theta, 0.0)), float(mu), sigma
-    except (ValueError, RuntimeWarning):
-        return 0.0, float(np.mean(log_prices)), 0.2
+# `estimate_ou_parameters`, `compute_rsi`, `compute_atr`,
+# `compute_volume_profile`, `compute_trend_strength`, and
+# `bayesian_conviction_update` are imported verbatim above. They are the
+# public API of this module and are now single-sourced from `_primitives`.
 
 
-def compute_rsi(prices: np.ndarray, period: int = 14) -> float:
-    """Relative Strength Index using Cutler's arithmetic moving average."""
-    if len(prices) < period + 1:
-        return 50.0
-
-    deltas = np.diff(prices[-(period + 1):])
-    gains = np.where(deltas > 0, deltas, 0.0)
-    losses = np.where(deltas < 0, -deltas, 0.0)
-
-    avg_gain = np.mean(gains)
-    avg_loss = np.mean(losses)
-
-    if avg_loss < 1e-10:
-        return 100.0 if avg_gain > 0 else 50.0
-
-    rs = avg_gain / avg_loss
-    return float(100.0 - 100.0 / (1.0 + rs))
-
-
-def compute_atr(
-    highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 14,
-) -> float:
-    """Average True Range — measures volatility independent of direction."""
-    if len(closes) < period + 1:
-        return float(np.mean(highs - lows)) if len(highs) > 0 else 0.0
-
-    tr_values: list[float] = []
-    for i in range(1, len(closes)):
-        tr = max(
-            highs[i] - lows[i],
-            abs(highs[i] - closes[i - 1]),
-            abs(lows[i] - closes[i - 1]),
-        )
-        tr_values.append(tr)
-
-    return float(np.mean(tr_values[-period:]))
-
-
-def compute_volume_profile(volumes: np.ndarray, lookback: int = 20) -> float:
-    """Volume ratio: current volume vs. rolling average.
-
-    > 1.5 = strong volume confirmation
-    < 0.5 = weak conviction, avoid
-    """
-    if len(volumes) < lookback + 1:
-        return 1.0
-    recent = volumes[-1]
-    avg = np.mean(volumes[-(lookback + 1):-1])
-    if avg < 1e-10:
-        return 1.0
-    return float(recent / avg)
-
-
-def compute_trend_strength(prices: np.ndarray, short: int = 10, long: int = 30) -> float:
-    """Directional trend strength, strictly bounded to [-1.0, +1.0].
-
-    Signed σ-normalised MA separation:
-        trend = (MA_short − MA_long) / σ_long
-    Then clipped to [-1, 1]. Used by the orchestrator as a sign-carrying
-    signal (`trend_strength > 0` = up, `< 0` = down). Magnitude only
-    meaningful relative to itself; for absolute trend strength bounded
-    0–100 (ADX-style), call `compute_trend_magnitude`.
-    """
-    if len(prices) < long + 1:
-        return 0.0
-
-    short_ma = float(np.mean(prices[-short:]))
-    long_ma = float(np.mean(prices[-long:]))
-    std = float(np.std(prices[-long:], ddof=1))
-    if std < 1e-10 or not np.isfinite(std):
-        return 0.0
-
-    trend = (short_ma - long_ma) / std
-    if not np.isfinite(trend):
-        return 0.0
-    return float(np.clip(trend, -1.0, 1.0))
-
-
-def compute_trend_magnitude(
-    highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 14,
-) -> float:
-    """Unsigned trend strength on the classical ADX scale, strictly [0, 100].
-
-    Thin wrapper over `regime.compute_adx` that guarantees bounded output
-    for the orchestrator / LLM prompt. Imported lazily to avoid a
-    circular regime ↔ signals dependency when either module is imported
-    in isolation.
-
-    Interpretation:
-        ADX > 25 → trending market
-        ADX ~ 20 → noise floor
-        ADX < 15 → ranging
-    """
-    try:
-        from execution_engine.math.regime import compute_adx
-    except ImportError:
-        return 0.0
-    val = compute_adx(highs, lows, closes, period=period)
-    if not np.isfinite(val):
-        return 0.0
-    return float(np.clip(val, 0.0, 100.0))
-
-
-def bayesian_conviction_update(
-    prior: float,
-    factor_scores: list[tuple[float, float]],
-) -> float:
-    """Bayesian conviction aggregation across independent signal factors.
-
-    Each factor is (likelihood_ratio, weight). The posterior conviction
-    is computed by sequentially applying Bayes' rule:
-        posterior_odds = prior_odds × ∏(likelihood_ratio_i ^ weight_i)
-
-    This avoids naive averaging and properly handles correlated evidence.
-    """
-    if prior <= 0.0 or prior >= 1.0:
-        prior = np.clip(prior, 0.01, 0.99)
-
-    odds = prior / (1.0 - prior)
-
-    for lr, weight in factor_scores:
-        if lr <= 0:
-            continue
-        odds *= lr ** weight
-
-    posterior = odds / (1.0 + odds)
-    return float(np.clip(posterior, 0.0, 1.0))
+__all__ = [
+    "SignalScore",
+    "score_signal",
+    "compute_hurst_exponent",
+    "estimate_ou_parameters",
+    "compute_rsi",
+    "compute_atr",
+    "compute_volume_profile",
+    "compute_trend_strength",
+    "bayesian_conviction_update",
+]
 
 
 def score_signal(
@@ -288,7 +115,7 @@ def score_signal(
     if len(closes) < lookback + 5:
         return None
 
-    returns = np.diff(np.log(closes[-lookback - 1:]))
+    returns = np.diff(np.log(closes[-lookback - 1 :]))
 
     hurst = compute_hurst_exponent(returns)
     theta, mu, sigma = estimate_ou_parameters(closes[-lookback:])
@@ -386,7 +213,14 @@ def score_signal(
     ou_component = min(theta / 5.0, 1.0) * 0.15 if is_mean_reverting else 0.0
     trend_component = min(abs(trend) / 0.5, 1.0) * 0.15 if is_trending else 0.0
 
-    composite = z_component + hurst_component + rsi_component + vol_component + ou_component + trend_component
+    composite = (
+        z_component
+        + hurst_component
+        + rsi_component
+        + vol_component
+        + ou_component
+        + trend_component
+    )
 
     # --- Dynamic ATR-based stops ---
     # Balanced ratio keeps Kelly positive while mean-reversion edge

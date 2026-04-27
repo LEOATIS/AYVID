@@ -1443,3 +1443,13 @@
 .reveal > *:nth-child(3) { animation-delay: .30s; }
 .reveal > *:nth-child(4) { animation-delay: .42s; }
 .reveal > *:nth-child(5) { animation-delay: .54s; }
+
+/* ── Live-shock pipeline motion ──
+   `pipeline-sweep` slides a soft brand highlight across the whole
+   bar on a slow cadence, so even an idle pipeline reads as alive.
+   `pipeline-flow` runs a tighter shimmer inside the connector of
+   the currently-active step for a stronger "in motion" cue. */
+@keyframes pipeline-sweep { 0% { transform: translateX(0); } 100% { transform: translateX(460%); } }
+@keyframes pipeline-flow  { 0% { left: -48px; } 100% { left: 100%; } }
+.pipeline-sweep { animation: pipeline-sweep 4.2s linear infinite; }
+.pipeline-flow  { animation: pipeline-flow  1.2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }

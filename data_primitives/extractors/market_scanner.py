@@ -10,11 +10,10 @@ Scans across all asset classes and world markets to detect:
 
 This feeds directly into the LangGraph causal analysis pipeline.
 """
+
 from __future__ import annotations
 
-import asyncio
 import datetime as dt
-from typing import Any
 
 import numpy as np
 
@@ -44,7 +43,7 @@ class ScanResult:
         self.description = description
         self.price_change_pct = price_change_pct
         self.volume_ratio = volume_ratio
-        self.timestamp = dt.datetime.now(dt.timezone.utc)
+        self.timestamp = dt.datetime.now(dt.UTC)
 
     def to_causal_event(self) -> CausalEvent:
         return CausalEvent(
@@ -56,7 +55,9 @@ class ScanResult:
         )
 
     def __repr__(self) -> str:
-        return f"ScanResult({self.symbol} | {self.event_type.value} | severity={self.severity:.2f})"
+        return (
+            f"ScanResult({self.symbol} | {self.event_type.value} | severity={self.severity:.2f})"
+        )
 
 
 def detect_price_anomaly(
@@ -108,7 +109,7 @@ def detect_volume_spike(
         return None
 
     volumes = np.array([b.volume for b in bars])
-    avg_volume = np.mean(volumes[-lookback - 1:-1])
+    avg_volume = np.mean(volumes[-lookback - 1 : -1])
 
     if avg_volume == 0:
         return None
@@ -232,18 +233,25 @@ async def cross_asset_correlation_scan(
     ]:
         shocks = await scan_universe(data, sigma_threshold=2.0)
         for shock in shocks:
-            shock.asset_class = AssetClass[category_name] if category_name in AssetClass.__members__ else AssetClass.EQUITY
+            shock.asset_class = (
+                AssetClass[category_name]
+                if category_name in AssetClass.__members__
+                else AssetClass.EQUITY
+            )
             results.append(shock)
 
     if len(results) > 3:
         affected_classes = set(r.asset_class for r in results[:10])
         if len(affected_classes) >= 2:
-            results.insert(0, ScanResult(
-                symbol="CROSS_ASSET",
-                asset_class=AssetClass.INDEX,
-                event_type=EventType.SHOCK,
-                severity=max(r.severity for r in results),
-                description=f"Cross-asset contagion: {len(results)} anomalies across {len(affected_classes)} asset classes",
-            ))
+            results.insert(
+                0,
+                ScanResult(
+                    symbol="CROSS_ASSET",
+                    asset_class=AssetClass.INDEX,
+                    event_type=EventType.SHOCK,
+                    severity=max(r.severity for r in results),
+                    description=f"Cross-asset contagion: {len(results)} anomalies across {len(affected_classes)} asset classes",
+                ),
+            )
 
     return results

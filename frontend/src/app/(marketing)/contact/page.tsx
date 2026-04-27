@@ -10,25 +10,25 @@ export const metadata = {
 const CONTACTS: { audience: string; email: string; description: string }[] = [
   {
     audience: "Limited partners",
-    email: "lp@ayvid.com",
+    email: "lp@ayvid.ai",
     description:
       "Allocation enquiries, fund structure questions, and DDQ requests. Expect a response within one business day.",
   },
   {
     audience: "Y Combinator",
-    email: "yc@ayvid.com",
+    email: "yc@ayvid.ai",
     description:
       "S26 batch correspondence and partner-of-the-week conversations. Same-day passphrase to the operations console for verified partners.",
   },
   {
     audience: "Press",
-    email: "press@ayvid.com",
+    email: "press@ayvid.ai",
     description:
       "Quote requests, fact-check enquiries, and embargoed comment. Please give us 48 hours.",
   },
   {
     audience: "Engineering candidates",
-    email: "people@ayvid.com",
+    email: "people@ayvid.ai",
     description:
       "We are hiring quietly. We particularly want infra engineers, ML researchers, and one experienced markets-microstructure engineer.",
   },

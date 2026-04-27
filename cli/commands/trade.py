@@ -1,4 +1,5 @@
 """Trading signals & execution CLI commands."""
+
 from __future__ import annotations
 
 import asyncio
@@ -15,15 +16,18 @@ trade_app = typer.Typer(help="Trading signals & execution", no_args_is_help=True
 @trade_app.command("paper-start")
 def paper_start(
     shadow: bool = typer.Option(
-        False, "--shadow",
+        False,
+        "--shadow",
         help="Run in shadow mode without IB (uses local OHLCV + simulated fills).",
     ),
     equity: float = typer.Option(
-        1_000_000.0, "--equity",
+        1_000_000.0,
+        "--equity",
         help="Starting NLV for shadow mode (ignored in IB mode — pulled from account).",
     ),
     interval: int = typer.Option(
-        60, "--interval",
+        60,
+        "--interval",
         help="Polling interval in seconds (e.g. 60 = once a minute, 86400 = once a day).",
     ),
 ):
@@ -38,6 +42,7 @@ def paper_start(
     Shadow mode runs without any IB connection — useful while IB credentials
     are being provisioned. It still produces the same artifact format.
     """
+
     async def _run():
         from execution_engine.paper_runner import run
         from shared.exceptions import IBKRDisconnectError
@@ -65,7 +70,7 @@ def paper_start(
                     f"[bold red]IB Gateway connection failed[/bold red]\n\n"
                     f"{exc}\n\n"
                     f"Checks:\n"
-                    f"  • IB Gateway / TWS running on {  '127.0.0.1' }:7497 (paper)?\n"
+                    f"  • IB Gateway / TWS running on {'127.0.0.1'}:7497 (paper)?\n"
                     f"  • API enabled in Gateway → Configure → Settings → API?\n"
                     f"  • IB_HOST / IB_PORT / IB_CLIENT_ID set in .env?\n\n"
                     f"Or run shadow mode (no IB needed):\n"
@@ -89,14 +94,12 @@ def paper_status():
 
     eq_path = Path("live/equity_curve.jsonl")
     if not eq_path.exists():
-        console.print("[yellow]No equity curve yet — run 'ayvid trade paper-start' first.[/yellow]")
+        console.print(
+            "[yellow]No equity curve yet — run 'ayvid trade paper-start' first.[/yellow]"
+        )
         return
 
-    rows = [
-        json.loads(line)
-        for line in eq_path.read_text().splitlines()
-        if line.strip()
-    ]
+    rows = [json.loads(line) for line in eq_path.read_text().splitlines() if line.strip()]
     if not rows:
         console.print("[yellow]Equity curve file is empty.[/yellow]")
         return
@@ -126,6 +129,7 @@ def paper_render(
 ):
     """Render the live paper equity curve as a PNG (or SVG fallback)."""
     from pathlib import Path
+
     from execution_engine.paper_runner import render_curve
 
     path = render_curve(out_path=Path(out))
@@ -161,33 +165,160 @@ def execute(
     ticker: str = typer.Argument(help="Ticker to trade"),
     action: str = typer.Argument(help="LONG or SHORT"),
     confidence: float = typer.Option(0.7, help="Signal confidence (0-1)"),
+    alpha_horizon: str = typer.Option(
+        "3rd_order",
+        "--horizon",
+        help="Alpha horizon: 1st_order | 2nd_order | 3rd_order | 4th_order",
+    ),
+    backend_url: str | None = typer.Option(
+        None,
+        "--backend-url",
+        help="FastAPI backend URL. Defaults to $AYVID_BACKEND_URL or "
+        "shared.config.settings.AYVID_BACKEND_URL.",
+    ),
+    api_key: str | None = typer.Option(
+        None,
+        "--api-key",
+        help="X-API-Key header value. Defaults to $AYVID_API_KEY or the "
+        "configured API_KEY. Required when the backend has any "
+        "keys registered.",
+    ),
 ):
-    """Manually execute a paper trade."""
+    """Manually execute a paper trade via the FastAPI backend.
+
+    P0-B: this command submits an intent to the running backend rather
+    than calling ``execute_manual_signal`` in-process. That keeps the
+    manual trade inside the same lifespan as the autopilot — so it hits
+    the same graph-freshness gate, the same sequence-sync gate, and the
+    same kill-switch mmap writer. A direct in-process call would skip
+    all three.
+
+    Usage:
+        ayvid trade execute AAPL LONG --confidence 0.8
+        ayvid trade execute TSLA SHORT --backend-url http://staging:8001
+    """
+    import os
+
+    import httpx
+
+    from cli.exit_codes import (
+        EXIT_BACKEND_AUTH_FAILED,
+        EXIT_BACKEND_TIMEOUT,
+        EXIT_BACKEND_UNREACHABLE,
+        EXIT_DATA_PLANE_DESYNC,
+        EXIT_GENERIC_ERROR,
+        EXIT_USAGE_ERROR,
+    )
+    from shared.config import settings
+
     action = action.upper()
     if action not in ("LONG", "SHORT"):
         console.print("[red]Action must be LONG or SHORT[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(EXIT_USAGE_ERROR)
 
-    async def _run():
-        from backend.services.orchestrator import execute_manual_signal
+    resolved_url = (
+        backend_url or os.environ.get("AYVID_BACKEND_URL") or settings.AYVID_BACKEND_URL
+    ).rstrip("/")
+
+    resolved_key = api_key or os.environ.get("AYVID_API_KEY") or settings.API_KEY
+
+    endpoint = f"{resolved_url}/api/v1/trade/manual"
+    headers = {"Content-Type": "application/json"}
+    if resolved_key:
+        headers["X-API-Key"] = resolved_key
+
+    payload = {
+        "ticker": ticker,
+        "action": action,
+        "confidence": confidence,
+        "alpha_horizon": alpha_horizon,
+    }
+
+    console.print(
+        f"\n[bold]Submitting:[/bold] {action} {ticker} "
+        f"(confidence={confidence:.0%}, horizon={alpha_horizon})\n"
+        f"[dim]→ POST {endpoint}[/dim]\n"
+    )
+
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            response = client.post(endpoint, headers=headers, json=payload)
+    except httpx.ConnectError as exc:
         console.print(
-            f"\n[bold]Executing: {action} {ticker} (confidence={confidence:.0%})[/bold]\n"
+            Panel(
+                f"[bold red]Cannot reach backend at {endpoint}[/bold red]\n\n"
+                f"{exc}\n\n"
+                f"Checks:\n"
+                f"  • Is the FastAPI service running? "
+                f"[cyan]ayvid system serve[/cyan]\n"
+                f"  • Is $AYVID_BACKEND_URL correct?\n"
+                f"  • If running remotely, is the port reachable?",
+                title="[bold]Connection Error[/bold]",
+                border_style="red",
+            )
         )
-        result = await execute_manual_signal(ticker, action, confidence)
-        console.print(Panel(
-            f"  Status: [bold]{result.get('status', 'unknown')}[/bold]\n"
-            f"  Ticker: {result.get('ticker', ticker)}\n"
-            f"  Action: {result.get('action', action)}",
-            title="[bold]Trade Result[/bold]",
-            border_style="green" if result.get("status") == "FILLED" else "red",
-        ))
+        raise typer.Exit(code=EXIT_BACKEND_UNREACHABLE)
+    except httpx.TimeoutException as exc:
+        console.print(f"[red]Backend timeout: {exc}[/red]")
+        raise typer.Exit(code=EXIT_BACKEND_TIMEOUT)
+    except httpx.HTTPError as exc:
+        console.print(f"[red]HTTP transport error: {exc}[/red]")
+        raise typer.Exit(code=EXIT_BACKEND_UNREACHABLE)
 
-    asyncio.run(_run())
+    if response.status_code == 403:
+        console.print(
+            Panel(
+                "[bold red]Authentication rejected (HTTP 403)[/bold red]\n\n"
+                "The backend has API keys registered but the CLI sent none "
+                "or an invalid one. Set AYVID_API_KEY in your shell env or "
+                "pass --api-key.",
+                title="[bold]Auth Error[/bold]",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(code=EXIT_BACKEND_AUTH_FAILED)
+
+    if response.status_code == 409:
+        # Data plane desync (GraphStaleError / SequenceValidationError)
+        console.print(
+            Panel(
+                f"[bold red]Trade rejected — data plane desync[/bold red]\n\n"
+                f"{response.json().get('detail', response.text)}\n\n"
+                f"The autopilot registry is out of sync across sources. "
+                f"Wait for the next ingestion cycle or run "
+                f"[cyan]ayvid system health[/cyan] to inspect.",
+                title="[bold]Rejected[/bold]",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(code=EXIT_DATA_PLANE_DESYNC)
+
+    if response.status_code >= 400:
+        try:
+            detail = response.json().get("detail", response.text)
+        except Exception:
+            detail = response.text
+        console.print(f"[red]Backend error HTTP {response.status_code}: {detail}[/red]")
+        raise typer.Exit(code=EXIT_GENERIC_ERROR)
+
+    result = response.json()
+    status = str(result.get("status", "unknown")).upper()
+    console.print(
+        Panel(
+            f"  Status: [bold]{status}[/bold]\n"
+            f"  Ticker: {result.get('ticker', ticker)}\n"
+            f"  Direction: {result.get('direction', action)}\n"
+            f"  Intent ID: {result.get('intent_id', '?')}",
+            title="[bold]Trade Result[/bold]",
+            border_style="green" if status == "FILLED" else "yellow",
+        )
+    )
 
 
 @trade_app.command("risk")
 def risk():
     """Display current risk metrics."""
+
     async def _run():
         from backend.services.orchestrator import refresh_risk
         from cli.widgets.portfolio import render_risk
@@ -205,10 +336,12 @@ def sizing(
     equity: float = typer.Option(1_000_000, help="Portfolio equity"),
 ):
     """Calculate Kelly Criterion position sizing for a ticker."""
+
     async def _run():
         from data_primitives.extractors.openbb_client import fetch_ohlcv
         from data_primitives.loaders.hopsworks_sync import (
-            compute_rolling_volatility, compute_expected_returns,
+            compute_expected_returns,
+            compute_rolling_volatility,
         )
         from execution_engine.math.kelly import optimal_allocation_for_signal
 
@@ -225,20 +358,22 @@ def sizing(
             current_price=price,
         )
 
-        console.print(Panel(
-            f"  Ticker:          [bold]{ticker}[/bold]\n"
-            f"  Current Price:   ${price:,.2f}\n"
-            f"  30d Volatility:  {vol:.2%}\n"
-            f"  Expected Return: {ret:.2%}\n"
-            f"  Win Probability: {confidence:.0%}\n"
-            f"  ─────────────────────────────\n"
-            f"  Kelly Fraction:  [bold]{frac:.4f}[/bold] (Half-Kelly)\n"
-            f"  Share Count:     [bold]{shares:,}[/bold]\n"
-            f"  Notional Value:  [bold]${shares * price:,.2f}[/bold]\n"
-            f"  % of Portfolio:  {frac:.2%}",
-            title="[bold]Kelly Criterion Sizing[/bold]",
-            border_style="blue",
-        ))
+        console.print(
+            Panel(
+                f"  Ticker:          [bold]{ticker}[/bold]\n"
+                f"  Current Price:   ${price:,.2f}\n"
+                f"  30d Volatility:  {vol:.2%}\n"
+                f"  Expected Return: {ret:.2%}\n"
+                f"  Win Probability: {confidence:.0%}\n"
+                f"  ─────────────────────────────\n"
+                f"  Kelly Fraction:  [bold]{frac:.4f}[/bold] (Half-Kelly)\n"
+                f"  Share Count:     [bold]{shares:,}[/bold]\n"
+                f"  Notional Value:  [bold]${shares * price:,.2f}[/bold]\n"
+                f"  % of Portfolio:  {frac:.2%}",
+                title="[bold]Kelly Criterion Sizing[/bold]",
+                border_style="blue",
+            )
+        )
 
     asyncio.run(_run())
 

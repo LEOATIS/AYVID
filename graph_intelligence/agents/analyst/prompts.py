@@ -72,6 +72,9 @@ SHOCK SOURCE: {shock_ticker}
 TARGET TICKER: {target_ticker}
 PROPOSED DIRECTION: {direction}
 
+## RESEARCHER CONSENSUS (bull/bear debate facilitator verdict)
+{researcher_consensus_block}
+
 QUANTITATIVE DATA:
 {quant_data}
 
@@ -83,4 +86,7 @@ SUPPLY CHAIN TOPOLOGY:
 
 Provide your deep-dive analysis as JSON. Be specific and quantitative.
 State your thesis, confidence (0.0-1.0), and recommended direction (LONG/SHORT/HOLD).
+Treat the researcher consensus above as ONE additional input, not as a
+verdict — if your specialty-specific analysis disagrees with the
+facilitator, say so explicitly and cite the specific evidence.
 If you disagree with the proposed direction, explain why with evidence."""

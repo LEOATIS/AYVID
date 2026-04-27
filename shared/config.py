@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     NEO4J_DATABASE: str = "neo4j"
 
     @model_validator(mode="after")
-    def _resolve_neo4j_user(self) -> "Settings":
+    def _resolve_neo4j_user(self) -> Settings:
         if not self.NEO4J_USER and self.NEO4J_USERNAME:
             self.NEO4J_USER = self.NEO4J_USERNAME
         elif not self.NEO4J_USER:
@@ -52,7 +52,7 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _validate_live_routing(self) -> "Settings":
+    def _validate_live_routing(self) -> Settings:
         # Safety: if we're about to route orders to IB, the account must be a
         # paper account (DU* / DUQ*) unless LIVE_TRADING is explicitly enabled.
         # This prevents a silent foot-gun where someone flips PAPER_TRADING=false
@@ -96,11 +96,111 @@ class Settings(BaseSettings):
     # for the same account hangs forever (IB never resends accountDownloadEnd).
     IB_SUBSCRIBE_ACCOUNT_UPDATES: bool = False
 
+    # --- IB Client Portal REST (independent kill-switch flatten path) ---
+    # The C++ watchdog calls these endpoints DIRECTLY when the kill
+    # switch fires, so a broker-side disaster (Python alive but
+    # mis-behaving, bracket stops cancelled) still results in a
+    # flattened book. See execution_engine/watchdog/kill_switch.cpp.
+    IB_CLIENT_PORTAL_URL: str = "https://localhost:5000/v1/api"
+    IB_CLIENT_PORTAL_CAFILE: str | None = (
+        None  # PEM bundle; unset → skip peer verify (self-signed default)
+    )
+    IB_CLIENT_PORTAL_COOKIE: str | None = None  # "IBKR=...; SESSION=..." cookie header
+
     # --- Risk Limits ---
     MAX_DRAWDOWN_PCT: float = 3.0
     KELLY_FRACTION: float = 0.5
     MAX_POSITION_PCT: float = 5.0
     PRE_MARKET_DELAY_MINUTES: int = 15
+    # Stop-loss / take-profit percentages applied by the bracket-order
+    # builder in execution_engine/broker/orders.py. Take-profit is
+    # bumped 2× for 3rd/4th-order signals where the alpha is slower
+    # to materialise. Override per-deployment via env if a different
+    # market regime needs tighter or wider stops.
+    # Batch-1/B: the fixed-pct bracket knobs below are now the FALLBACK
+    # only — used when no OHLCV history is available for ATR
+    # computation (e.g. pre-market submissions for a freshly-listed
+    # ticker). Under normal operation the bracket is ATR-scaled via the
+    # `compute_bracket_levels` helper in `execution_engine.broker.orders`.
+    BRACKET_STOP_LOSS_PCT: float = 0.03
+    BRACKET_TAKE_PROFIT_PCT: float = 0.03
+    BRACKET_TAKE_PROFIT_PCT_LONG_HORIZON: float = 0.06
+
+    # Batch-1/B ATR-scaled bracket parameters.
+    # stop_distance = clamp(ATR_STOP_MULTIPLIER * ATR(14) / entry,
+    #                       MIN_STOP_PCT, MAX_STOP_PCT)
+    # tp_distance   = BRACKET_TARGET_R * stop_distance
+    # Tier-3 shocks take a tighter stop (faster invalidation) and a
+    # lower target R because the alpha decays quickly; 3rd/4th order
+    # structural trades get a more generous target R to let the
+    # thesis play out through compounding noise.
+    ATR_STOP_MULTIPLIER: float = 1.75  # K_stop — 1.5-2.0 standard Chandelier
+    MIN_STOP_PCT: float = 0.005  # 50 bps absolute floor
+    MAX_STOP_PCT: float = 0.06  # 6% hard cap (noise = 2.5σ day)
+    BRACKET_TARGET_R: float = 2.0  # default R-ratio for TP
+    BRACKET_TARGET_R_LONG_HORIZON: float = 3.0  # 3rd/4th order: more room
+    BRACKET_TARGET_R_TIER3_SHOCK: float = 1.5  # take liquidity fast
+
+    # --- Conviction ladder ----------------------------------------
+    # Single source of truth for every "is this opinion strong enough
+    # to trade?" gate. The previous code had 5+ different floors
+    # scattered across files (0.55 / 0.62 / 0.72 / 0.78 / 0.90) with
+    # no documented hierarchy. These four fields are that hierarchy,
+    # in strictly increasing order of required belief:
+    #
+    #   SUPERVISOR_MIN_CONFIDENCE < BACKTEST_MIN_CONVICTION < MIN_FACTOR_SCORE·
+    #     < MIN_CONVICTION_AUDITOR < MIN_CONVICTION_SUPERMAJORITY
+    #     < MIN_CONVICTION_CAUSAL_OVERRIDE
+    #
+    # MIN_FACTOR_SCORE is orthogonal (independent-factor confirmation
+    # rather than Bayesian conviction) but must be cleared on every
+    # trade path.
+    SUPERVISOR_MIN_CONFIDENCE: float = 0.55  # LangGraph should_continue retry gate
+    SUPERVISOR_MAX_ITERATIONS: int = 4  # P2-30: hard cap on retry loops (was a magic const)
+    BACKTEST_MIN_CONVICTION: float = 0.55  # run_backtest / walk-forward default
+    MIN_CONVICTION_TRADE: float = 0.62  # orchestrator unanimous trade
+    MIN_CONVICTION_AUDITOR: float = 0.72  # auditor approval floor
+    MIN_CONVICTION_SUPERMAJORITY: float = 0.78  # 3-of-4 analyst supermajority
+    MIN_CONVICTION_CAUSAL_OVERRIDE: float = 0.90  # long-vol / grind-up override
+
+    MIN_FACTOR_SCORE: float = 0.30  # independent-factor confirmation
+    MIN_R_GLOBAL: float = 1.5  # minimum expected reward-to-risk
+    EPISTEMIC_DIVERGENCE_THRESHOLD: float = 0.25  # JSD gate on analyst debate
+    VRP_RICH_THRESHOLD: float = 0.06  # IV-RV "rich premium" block
+    CAUSAL_OVERRIDE_CONVICTION: float = 0.90  # causal_conviction that overrides blocklists
+    EV_HURDLE_MULTIPLE: float = 4.0  # trade must clear EV_HURDLE × round-trip cost
+
+    # --- Regime thresholds (volatility / macro buckets) -----------
+    VIX_CRISIS_THRESHOLD: float = 30.0  # VIX above → crisis regime (protective puts/calls)
+    VIX_ELEVATED_THRESHOLD: float = 25.0  # VIX above → mean-reversion-favoured
+    VIX_CALM_THRESHOLD: float = 15.0  # VIX below → trend-favoured
+
+    # --- Exit targets --------------------------------------------
+    ATR_STOP_LOSS_MULTIPLIER: float = 2.0
+    ATR_TAKE_PROFIT_MULTIPLIER: float = 1.5  # balanced TP/SL — see signals.score_signal
+
+    # --- IB session windows (America/New_York) -------------------
+    RTH_OPEN_HOUR: int = 9
+    RTH_OPEN_MINUTE: int = 30
+    RTH_CLOSE_HOUR: int = 16
+    RTH_CLOSE_MINUTE: int = 0
+    SAFE_OPEN_HOUR: int = 9  # skip the first 15 min of overnight-gap noise
+    SAFE_OPEN_MINUTE: int = 45
+    PRE_MARKET_LIMIT_OPEN_HOUR: int = 7  # earliest pre-market entry window
+    PRE_MARKET_LIMIT_OPEN_MINUTE: int = 0
+
+    # --- Passive-limit routing -----------------------------------
+    PASSIVE_PEG_TIMEOUT_SEC: int = 30  # cancel passive REL if unfilled
+    PASSIVE_PEG_POLL_INTERVAL_SEC: int = 2
+
+    # --- Ingestion cadence ---------------------------------------
+    NER_BATCH_SIZE: int = 200  # news items per LLM NER batch
+    NER_CONCURRENCY: int = 25  # parallel LLM calls within a batch
+    TIER2_CYCLE_INTERVAL: int = 4  # run non-critical tickers every N cycles
+
+    # --- Universe / screener -------------------------------------
+    SCREEN_TOP_N: int = 50  # equities retained by multi-factor screen
+    SCREEN_LOOKBACK_DAYS: int = 120  # OHLCV history used by the screener
 
     # --- Application ---
     LOG_LEVEL: str = "INFO"
@@ -110,6 +210,37 @@ class Settings(BaseSettings):
     AUTO_EXECUTE: bool = False
     # Hard opt-in to real-money (live, non-paper) IB trading. Keep False.
     LIVE_TRADING_CONFIRMED: bool = False
+    # Vision-LLM PatternAgent toggle. Default OFF so the hot ingestion
+    # path never pays the chart-render + vision-LLM cost. When True,
+    # ``classify_pattern`` renders an SVG and (in the future, when an
+    # SVG-capable vision model is wired) asks for a pattern label.
+    # Leaving this off keeps backend startup fast and avoids the
+    # multi-second Matplotlib font-cache build that used to block
+    # every subprocess the pattern module touched.
+    PATTERN_AGENT_ENABLED: bool = False
+
+    # --- CLI → backend routing (P0-B) ---
+    # Base URL for the running FastAPI app. `ayvid trade execute` POSTs
+    # to {AYVID_BACKEND_URL}/api/v1/trade/manual so manual trades hit
+    # the exact same graph-freshness gate + seq registry + kill-switch
+    # lifespan as the autopilot path. Override via env to talk to a
+    # staging or production deployment.
+    AYVID_BACKEND_URL: str = "http://127.0.0.1:8001"
+
+    # --- Auth + CORS (P1-15) ---
+    # When True, `verify_api_key` NEVER degrades to a dev-mode pass-
+    # through: requests without a valid X-API-Key header are rejected
+    # with 403. Production deployments MUST set this. Tests and local
+    # dev leave it False so they work without registering keys.
+    AYVID_REQUIRE_AUTH: bool = False
+    # Comma-separated list of allowed origins for CORS. Default `*`
+    # preserves existing dev behaviour; production should set this to
+    # the explicit frontend origin (and remove the wildcard).
+    AYVID_ALLOWED_ORIGINS: str = "*"
+    # When False (default) browsers are NOT sent `credentials: include`
+    # on CORS requests — this is the safer posture because `*` origin
+    # + credentials is rejected by the CORS spec anyway.
+    AYVID_CORS_ALLOW_CREDENTIALS: bool = False
 
 
 settings = Settings()

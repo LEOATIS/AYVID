@@ -8,15 +8,19 @@ Implements tiered ingestion:
   Tier 1 (supply-chain-critical): Full-frequency ingestion every cycle
   Tier 2 (broader universe): Reduced-frequency ingestion (every N cycles)
 """
+
 from __future__ import annotations
 
 import asyncio
 import datetime as dt
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from shared.config import settings
 from shared.logger import get_logger
 from shared.types import CausalEvent, TradeSignal
+
+if TYPE_CHECKING:
+    from execution_engine.signal_book import PrecomputedSignal
 
 log = get_logger("pipeline.worker")
 
@@ -25,9 +29,9 @@ _last_cycle: dt.datetime | None = None
 _cycle_count = 0
 _cycle_results: list[dict[str, Any]] = []
 
-_NER_BATCH_SIZE = 200
-_NER_CONCURRENCY = 25
-_TIER2_CYCLE_INTERVAL = 4
+_NER_BATCH_SIZE: int = settings.NER_BATCH_SIZE
+_NER_CONCURRENCY: int = settings.NER_CONCURRENCY
+_TIER2_CYCLE_INTERVAL: int = settings.TIER2_CYCLE_INTERVAL
 
 
 async def _build_tiered_watchlists() -> tuple[list[str], list[str]]:
@@ -64,9 +68,25 @@ async def _build_tiered_watchlists() -> tuple[list[str], list[str]]:
 def _get_fallback_watchlist() -> list[str]:
     """Fallback supply-chain-critical watchlist when universe builder fails."""
     return [
-        "TSM", "NVDA", "AAPL", "ASML", "AMZN", "MSFT", "GOOG",
-        "AMD", "INTC", "QCOM", "TSLA", "BA", "SHEL", "BHP",
-        "005930.KS", "2317.TW", "AMKBY", "META", "AVGO",
+        "TSM",
+        "NVDA",
+        "AAPL",
+        "ASML",
+        "AMZN",
+        "MSFT",
+        "GOOG",
+        "AMD",
+        "INTC",
+        "QCOM",
+        "TSLA",
+        "BA",
+        "SHEL",
+        "BHP",
+        "005930.KS",
+        "2317.TW",
+        "AMKBY",
+        "META",
+        "AVGO",
     ]
 
 
@@ -118,13 +138,15 @@ async def run_ingestion_cycle(
     result["tier2_size"] = len(tier2) if is_tier2_cycle else 0
 
     if is_tier2_cycle:
-        log.info(f"[Cycle {cycle_id}] Tier 2 cycle — ingesting {len(active_watchlist)} total tickers")
+        log.info(
+            f"[Cycle {cycle_id}] Tier 2 cycle — ingesting {len(active_watchlist)} total tickers"
+        )
 
     # -- Step 1: Fetch News (OpenBB + Reddit + StockTwits + Finnhub) ----
     all_news = []
     try:
-        from data_primitives.extractors.openbb_client import fetch_world_news
         from data_primitives.extractors.news_scraper import scrape_news_for_tickers
+        from data_primitives.extractors.openbb_client import fetch_world_news
 
         fetch_tasks: list = [
             fetch_world_news(limit=50),
@@ -133,12 +155,14 @@ async def run_ingestion_cycle(
 
         try:
             from data_primitives.extractors.reddit_client import fetch_reddit_batch
+
             fetch_tasks.append(fetch_reddit_batch(active_watchlist[:20], limit_per=5))
         except ImportError:
             pass
 
         try:
             from data_primitives.extractors.finnhub_client import fetch_finnhub_news
+
             for t in active_watchlist[:10]:
                 fetch_tasks.append(fetch_finnhub_news(t, days_back=3))
         except ImportError:
@@ -167,7 +191,7 @@ async def run_ingestion_cycle(
 
         total_batches = (len(all_news) + _NER_BATCH_SIZE - 1) // _NER_BATCH_SIZE if all_news else 0
         for batch_idx, batch_start in enumerate(range(0, len(all_news), _NER_BATCH_SIZE)):
-            batch = all_news[batch_start:batch_start + _NER_BATCH_SIZE]
+            batch = all_news[batch_start : batch_start + _NER_BATCH_SIZE]
             log.info(
                 f"[Cycle {cycle_id}] NER batch {batch_idx + 1}/{total_batches} "
                 f"({len(batch)} items, concurrency={_NER_CONCURRENCY})"
@@ -176,7 +200,9 @@ async def run_ingestion_cycle(
             events.extend(batch_events)
 
         result["events_created"] = len(events)
-        log.info(f"[Cycle {cycle_id}] NER produced {len(events)} events from {len(all_news)} news items")
+        log.info(
+            f"[Cycle {cycle_id}] NER produced {len(events)} events from {len(all_news)} news items"
+        )
     except Exception as exc:
         result["errors"].append(f"NER pipeline: {exc}")
         log.error(f"[Cycle {cycle_id}] NER pipeline failed: {exc}")
@@ -202,7 +228,9 @@ async def run_ingestion_cycle(
 
         bar_counts = await ingest_market_data(active_watchlist)
         result["bars_ingested"] = sum(bar_counts.values())
-        log.info(f"[Cycle {cycle_id}] Ingested {result['bars_ingested']} bars for {len(active_watchlist)} tickers")
+        log.info(
+            f"[Cycle {cycle_id}] Ingested {result['bars_ingested']} bars for {len(active_watchlist)} tickers"
+        )
     except Exception as exc:
         result["errors"].append(f"Market data: {exc}")
         log.error(f"[Cycle {cycle_id}] Market data ingestion failed: {exc}")
@@ -226,6 +254,7 @@ async def run_ingestion_cycle(
                 result["shock_overrides"] = override_results
 
                 from graph_intelligence.pipeline import run_causal_analysis
+
                 for ticker in shock_tickers:
                     ticker_events = [e for e in events if e.source_node == ticker]
                     signal = await run_causal_analysis(
@@ -245,13 +274,16 @@ async def run_ingestion_cycle(
     try:
         from backend.api.sse.streamer import publish_event
 
-        await publish_event("cycle_complete", {
-            "cycle_id": cycle_id,
-            "news": result["news_fetched"],
-            "events": result["events_created"],
-            "signals": result["signals_generated"],
-            "tier2_active": is_tier2_cycle,
-        })
+        await publish_event(
+            "cycle_complete",
+            {
+                "cycle_id": cycle_id,
+                "news": result["news_fetched"],
+                "events": result["events_created"],
+                "signals": result["signals_generated"],
+                "tier2_active": is_tier2_cycle,
+            },
+        )
         for signal in signals:
             await publish_event("trade_signal", signal.model_dump(mode="json"))
     except Exception as exc:
@@ -271,6 +303,7 @@ async def run_ingestion_cycle(
     if getattr(settings, "AUTO_EXECUTE", False):
         try:
             from backend.services.orchestrator import auto_execute_from_book
+
             executed_signals = await auto_execute_from_book()
             auto_executed = len(executed_signals)
             result["auto_executed"] = auto_executed
@@ -308,37 +341,40 @@ async def pre_compute_signals(equity_tickers: list[str] | None = None) -> int:
     Returns the number of signals written to the book.
     """
     import time
+
     import numpy as np
-    from execution_engine.signal_book import get_signal_book, PrecomputedSignal
-    from execution_engine.math.regime import compute_regime_fingerprint
+
+    from execution_engine.math.regime import (
+        classify_trend,
+        classify_volatility,
+        compute_regime_fingerprint,
+    )
+    from execution_engine.math.signals import (
+        compute_atr,
+        compute_hurst_exponent,
+        compute_rsi,
+        compute_trend_strength,
+        compute_volume_profile,
+    )
+    from execution_engine.signal_book import PrecomputedSignal, get_signal_book
     from graph_intelligence.agents.strategy_orchestrator import (
-        INDEX_FUTURES_SPECS,
         TRADEABLE_INDEX_SYMBOLS,
         MarketContext,
         rule_based_orchestrate,
     )
-    from execution_engine.math.signals import (
-        compute_hurst_exponent,
-        compute_rsi,
-        compute_atr,
-        compute_trend_strength,
-        compute_volume_profile,
-    )
-    from execution_engine.math.regime import classify_volatility, classify_trend
 
     book = get_signal_book()
     t0 = time.perf_counter()
     computed = 0
 
-    all_tickers: list[tuple[str, str]] = [
-        (sym, "INDEX") for sym in TRADEABLE_INDEX_SYMBOLS
-    ]
+    all_tickers: list[tuple[str, str]] = [(sym, "INDEX") for sym in TRADEABLE_INDEX_SYMBOLS]
     if equity_tickers:
         all_tickers.extend((t, "EQUITY") for t in equity_tickers[:50])
 
     for ticker, asset_class in all_tickers:
         try:
             from data_primitives.extractors.openbb_client import fetch_ohlcv
+
             bars = await fetch_ohlcv(ticker, days=120)
             if len(bars) < 30:
                 continue
@@ -348,7 +384,9 @@ async def pre_compute_signals(equity_tickers: list[str] | None = None) -> int:
             lows = np.array([b.low for b in bars])
             volumes = np.array([b.volume for b in bars], dtype=float)
 
-            log_returns = np.diff(np.log(closes[-31:])) if len(closes) > 31 else np.diff(np.log(closes))
+            log_returns = (
+                np.diff(np.log(closes[-31:])) if len(closes) > 31 else np.diff(np.log(closes))
+            )
             hurst = compute_hurst_exponent(log_returns)
             rsi = compute_rsi(closes, 14)
             atr_val = compute_atr(highs, lows, closes, 14)
@@ -433,8 +471,13 @@ def _detect_shock_tickers(events: list[CausalEvent]) -> list[str]:
     """Identify tickers experiencing high-confidence shock events."""
     from shared.types import EventType
 
-    shock_types = {EventType.SHOCK, EventType.GEOPOLITICAL, EventType.REGULATORY,
-                   EventType.COMMODITY_SHOCK, EventType.FX_SHOCK}
+    shock_types = {
+        EventType.SHOCK,
+        EventType.GEOPOLITICAL,
+        EventType.REGULATORY,
+        EventType.COMMODITY_SHOCK,
+        EventType.FX_SHOCK,
+    }
 
     ticker_scores: dict[str, float] = {}
     for event in events:
@@ -472,6 +515,7 @@ async def emergency_recompute(
     executing on a stale, pre-shock cache.
     """
     import time
+
     from execution_engine.signal_book import get_signal_book
 
     book = get_signal_book()
@@ -492,15 +536,12 @@ async def emergency_recompute(
             elapsed_ms = (time.perf_counter() - t0) * 1000
             results[ticker] = f"upgraded in {elapsed_ms:.0f}ms"
             log.info(
-                f"SHOCK OVERRIDE COMPLETE: {ticker} — "
-                f"fresh signal in book ({elapsed_ms:.0f}ms)"
+                f"SHOCK OVERRIDE COMPLETE: {ticker} — fresh signal in book ({elapsed_ms:.0f}ms)"
             )
         except Exception as exc:
             elapsed_ms = (time.perf_counter() - t0) * 1000
             results[ticker] = f"failed: {exc}"
-            log.error(
-                f"SHOCK OVERRIDE FAILED: {ticker} — {exc} ({elapsed_ms:.0f}ms)"
-            )
+            log.error(f"SHOCK OVERRIDE FAILED: {ticker} — {exc} ({elapsed_ms:.0f}ms)")
         finally:
             book.clear_override_pending(ticker)
 
@@ -527,14 +568,10 @@ async def fire_emergency_recompute_background(
         book.invalidate(ticker, reason=trigger)
         book.mark_override_pending(ticker)
 
-    task = asyncio.create_task(
-        emergency_recompute(shocked_tickers, events, trigger)
-    )
+    task = asyncio.create_task(emergency_recompute(shocked_tickers, events, trigger))
     for ticker in shocked_tickers:
         _emergency_tasks[ticker] = task
-    log.warning(
-        f"Background emergency recompute fired for {shocked_tickers}"
-    )
+    log.warning(f"Background emergency recompute fired for {shocked_tickers}")
 
 
 def _analyze_shock_events(
@@ -561,8 +598,10 @@ def _analyze_shock_events(
         ticker_events = events
 
     bearish_types = {
-        EventType.SHOCK, EventType.GEOPOLITICAL,
-        EventType.REGULATORY, EventType.FX_SHOCK,
+        EventType.SHOCK,
+        EventType.GEOPOLITICAL,
+        EventType.REGULATORY,
+        EventType.FX_SHOCK,
     }
     bullish_types = {EventType.RECOVERY}
     ambiguous_types = {EventType.COMMODITY_SHOCK, EventType.MACRO, EventType.EARNINGS}
@@ -584,15 +623,47 @@ def _analyze_shock_events(
         elif ev.event_type in ambiguous_types:
             summary_lower = ev.compressed_summary.lower()
             negative_keywords = {
-                "crash", "plunge", "decline", "tariff", "sanction", "war",
-                "default", "bankrupt", "layoff", "recall", "shortage",
-                "downgrade", "sell", "dump", "collapse", "fear", "panic",
-                "loss", "miss", "miss", "cut", "suspend", "halt",
+                "crash",
+                "plunge",
+                "decline",
+                "tariff",
+                "sanction",
+                "war",
+                "default",
+                "bankrupt",
+                "layoff",
+                "recall",
+                "shortage",
+                "downgrade",
+                "sell",
+                "dump",
+                "collapse",
+                "fear",
+                "panic",
+                "loss",
+                "miss",
+                "miss",
+                "cut",
+                "suspend",
+                "halt",
             }
             positive_keywords = {
-                "surge", "rally", "beat", "upgrade", "grow", "expand",
-                "deal", "approve", "launch", "break", "record", "gain",
-                "profit", "dividend", "buyback", "recovery",
+                "surge",
+                "rally",
+                "beat",
+                "upgrade",
+                "grow",
+                "expand",
+                "deal",
+                "approve",
+                "launch",
+                "break",
+                "record",
+                "gain",
+                "profit",
+                "dividend",
+                "buyback",
+                "recovery",
             }
             neg_hits = sum(1 for kw in negative_keywords if kw in summary_lower)
             pos_hits = sum(1 for kw in positive_keywords if kw in summary_lower)
@@ -650,27 +721,31 @@ async def _emergency_recompute_single(
     complete causal analysis is available.
     """
     import numpy as np
-    from execution_engine.signal_book import get_signal_book, PrecomputedSignal
-    from execution_engine.math.regime import compute_regime_fingerprint
+
+    from data_primitives.extractors.openbb_client import fetch_ohlcv
+    from execution_engine.math.regime import (
+        classify_trend,
+        classify_volatility,
+        compute_regime_fingerprint,
+    )
+    from execution_engine.math.signals import (
+        compute_atr,
+        compute_hurst_exponent,
+        compute_rsi,
+        compute_trend_strength,
+        compute_volume_profile,
+    )
+    from execution_engine.signal_book import PrecomputedSignal, get_signal_book
     from graph_intelligence.agents.strategy_orchestrator import (
         MarketContext,
         rule_based_orchestrate,
     )
-    from execution_engine.math.signals import (
-        compute_hurst_exponent,
-        compute_rsi,
-        compute_atr,
-        compute_trend_strength,
-        compute_volume_profile,
-    )
-    from execution_engine.math.regime import classify_volatility, classify_trend
-    from data_primitives.extractors.openbb_client import fetch_ohlcv
 
     book = get_signal_book()
 
     # --- Shock event analysis (news-aware, not price-aware) ---
-    is_shock, shock_source, shock_magnitude, shock_direction = (
-        _analyze_shock_events(ticker, events or [])
+    is_shock, shock_source, shock_magnitude, shock_direction = _analyze_shock_events(
+        ticker, events or []
     )
 
     # --- Fetch OHLCV for technical context ---
@@ -684,10 +759,7 @@ async def _emergency_recompute_single(
     lows = np.array([b.low for b in bars])
     volumes = np.array([b.volume for b in bars], dtype=float)
 
-    log_returns = (
-        np.diff(np.log(closes[-31:])) if len(closes) > 31
-        else np.diff(np.log(closes))
-    )
+    log_returns = np.diff(np.log(closes[-31:])) if len(closes) > 31 else np.diff(np.log(closes))
     hurst = compute_hurst_exponent(log_returns)
     rsi = compute_rsi(closes, 14)
     atr_val = compute_atr(highs, lows, closes, 14)
@@ -743,7 +815,7 @@ async def _emergency_recompute_single(
     # If a bearish shock hit the wire and the orchestrator says LONG
     # (because RSI/EMA still look calm), override to HOLD.
     if is_shock and decision.action == "EXECUTE" and shock_direction != "HOLD":
-        technicals_agree = (decision.direction == shock_direction)
+        technicals_agree = decision.direction == shock_direction
         shock_is_strong = abs(shock_magnitude) >= 0.03
 
         if not technicals_agree and shock_is_strong:
@@ -775,15 +847,20 @@ async def _emergency_recompute_single(
                 expected_r=0.0,
                 min_r=0.0,
                 entry_price_at_compute=price,
+                tier3_shock=True,
             )
             book.upsert(sig)
             log.info(
-                f"Emergency fast pass: {ticker} -> HOLD "
-                f"(shock safety net, awaiting LLM pass)"
+                f"Emergency fast pass: {ticker} -> HOLD (shock safety net, awaiting LLM pass)"
             )
 
             await _run_full_llm_pass(
-                ticker, events, trigger, sig, regime_fp, price,
+                ticker,
+                events,
+                trigger,
+                sig,
+                regime_fp,
+                price,
             )
             return
 
@@ -810,6 +887,7 @@ async def _emergency_recompute_single(
         min_r=decision.min_r,
         entry_price_at_compute=price,
         second_leg=decision.second_leg or {},
+        tier3_shock=True,
     )
     book.upsert(sig)
     log.info(
@@ -835,7 +913,7 @@ async def _run_full_llm_pass(
     if not events:
         return
 
-    from execution_engine.signal_book import get_signal_book, PrecomputedSignal
+    from execution_engine.signal_book import PrecomputedSignal, get_signal_book
 
     book = get_signal_book()
     ticker_events = [e for e in events if e.source_node == ticker]
@@ -863,10 +941,7 @@ async def _run_full_llm_pass(
                 expiry_date="",
                 stop_loss_pct=fast_pass_sig.stop_loss_pct,
                 take_profit_pct=fast_pass_sig.take_profit_pct,
-                rationale=(
-                    f"[SHOCK LLM UPGRADE: {trigger}] "
-                    f"{full_signal.rationale[:200]}"
-                ),
+                rationale=(f"[SHOCK LLM UPGRADE: {trigger}] {full_signal.rationale[:200]}"),
                 computed_at=dt.datetime.now(dt.UTC).isoformat(),
                 ttl_minutes=15,
                 regime_fingerprint=regime_fp,
@@ -874,6 +949,7 @@ async def _run_full_llm_pass(
                 min_r=fast_pass_sig.min_r,
                 entry_price_at_compute=price,
                 second_leg=fast_pass_sig.second_leg,
+                tier3_shock=True,
             )
             book.upsert(upgraded)
             log.info(

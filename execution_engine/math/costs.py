@@ -6,17 +6,19 @@ a multiple of its round-trip execution cost — otherwise it is alpha
 being handed to market-makers as rebate.
 
 This module centralises the arithmetic.  It reuses the already-
-calibrated cost tables in `backtesting.cost_model` so production and
+calibrated cost tables in `shared.cost_model` so production and
 backtest share a single source of truth for commission + slippage.
 
 The Institutional EV Hurdle:
     expected_pnl_usd  >=  EV_HURDLE_MULTIPLE * round_trip_cost_usd
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from backtesting.cost_model import (
+from shared.config import settings
+from shared.cost_model import (
     equity_costs,
     future_costs,
     option_costs,
@@ -28,14 +30,44 @@ log = get_logger("math.costs")
 
 
 # ── Institutional EV hurdle ─────────────────────────────────────────
-# 4.0 is the Tier-1 proprietary-firm default. The reasoning:
+# Operator-tunable via `.env` (`EV_HURDLE_MULTIPLE=...`); default 4.0 is
+# the Tier-1 proprietary-firm floor. Reasoning behind the default:
 #   - round-trip cost on a liquid US equity is ≈ 10-15 bps
 #   - for the trade to be *mathematically profitable* after an edge
 #     haircut (we never realise full theoretical edge), expected PnL
 #     must clear several multiples of the cost, not just ≥ cost.
 #   - 4× is the empirically stable multiplier where the signal-to-noise
 #     is high enough that cost drag stops dominating the distribution.
-EV_HURDLE_MULTIPLE = 4.0
+EV_HURDLE_MULTIPLE: float = settings.EV_HURDLE_MULTIPLE
+
+
+# ── Batch 3/G: single public entry point for the orchestrator-side
+# portfolio-level EV gate. The function itself lives in
+# ``graph_intelligence.agents.strategy_orchestrator`` (it needs a
+# ``MarketContext`` and the canonical cost-of-notional table there),
+# but this re-export makes ``from execution_engine.math.costs import
+# orchestrator_ev_gate`` the single public import. Both callers now
+# see the same function, the same 4× multiple, and the same cost
+# table. If one file ever drifts, both imports will fail together.
+def orchestrator_ev_gate(ctx, decision):
+    """Re-export: 4× cost hurdle for an orchestrator decision.
+
+    Returns ``(passed, reason_string)``. Passes iff
+    ``expected_return_pct_of_portfolio >= EV_HURDLE_MULTIPLE
+    × portfolio_cost_pct`` for the decision's instrument type.
+
+    Instrument-type coverage: EQUITY, INDEX_FUTURE, INDEX_CALL,
+    INDEX_PUT, INDEX_SPREAD. Unknown types defer with PASS — the
+    engine's downstream gates (per-instrument sizing, capital caps)
+    then govern.
+    """
+    # Imported lazily to avoid a module-load cycle between
+    # execution_engine → graph_intelligence → (maybe) back.
+    from graph_intelligence.agents.strategy_orchestrator import (
+        orchestrator_ev_gate as _impl,
+    )
+
+    return _impl(ctx, decision)
 
 
 @dataclass(frozen=True)
@@ -64,7 +96,9 @@ def _safe(x: float) -> float:
 
 # ── Round-trip cost estimators ──────────────────────────────────────
 def estimate_equity_cost(
-    *, entry_price: float, shares: int,
+    *,
+    entry_price: float,
+    shares: int,
 ) -> float:
     """Round-trip commission + slippage for an equity position."""
     if shares <= 0 or entry_price <= 0:
@@ -78,8 +112,12 @@ def estimate_equity_cost(
 
 
 def estimate_future_cost(
-    *, underlying: str, price: float, lots: int,
-    multiplier: float, usd_rate: float,
+    *,
+    underlying: str,
+    price: float,
+    lots: int,
+    multiplier: float,
+    usd_rate: float,
 ) -> float:
     if lots <= 0 or price <= 0:
         return 0.0
@@ -95,8 +133,12 @@ def estimate_future_cost(
 
 
 def estimate_option_cost(
-    *, underlying: str, premium: float, lots: int,
-    multiplier: float, usd_rate: float,
+    *,
+    underlying: str,
+    premium: float,
+    lots: int,
+    multiplier: float,
+    usd_rate: float,
 ) -> float:
     if lots <= 0 or premium <= 0:
         return 0.0
@@ -112,8 +154,12 @@ def estimate_option_cost(
 
 
 def estimate_spread_cost(
-    *, underlying: str, net_debit: float, lots: int,
-    multiplier: float, usd_rate: float,
+    *,
+    underlying: str,
+    net_debit: float,
+    lots: int,
+    multiplier: float,
+    usd_rate: float,
 ) -> float:
     if lots <= 0 or net_debit <= 0:
         return 0.0
@@ -149,10 +195,7 @@ def ev_hurdle_passes(
 
     if cost <= 1e-6:
         passes = pnl > 0.0
-        reason = (
-            f"{label or 'EV'}: cost≈0, fallback to PnL>0 → "
-            f"{'PASS' if passes else 'FAIL'}"
-        )
+        reason = f"{label or 'EV'}: cost≈0, fallback to PnL>0 → {'PASS' if passes else 'FAIL'}"
     else:
         passes = pnl >= hurdle
         reason = (
@@ -209,39 +252,44 @@ def evaluate_trade_ev(
         # Futures already denominate edge in points via stop_distance, so
         # expected_return_pct acts as the R-multiple (= reward / risk).
         expected_pnl = (
-            abs(stop_distance) * multiplier * lots * usd_rate
-            * max(expected_return_pct, 0.0)
+            abs(stop_distance) * multiplier * lots * usd_rate * max(expected_return_pct, 0.0)
         )
         cost = estimate_future_cost(
-            underlying=underlying, price=price, lots=lots,
-            multiplier=multiplier, usd_rate=usd_rate,
+            underlying=underlying,
+            price=price,
+            lots=lots,
+            multiplier=multiplier,
+            usd_rate=usd_rate,
         )
 
     elif ac in ("INDEX_CALL", "INDEX_PUT", "OPTION"):
-        expected_pnl = (
-            premium * multiplier * lots * usd_rate
-            * max(expected_return_pct, 0.0)
-        )
+        expected_pnl = premium * multiplier * lots * usd_rate * max(expected_return_pct, 0.0)
         cost = estimate_option_cost(
-            underlying=underlying, premium=premium, lots=lots,
-            multiplier=multiplier, usd_rate=usd_rate,
+            underlying=underlying,
+            premium=premium,
+            lots=lots,
+            multiplier=multiplier,
+            usd_rate=usd_rate,
         )
 
     elif ac in ("INDEX_SPREAD", "SPREAD"):
-        expected_pnl = (
-            net_debit * multiplier * lots * usd_rate
-            * max(expected_return_pct, 0.0)
-        )
+        expected_pnl = net_debit * multiplier * lots * usd_rate * max(expected_return_pct, 0.0)
         cost = estimate_spread_cost(
-            underlying=underlying, net_debit=net_debit, lots=lots,
-            multiplier=multiplier, usd_rate=usd_rate,
+            underlying=underlying,
+            net_debit=net_debit,
+            lots=lots,
+            multiplier=multiplier,
+            usd_rate=usd_rate,
         )
 
     else:
         log.warning(f"evaluate_trade_ev: unknown asset_class '{asset_class}'")
         return EVReport(
-            expected_pnl_usd=0.0, round_trip_cost_usd=0.0, hurdle_usd=0.0,
-            ratio=0.0, passes=False,
+            expected_pnl_usd=0.0,
+            round_trip_cost_usd=0.0,
+            hurdle_usd=0.0,
+            ratio=0.0,
+            passes=False,
             reason=f"Unknown asset class '{asset_class}' — refusing trade",
         )
 

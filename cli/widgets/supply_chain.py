@@ -1,9 +1,9 @@
 """ASCII supply chain topology visualization for the CLI."""
+
 from __future__ import annotations
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.text import Text
 from rich.tree import Tree
 
 from shared.types import CausalPath
@@ -22,12 +22,14 @@ def render_causal_paths(
     )
 
     for i, path in enumerate(paths[:10]):
-        risk_color = "green" if path.compound_risk < 0.2 else (
-            "yellow" if path.compound_risk < 0.4 else "red"
+        risk_color = (
+            "green"
+            if path.compound_risk < 0.2
+            else ("yellow" if path.compound_risk < 0.4 else "red")
         )
 
         branch = tree.add(
-            f"[{risk_color}]Path {i+1}[/{risk_color}] "
+            f"[{risk_color}]Path {i + 1}[/{risk_color}] "
             f"(depth={path.depth}, risk={path.compound_risk:.3f})"
         )
 
@@ -71,9 +73,7 @@ def render_supply_chain_ascii(
             if edge not in seen_edges:
                 seen_edges.add(edge)
                 dep = path.compound_risk ** (1.0 / max(path.depth, 1))
-                lines.append(
-                    f"  {tickers[i]:>8s} ──[{dep:.2f}]──> {tickers[i+1]}"
-                )
+                lines.append(f"  {tickers[i]:>8s} ──[{dep:.2f}]──> {tickers[i + 1]}")
 
     content = "\n".join(lines) if lines else "  No supply chain data available"
 

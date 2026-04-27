@@ -36,6 +36,7 @@ The orchestrator's Tier-3 shock path (`TradeSignal.tier3_shock=True`)
 is automatically disabled when `rejected_tokens` is non-empty, per
 Phase-1 hard-fail policy.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -44,17 +45,16 @@ import unicodedata
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 
-
 # ── Unicode script detection ─────────────────────────────────────────
 # We bucket code points into coarse script families sufficient for
 # financial text defence. Exhaustive Unicode Script=X coverage is
 # overkill: attacks in practice exploit Latin ↔ Cyrillic / Greek /
 # Fullwidth collisions on ASCII letters 0x41-0x7A.
-_SCRIPT_LATIN     = "LATIN"
-_SCRIPT_CYRILLIC  = "CYRILLIC"
-_SCRIPT_GREEK     = "GREEK"
-_SCRIPT_DIGIT     = "DIGIT"
-_SCRIPT_OTHER     = "OTHER"   # CJK, Hebrew, Arabic, symbols, etc.
+_SCRIPT_LATIN = "LATIN"
+_SCRIPT_CYRILLIC = "CYRILLIC"
+_SCRIPT_GREEK = "GREEK"
+_SCRIPT_DIGIT = "DIGIT"
+_SCRIPT_OTHER = "OTHER"  # CJK, Hebrew, Arabic, symbols, etc.
 
 
 def _script_of(ch: str) -> str:
@@ -89,13 +89,14 @@ _WORD_RE = re.compile(r"\w+", re.UNICODE)
 # ── Hidden-element HTML parser ────────────────────────────────────────
 _HIDDEN_TAG_NAMES = frozenset({"script", "style", "noscript"})
 
-_DISPLAY_NONE_RE      = re.compile(r"display\s*:\s*none",       re.IGNORECASE)
-_VISIBILITY_HIDDEN_RE = re.compile(r"visibility\s*:\s*hidden",  re.IGNORECASE)
-_OPACITY_ZERO_RE      = re.compile(r"opacity\s*:\s*0(?!\.?\d)", re.IGNORECASE)
-_OFF_SCREEN_POS_RE    = re.compile(
-    r"(position\s*:\s*absolute).*?(left\s*:\s*-\s*\d{3,})", re.IGNORECASE | re.DOTALL,
+_DISPLAY_NONE_RE = re.compile(r"display\s*:\s*none", re.IGNORECASE)
+_VISIBILITY_HIDDEN_RE = re.compile(r"visibility\s*:\s*hidden", re.IGNORECASE)
+_OPACITY_ZERO_RE = re.compile(r"opacity\s*:\s*0(?!\.?\d)", re.IGNORECASE)
+_OFF_SCREEN_POS_RE = re.compile(
+    r"(position\s*:\s*absolute).*?(left\s*:\s*-\s*\d{3,})",
+    re.IGNORECASE | re.DOTALL,
 )
-_ZERO_SIZE_RE         = re.compile(
+_ZERO_SIZE_RE = re.compile(
     r"(width\s*:\s*0(px)?\b|height\s*:\s*0(px)?\b|font-size\s*:\s*0(px)?\b)",
     re.IGNORECASE,
 )
@@ -144,7 +145,9 @@ class _VisibilityAwareStripper(HTMLParser):
         self.dropped_blocks: int = 0
 
     def _is_hidden_tag(
-        self, tag: str, attrs: list[tuple[str, str | None]],
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
     ) -> bool:
         if tag in _HIDDEN_TAG_NAMES:
             return True
@@ -164,7 +167,9 @@ class _VisibilityAwareStripper(HTMLParser):
             self.dropped_blocks += 1
 
     def handle_startendtag(
-        self, tag: str, attrs: list[tuple[str, str | None]],
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
     ) -> None:
         # Self-closing tags (`<br/>`, `<img/>`) never carry visible text.
         if self._is_hidden_tag(tag, attrs):
@@ -291,6 +296,7 @@ class SanitizedText:
                              raw input by any byte.
     raw_sha256 / clean_sha256: 16-hex-char fingerprints for audit.
     """
+
     clean: str
     original_length: int
     clean_length: int
@@ -309,9 +315,7 @@ def _count_nfkc_substitutions(before: str, after: str) -> int:
     """Cheap upper-bound on how many characters NFKC altered."""
     if before == after:
         return 0
-    return sum(1 for a, b in zip(before, after) if a != b) + abs(
-        len(before) - len(after)
-    )
+    return sum(1 for a, b in zip(before, after) if a != b) + abs(len(before) - len(after))
 
 
 def _short_sha256(s: str) -> str:
@@ -437,8 +441,7 @@ def safe_for_ticker_extraction(result: SanitizedText) -> bool:
         return False
     if result.original_length == 0:
         return True
-    change_ratio = (
-        (result.dropped_html_blocks * 10 + result.normalised_chars)
-        / max(result.original_length, 1)
+    change_ratio = (result.dropped_html_blocks * 10 + result.normalised_chars) / max(
+        result.original_length, 1
     )
     return change_ratio < 0.05

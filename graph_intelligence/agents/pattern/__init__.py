@@ -13,16 +13,18 @@ The indicator/trend/risk agents from QuantAgent already exist in
 AYVID as `signals.py`, `regime.py`, and the orchestrator EV gate —
 this module fills the last remaining gap.
 """
-from graph_intelligence.agents.pattern.schema import (
-    PatternClass, PatternClassification,
+
+from graph_intelligence.agents.pattern.chart_renderer import (
+    chart_fingerprint,
+    render_candlestick_chart,
 )
 from graph_intelligence.agents.pattern.node import (
-    pattern_analyst_opinion,
     classify_pattern,
+    pattern_analyst_opinion,
 )
-from graph_intelligence.agents.pattern.chart_renderer import (
-    render_candlestick_chart,
-    chart_fingerprint,
+from graph_intelligence.agents.pattern.schema import (
+    PatternClass,
+    PatternClassification,
 )
 
 __all__ = [

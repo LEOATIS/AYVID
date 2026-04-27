@@ -14,29 +14,32 @@ Bayesian debate protocol before the auditor makes the final call.
 Each node is wrapped with latency instrumentation so bottlenecks are
 visible via `ayvid system latency`.
 """
+
 from __future__ import annotations
 
 import json
 import time
-from typing import Callable, Any
+from collections.abc import Callable
+from typing import Any
 
 from langgraph.graph import END, StateGraph
 
-from shared.logger import get_logger
-from shared.types import CausalEvent, NewsItem, TradeSignal
-from graph_intelligence.graph_state.state import (
-    CausalArbitrageState,
-    create_initial_state,
-)
-from graph_intelligence.agents.strategist.node import strategist_node
-from graph_intelligence.agents.mapper.node import mapper_node
 from graph_intelligence.agents.auditor.node import auditor_node
+from graph_intelligence.agents.mapper.node import mapper_node
 from graph_intelligence.agents.researchers import researcher_debate_node
+from graph_intelligence.agents.strategist.node import strategist_node
 from graph_intelligence.agents.supervisor.consensus import (
     emit_trade_signal,
     should_continue,
 )
+from graph_intelligence.agents.supervisor.node import supervisor_node
+from graph_intelligence.graph_state.state import (
+    CausalArbitrageState,
+    create_initial_state,
+)
 from graph_intelligence.tools.neo4j_tools import find_hidden_victims
+from shared.logger import get_logger
+from shared.types import CausalEvent, TradeSignal
 
 log = get_logger("pipeline")
 
@@ -47,6 +50,7 @@ _pipeline_total_ms: float = 0.0
 
 def _timed_node(name: str, fn: Callable) -> Callable:
     """Wrap a pipeline node function with latency measurement."""
+
     async def _wrapper(state: CausalArbitrageState) -> Any:
         t0 = time.perf_counter()
         result = await fn(state)
@@ -54,6 +58,7 @@ def _timed_node(name: str, fn: Callable) -> Callable:
         _node_latencies[name] = round(elapsed_ms, 1)
         log.debug(f"Node [{name}] completed in {elapsed_ms:.0f}ms")
         return result
+
     _wrapper.__name__ = fn.__name__
     return _wrapper
 
@@ -76,7 +81,6 @@ async def _prepare_topology_node(state: CausalArbitrageState) -> dict:
     historical events before LLM reasoning begins.
     """
     import asyncio
-    from graph_intelligence.tools.qdrant_tools import search_similar_events
 
     shock = state["shock_ticker"]
     topology_json = ""
@@ -85,7 +89,9 @@ async def _prepare_topology_node(state: CausalArbitrageState) -> dict:
     neo4j_task = _query_neo4j_topology(shock)
     qdrant_task = _retrieve_similar_events(shock)
     neo4j_result, qdrant_result = await asyncio.gather(
-        neo4j_task, qdrant_task, return_exceptions=True,
+        neo4j_task,
+        qdrant_task,
+        return_exceptions=True,
     )
 
     if isinstance(neo4j_result, Exception):
@@ -120,6 +126,7 @@ async def _query_neo4j_topology(shock: str) -> tuple[list[dict], str]:
 
 async def _retrieve_similar_events(shock: str) -> list[dict]:
     from graph_intelligence.tools.qdrant_tools import search_similar_events
+
     query = f"{shock} supply chain disruption impact"
     return await search_similar_events(query, limit=8, ticker_filter=None)
 
@@ -161,7 +168,8 @@ async def _compress_timeline_node(state: CausalArbitrageState) -> dict:
 
     return {
         "timeline": compressed_dicts,
-        "quant_data": state.get("quant_data", "") + f"\n\n=== Compressed Timeline ===\n{formatted}",
+        "quant_data": state.get("quant_data", "")
+        + f"\n\n=== Compressed Timeline ===\n{formatted}",
     }
 
 
@@ -184,11 +192,12 @@ async def _enrich_quant_data_node(state: CausalArbitrageState) -> dict:
 async def _compute_quant_block(ticker: str) -> str:
     """Build the quant data string from live/cached market data."""
     try:
-        from data_primitives.extractors.openbb_client import fetch_ohlcv
-        from execution_engine.math.signals import score_signal
-        from execution_engine.math.regime import classify_regime
-        from data_primitives.loaders.hopsworks_sync import get_cached_features, compute_hurst_exponent
         import numpy as np
+
+        from data_primitives.extractors.openbb_client import fetch_ohlcv
+        from data_primitives.loaders.hopsworks_sync import get_cached_features
+        from execution_engine.math.regime import classify_regime
+        from execution_engine.math.signals import score_signal
 
         bars = await fetch_ohlcv(ticker, days=90)
         if len(bars) < 30:
@@ -200,10 +209,16 @@ async def _compute_quant_block(ticker: str) -> str:
         volumes = np.array([b.volume for b in bars], dtype=float)
 
         signal = score_signal(ticker, closes, highs, lows, volumes)
-        regime = classify_regime(closes, highs, lows, volumes, hurst=signal.hurst_exponent if signal else 0.5)
+        regime = classify_regime(
+            closes, highs, lows, volumes, hurst=signal.hurst_exponent if signal else 0.5
+        )
 
         features = get_cached_features(ticker)
-        hurst = features.get("hurst_exponent", signal.hurst_exponent if signal else 0.5) if features else (signal.hurst_exponent if signal else 0.5)
+        hurst = (
+            features.get("hurst_exponent", signal.hurst_exponent if signal else 0.5)
+            if features
+            else (signal.hurst_exponent if signal else 0.5)
+        )
 
         lines = [
             f"Ticker: {ticker}",
@@ -212,32 +227,41 @@ async def _compute_quant_block(ticker: str) -> str:
         ]
 
         if signal:
-            lines.extend([
-                f"O-U Theta (reversion speed): {signal.ou_theta:.3f}",
-                f"O-U Mu (equilibrium): ${np.exp(signal.ou_mu):.2f}",
-                f"Z-Score: {signal.z_score:+.2f}",
-                f"RSI(14): {signal.rsi:.1f}",
-                f"ATR(14): ${signal.atr:.2f} ({signal.atr_pct:.1f}% of price)",
-                f"Volume Ratio: {signal.volume_ratio:.2f}x average",
-                f"Trend Strength: {signal.trend_strength:+.2f}",
-                f"Composite Score: {signal.composite_score:.3f}",
-                f"Conviction: {signal.conviction:.2f}",
-                f"Signal Direction: {signal.direction}",
-                f"Dynamic SL: ${signal.dynamic_stop_loss:.2f} | TP: ${signal.dynamic_take_profit:.2f}",
-            ])
+            lines.extend(
+                [
+                    f"O-U Theta (reversion speed): {signal.ou_theta:.3f}",
+                    f"O-U Mu (equilibrium): ${np.exp(signal.ou_mu):.2f}",
+                    f"Z-Score: {signal.z_score:+.2f}",
+                    f"RSI(14): {signal.rsi:.1f}",
+                    f"ATR(14): ${signal.atr:.2f} ({signal.atr_pct:.1f}% of price)",
+                    f"Volume Ratio: {signal.volume_ratio:.2f}x average",
+                    f"Trend Strength: {signal.trend_strength:+.2f}",
+                    f"Composite Score: {signal.composite_score:.3f}",
+                    f"Conviction: {signal.conviction:.2f}",
+                    f"Signal Direction: {signal.direction}",
+                    f"Dynamic SL: ${signal.dynamic_stop_loss:.2f} | TP: ${signal.dynamic_take_profit:.2f}",
+                ]
+            )
 
-        lines.extend([
-            f"\nRegime Classification:",
-            f"  Volatility: {regime.volatility_regime.value} (RV={regime.realized_vol_annualized:.1%}, pctile={regime.vol_percentile:.0f})",
-            f"  Trend: {regime.trend_regime.value} (ADX={regime.adx_value:.1f})",
-            f"  Composite: {regime.composite_regime.value}",
-            f"  Preferred Strategy: {regime.preferred_strategy}",
-            f"  Risk Scaling: {regime.risk_scaling_factor:.1f}x",
-            f"  Tradeable: {'YES' if regime.tradeable else 'NO'}",
-        ])
+        lines.extend(
+            [
+                "\nRegime Classification:",
+                f"  Volatility: {regime.volatility_regime.value} (RV={regime.realized_vol_annualized:.1%}, pctile={regime.vol_percentile:.0f})",
+                f"  Trend: {regime.trend_regime.value} (ADX={regime.adx_value:.1f})",
+                f"  Composite: {regime.composite_regime.value}",
+                f"  Preferred Strategy: {regime.preferred_strategy}",
+                f"  Risk Scaling: {regime.risk_scaling_factor:.1f}x",
+                f"  Tradeable: {'YES' if regime.tradeable else 'NO'}",
+            ]
+        )
 
         if features:
-            for key in ("rolling_volatility_5d", "rolling_volatility_10d", "rolling_volatility_30d", "rolling_volatility_60d"):
+            for key in (
+                "rolling_volatility_5d",
+                "rolling_volatility_10d",
+                "rolling_volatility_30d",
+                "rolling_volatility_60d",
+            ):
                 val = features.get(key)
                 if val:
                     lines.append(f"  {key}: {val:.1%}")
@@ -298,15 +322,25 @@ async def _analyst_swarm_node(state: CausalArbitrageState) -> dict:
 def build_causal_graph() -> StateGraph:
     """Construct the LangGraph DAG for N-th Order Causal Arbitrage.
 
-    Flow (Phase-3 augmented):
+    Flow (Phase-3 unified):
         prepare_topology → compress_timeline → strategist → mapper →
         researcher_debate → enrich_quant_data → analyst_swarm →
-        auditor → [execute|retry|end]
+        auditor → supervisor → [execute|retry|end]
 
     The ``researcher_debate`` node runs the 2-round bull-vs-bear debate
     and injects a ``ResearcherConsensus`` into state BEFORE the analyst
     swarm fires, so the analysts evaluate a thesis that has already
     been adversarially stress-tested.
+
+    The ``supervisor`` node (wired in Phase-3, Gap A2) runs AFTER the
+    auditor has approved a proposed action. It:
+      * Reads calibration priors for the (strategy × regime) cell.
+      * Hard-blocks empirically unprofitable cells.
+      * Emits `strategy_parameters` consumed by the downstream
+        orchestrator's `get_param(...)` dynamic-threshold lookup.
+      * Optionally refines `risk_multiplier`.
+    Without this node, LangGraph's `strategy_parameters` were always
+    empty and `get_param` always resolved to hard-coded defaults.
 
     Every node is wrapped with latency instrumentation.
     """
@@ -320,6 +354,7 @@ def build_causal_graph() -> StateGraph:
     graph.add_node("enrich_quant_data", _timed_node("enrich_quant_data", _enrich_quant_data_node))
     graph.add_node("analyst_swarm", _timed_node("analyst_swarm", _analyst_swarm_node))
     graph.add_node("auditor", _timed_node("auditor", auditor_node))
+    graph.add_node("supervisor", _timed_node("supervisor", supervisor_node))
 
     graph.set_entry_point("prepare_topology")
     graph.add_edge("prepare_topology", "compress_timeline")
@@ -329,9 +364,10 @@ def build_causal_graph() -> StateGraph:
     graph.add_edge("researcher_debate", "enrich_quant_data")
     graph.add_edge("enrich_quant_data", "analyst_swarm")
     graph.add_edge("analyst_swarm", "auditor")
+    graph.add_edge("auditor", "supervisor")
 
     graph.add_conditional_edges(
-        "auditor",
+        "supervisor",
         should_continue,
         {
             "execute": END,
@@ -385,8 +421,8 @@ async def run_causal_analysis(
 
     if signal and backtest_mode:
         try:
-            from graph_intelligence.compression.divergence_decoding import divergence_decode
             from graph_intelligence.compression.chronological import format_timeline_for_llm
+            from graph_intelligence.compression.divergence_decoding import divergence_decode
 
             compressed_text = format_timeline_for_llm(
                 final_state.get("timeline", []),
@@ -401,21 +437,24 @@ async def run_causal_analysis(
                 causal_paths=topology_text,
             )
 
+            kl_div = dd_result.get("kl_divergence", 0.0)
+            # Always record the KL on the intent for downstream inspection.
+            signal.alpha_score.kl_divergence_to_naive = float(kl_div)
             if dd_result.get("bias_detected"):
                 log.warning(
                     f"Lookahead bias detected for {signal.ticker} "
-                    f"(KL={dd_result['kl_divergence']:.3f}) — downgrading confidence"
+                    f"(KL={kl_div:.3f}) — halving conviction"
                 )
-                signal.confidence *= 0.5
-                signal.rationale += f" [DD: bias detected, KL={dd_result['kl_divergence']:.3f}]"
+                signal.alpha_score.unified_conviction *= 0.5
+                signal.rationale += f" [DD: bias detected, KL={kl_div:.3f}]"
 
         except Exception as exc:
             log.debug(f"Divergence decoding skipped: {exc}")
 
     if signal:
         log.info(
-            f"Pipeline complete: [bold]{signal.action.value} {signal.ticker}[/bold] "
-            f"confidence={signal.confidence:.2f}"
+            f"Pipeline complete: [bold]{signal.direction.value} {signal.ticker}[/bold] "
+            f"conv={signal.alpha_score.unified_conviction:.2f}"
         )
     else:
         log.info("Pipeline complete: no actionable signal")

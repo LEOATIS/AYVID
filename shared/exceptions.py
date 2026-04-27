@@ -10,6 +10,7 @@ class AYVIDError(Exception):
 
 # ── Data Pipeline ────────────────────────────────────────────
 
+
 class DataPipelineError(AYVIDError):
     """Raised when a data ingestion step fails."""
 
@@ -28,6 +29,7 @@ class HopsworksSyncError(DataPipelineError):
 
 # ── Graph Intelligence ───────────────────────────────────────
 
+
 class GraphStaleError(AYVIDError):
     """Neo4j topology is behind the latest sequence ID.
 
@@ -38,9 +40,7 @@ class GraphStaleError(AYVIDError):
     def __init__(self, expected_seq: int, actual_seq: int = 0) -> None:
         self.expected_seq = expected_seq
         self.actual_seq = actual_seq
-        super().__init__(
-            f"Graph stale: expected seq >= {expected_seq}, got {actual_seq}"
-        )
+        super().__init__(f"Graph stale: expected seq >= {expected_seq}, got {actual_seq}")
 
 
 class CausalPathNotFoundError(AYVIDError):
@@ -56,6 +56,7 @@ class QdrantConnectionError(AYVIDError):
 
 
 # ── Execution Engine ─────────────────────────────────────────
+
 
 class IBKRDisconnectError(AYVIDError):
     """IB Gateway connection lost (Error 1100).
@@ -87,12 +88,12 @@ class KillSwitchTriggered(AYVIDError):
         self.drawdown_pct = drawdown_pct
         self.threshold_pct = threshold_pct
         super().__init__(
-            f"KILL SWITCH: drawdown {drawdown_pct:.2f}% exceeded "
-            f"threshold {threshold_pct:.2f}%"
+            f"KILL SWITCH: drawdown {drawdown_pct:.2f}% exceeded threshold {threshold_pct:.2f}%"
         )
 
 
 # ── Sequence Validation ──────────────────────────────────────
+
 
 class SequenceValidationError(AYVIDError):
     """Event sourcing sequence ID mismatch across databases.
@@ -103,12 +104,11 @@ class SequenceValidationError(AYVIDError):
 
     def __init__(self, source: str, expected: int, actual: int) -> None:
         self.source = source
-        super().__init__(
-            f"Sequence desync in {source}: expected {expected}, got {actual}"
-        )
+        super().__init__(f"Sequence desync in {source}: expected {expected}, got {actual}")
 
 
 # ── LLM Errors ───────────────────────────────────────────────
+
 
 class LLMProviderError(AYVIDError):
     """LLM API call failed after retries."""

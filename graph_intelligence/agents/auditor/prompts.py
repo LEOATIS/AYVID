@@ -37,10 +37,15 @@ Mapper Confidence: {confidence:.2f}
 ## MAPPER'S RATIONALE
 {rationale}
 
+## RESEARCHER CONSENSUS (bull/bear debate facilitator verdict)
+{researcher_consensus_block}
+
 ## EVENT TIMELINE (chronological)
 {timeline}
 
 ## GRAPH TOPOLOGY
 {graph_topology}
 
-Review this proposed trade signal. Be rigorous — the fund's capital is at stake."""
+Review this proposed trade signal. Be rigorous — the fund's capital is at stake.
+A tied (NEITHER) or weak-margin debate consensus is itself a reason to
+be more cautious even when the mapper shows high confidence."""

@@ -2,13 +2,14 @@
 
 These metrics feed the kill switch memory-mapped file at 10Hz.
 """
+
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass
 
 import numpy as np
 
+from shared.constants import DEFAULT_RISK_FREE_RATE, TRADING_DAYS_PER_YEAR
 from shared.logger import get_logger
 from shared.types import OHLCVBar, PortfolioState, Position, RiskSnapshot
 
@@ -32,6 +33,7 @@ def compute_var(
 
     if method == "parametric":
         from scipy import stats
+
         mu = np.mean(returns)
         sigma = np.std(returns, ddof=1)
         z = stats.norm.ppf(1 - confidence)
@@ -47,11 +49,26 @@ def compute_portfolio_var(
     portfolio_equity: float,
     confidence: float = 0.95,
 ) -> float:
-    """Compute portfolio-level VaR using historical simulation."""
+    """Compute portfolio-level VaR using historical simulation.
+
+    **P1-X alignment fix.** Prior implementation folded each additional
+    position into the running portfolio series with
+    ``portfolio_returns[-min_len:] + weighted[-min_len:]`` — that is
+    element-wise addition of two tail windows of possibly different
+    underlying dates. Two positions whose histories happened to span
+    different calendar periods would add unrelated returns together,
+    inflating or deflating the composite tail in unpredictable ways.
+
+    New approach: collect every position's weighted return series,
+    align them all to the shortest common tail length, and sum along
+    the position axis to get a single portfolio-return vector whose
+    i-th element is the sum of position contributions at the same
+    relative time index.
+    """
     if not positions or not price_history:
         return 0.0
 
-    portfolio_returns: np.ndarray | None = None
+    series: list[np.ndarray] = []
 
     for pos in positions:
         bars = price_history.get(pos.ticker, [])
@@ -63,17 +80,23 @@ def compute_portfolio_var(
             continue
 
         returns = np.diff(np.log(closes))
-        weight = (pos.quantity * pos.current_price) / portfolio_equity if portfolio_equity > 0 else 0
-        weighted = returns * weight * (1 if pos.side.value == "LONG" else -1)
+        weight = (
+            (pos.quantity * pos.current_price) / portfolio_equity if portfolio_equity > 0 else 0.0
+        )
+        side_sign = 1.0 if pos.side.value == "LONG" else -1.0
+        series.append(returns * weight * side_sign)
 
-        if portfolio_returns is None:
-            portfolio_returns = weighted
-        else:
-            min_len = min(len(portfolio_returns), len(weighted))
-            portfolio_returns = portfolio_returns[-min_len:] + weighted[-min_len:]
-
-    if portfolio_returns is None:
+    if not series:
         return 0.0
+
+    # Align by taking the shortest tail across all positions. Every
+    # element of the resulting portfolio vector then corresponds to
+    # the same number of trading days back for every position.
+    min_len = min(len(s) for s in series)
+    if min_len == 0:
+        return 0.0
+    aligned = np.vstack([s[-min_len:] for s in series])
+    portfolio_returns = aligned.sum(axis=0)
 
     return compute_var(portfolio_returns, confidence)
 
@@ -84,9 +107,7 @@ def update_drawdown(state: PortfolioState) -> PortfolioState:
         state.peak_equity = state.total_equity
 
     if state.peak_equity > 0:
-        state.drawdown_pct = (
-            (state.peak_equity - state.total_equity) / state.peak_equity
-        ) * 100.0
+        state.drawdown_pct = ((state.peak_equity - state.total_equity) / state.peak_equity) * 100.0
     else:
         state.drawdown_pct = 0.0
 
@@ -96,13 +117,13 @@ def update_drawdown(state: PortfolioState) -> PortfolioState:
 
 def compute_sharpe_ratio(
     daily_returns: np.ndarray,
-    risk_free_rate: float = 0.05,
+    risk_free_rate: float = DEFAULT_RISK_FREE_RATE,
 ) -> float:
     """Compute annualized Sharpe ratio."""
     if len(daily_returns) < 10:
         return 0.0
 
-    daily_rf = risk_free_rate / 252
+    daily_rf = risk_free_rate / TRADING_DAYS_PER_YEAR
     excess = daily_returns - daily_rf
     mean_excess = np.mean(excess)
     std = np.std(excess, ddof=1)
@@ -110,7 +131,7 @@ def compute_sharpe_ratio(
     if std == 0:
         return 0.0
 
-    return float(mean_excess / std * np.sqrt(252))
+    return float(mean_excess / std * np.sqrt(TRADING_DAYS_PER_YEAR))
 
 
 def build_risk_snapshot(
@@ -130,156 +151,11 @@ def build_risk_snapshot(
         )
 
     return RiskSnapshot(
-        timestamp=dt.datetime.now(dt.timezone.utc),
+        timestamp=dt.datetime.now(dt.UTC),
         value_at_risk_95=var_95,
         value_at_risk_99=var_99,
         current_drawdown_pct=portfolio.drawdown_pct,
         max_drawdown_pct=portfolio.max_drawdown_pct,
-        portfolio_volatility=var_95 * np.sqrt(252) if var_95 else 0.0,
+        portfolio_volatility=var_95 * np.sqrt(TRADING_DAYS_PER_YEAR) if var_95 else 0.0,
         kill_switch_armed=True,
     )
-
-
-# ── Greeks-Aware Risk (F&O) ─────────────────────────────────
-
-
-@dataclass
-class PortfolioGreeks:
-    """Aggregate Greeks across all option/futures positions."""
-    net_delta: float = 0.0
-    net_gamma: float = 0.0
-    net_theta: float = 0.0
-    net_vega: float = 0.0
-    net_rho: float = 0.0
-    delta_dollars: float = 0.0
-    gamma_dollars: float = 0.0
-
-
-@dataclass
-class OptionsPosition:
-    """Single options position for Greeks aggregation."""
-    underlying: str
-    strike: float
-    expiry_years: float
-    right: str  # "CALL" or "PUT"
-    quantity: int
-    multiplier: float = 100.0
-    underlying_price: float = 0.0
-    implied_vol: float = 0.25
-
-
-def aggregate_portfolio_greeks(
-    options_positions: list[OptionsPosition],
-    risk_free_rate: float = 0.05,
-) -> PortfolioGreeks:
-    """Aggregate Greeks across a portfolio of options positions."""
-    from execution_engine.math.options_pricing import bs_greeks
-
-    totals = PortfolioGreeks()
-
-    for pos in options_positions:
-        g = bs_greeks(
-            pos.underlying_price, pos.strike, pos.expiry_years,
-            risk_free_rate, pos.implied_vol, pos.right,
-        )
-        sign = pos.quantity * pos.multiplier
-        totals.net_delta += g.delta * sign
-        totals.net_gamma += g.gamma * sign
-        totals.net_theta += g.theta * sign
-        totals.net_vega += g.vega * sign
-        totals.net_rho += g.rho * sign
-
-    totals.delta_dollars = totals.net_delta * (
-        options_positions[0].underlying_price if options_positions else 0
-    )
-    totals.gamma_dollars = totals.net_gamma * (
-        options_positions[0].underlying_price if options_positions else 0
-    ) ** 2 / 100.0
-
-    return totals
-
-
-def scenario_var(
-    options_positions: list[OptionsPosition],
-    spot_shocks: np.ndarray | None = None,
-    vol_shocks: np.ndarray | None = None,
-    risk_free_rate: float = 0.05,
-    confidence: float = 0.95,
-) -> float:
-    """Scenario-based VaR for options portfolios.
-
-    Reprices the portfolio under a grid of spot and vol shocks,
-    then takes the percentile loss.
-    """
-    from execution_engine.math.options_pricing import black_scholes
-
-    if not options_positions:
-        return 0.0
-
-    if spot_shocks is None:
-        spot_shocks = np.linspace(-0.15, 0.15, 31)
-    if vol_shocks is None:
-        vol_shocks = np.linspace(-0.10, 0.10, 11)
-
-    base_value = 0.0
-    for pos in options_positions:
-        px = black_scholes(
-            pos.underlying_price, pos.strike, pos.expiry_years,
-            risk_free_rate, pos.implied_vol, pos.right,
-        )
-        base_value += px * pos.quantity * pos.multiplier
-
-    pnl_scenarios: list[float] = []
-    for ds in spot_shocks:
-        for dv in vol_shocks:
-            scenario_value = 0.0
-            for pos in options_positions:
-                S_new = pos.underlying_price * (1 + ds)
-                vol_new = max(pos.implied_vol + dv, 0.01)
-                px = black_scholes(
-                    S_new, pos.strike, pos.expiry_years,
-                    risk_free_rate, vol_new, pos.right,
-                )
-                scenario_value += px * pos.quantity * pos.multiplier
-            pnl_scenarios.append(scenario_value - base_value)
-
-    pnl_arr = np.array(pnl_scenarios)
-    return float(-np.percentile(pnl_arr, (1 - confidence) * 100))
-
-
-def compute_margin_requirement(
-    options_positions: list[OptionsPosition],
-    margin_type: str = "reg_t",
-) -> float:
-    """Estimate margin requirement for options positions.
-
-    Uses simplified Reg T rules: max of (premium + 20% underlying - OTM amount)
-    for short options, or premium paid for long options.
-    """
-    total_margin = 0.0
-    for pos in options_positions:
-        notional = pos.underlying_price * pos.multiplier
-        if pos.quantity > 0:
-            from execution_engine.math.options_pricing import black_scholes
-            premium = black_scholes(
-                pos.underlying_price, pos.strike, pos.expiry_years,
-                0.05, pos.implied_vol, pos.right,
-            )
-            total_margin += premium * abs(pos.quantity) * pos.multiplier
-        else:
-            otm = 0.0
-            if pos.right == "CALL":
-                otm = max(pos.strike - pos.underlying_price, 0)
-            else:
-                otm = max(pos.underlying_price - pos.strike, 0)
-
-            from execution_engine.math.options_pricing import black_scholes
-            premium = black_scholes(
-                pos.underlying_price, pos.strike, pos.expiry_years,
-                0.05, pos.implied_vol, pos.right,
-            )
-            naked_margin = (premium * pos.multiplier) + (0.20 * notional) - (otm * pos.multiplier)
-            min_margin = (premium * pos.multiplier) + (0.10 * notional)
-            total_margin += max(naked_margin, min_margin) * abs(pos.quantity)
-
-    return total_margin

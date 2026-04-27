@@ -4,12 +4,12 @@ Every LLM call in Phase 3 uses ``with_structured_output`` against
 one of these schemas so the downstream analyst swarm and auditor
 receive typed, bounded inputs rather than free-form LLM prose.
 """
+
 from __future__ import annotations
 
 from typing import Literal
 
 from pydantic import BaseModel, Field
-
 
 DominantSide = Literal["BULL", "BEAR", "NEITHER"]
 
@@ -24,22 +24,23 @@ class BullArgument(BaseModel):
     strongest_catalysts: list[str] = Field(
         default_factory=list,
         description="Up to 5 concrete, cite-able reasons the trade "
-                    "will work. Each item ≤ 140 characters.",
+        "will work. Each item ≤ 140 characters.",
     )
     bear_case_rebuttal: str = Field(
         default="",
         description="Directly address the strongest argument against this "
-                    "position. Concede valid points; refute invalid ones.",
+        "position. Concede valid points; refute invalid ones.",
     )
     conviction: float = Field(
-        default=0.5, ge=0.0, le=1.0,
-        description="Self-reported strength of this argument "
-                    "(BEFORE facilitator adjudication).",
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Self-reported strength of this argument (BEFORE facilitator adjudication).",
     )
     invalidation_level: str = Field(
         default="",
         description="The single observation that would invalidate this "
-                    "thesis (e.g. 'SPY closes below 4200 with volume').",
+        "thesis (e.g. 'SPY closes below 4200 with volume').",
     )
 
 
@@ -53,21 +54,22 @@ class BearArgument(BaseModel):
     strongest_risks: list[str] = Field(
         default_factory=list,
         description="Up to 5 concrete risks / reasons the trade will fail. "
-                    "Each item ≤ 140 characters.",
+        "Each item ≤ 140 characters.",
     )
     bull_case_rebuttal: str = Field(
         default="",
         description="Directly address the strongest argument in favour of "
-                    "the position. Concede valid points; refute invalid ones.",
+        "the position. Concede valid points; refute invalid ones.",
     )
     conviction: float = Field(
-        default=0.5, ge=0.0, le=1.0,
+        default=0.5,
+        ge=0.0,
+        le=1.0,
         description="Self-reported strength of this argument.",
     )
     invalidation_level: str = Field(
         default="",
-        description="The single observation that would invalidate this "
-                    "counter-thesis.",
+        description="The single observation that would invalidate this counter-thesis.",
     )
 
 

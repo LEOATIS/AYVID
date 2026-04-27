@@ -164,10 +164,7 @@ def render_priors_block(
 
     cell = priors.get(strategy_name, {}).get(regime_key)
     if not cell:
-        return (
-            f"(no empirical prior for {strategy_name} × {regime_key}; "
-            f"use fallbacks)"
-        )
+        return f"(no empirical prior for {strategy_name} × {regime_key}; use fallbacks)"
 
     if cell.get("blocked_by_regime"):
         return (

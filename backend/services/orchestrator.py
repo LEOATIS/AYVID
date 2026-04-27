@@ -4,19 +4,32 @@ This is the service layer between the API/CLI and the core domain logic.
 Implements Strict Event Sourcing with Sequence Validation and wires in
 the C++ kill switch mmap bridge for real-time risk monitoring.
 """
+
 from __future__ import annotations
 
 import asyncio
-import datetime as dt
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from shared.config import settings
 from shared.exceptions import GraphStaleError, SequenceValidationError
+from shared.executors import (
+    ingestion_plane,
+)
 from shared.logger import get_logger
-from shared.sequence_validator import enforce_pre_trade_sync, sequence_registry
+from shared.sequence_validator import (
+    SequenceMiddleware,
+    enforce_pre_trade_sync,
+    sequence_registry,
+)
+
+# One module-level middleware binding so every write goes through a
+# single registry. This replaces the direct `sequence_registry.register_write`
+# calls scattered across the ingestion path.
+_seq_middleware = SequenceMiddleware(registry=sequence_registry)
 from shared.types import (
     AlphaHorizon,
+    AlphaScore,
     OHLCVBar,
     PortfolioState,
     Position,
@@ -25,6 +38,9 @@ from shared.types import (
     TradeAction,
     TradeSignal,
 )
+
+if TYPE_CHECKING:
+    from graph_intelligence.agents.strategy_orchestrator import MarketContext
 
 log = get_logger("orchestrator")
 
@@ -62,9 +78,12 @@ async def init_kill_switch() -> None:
     global _mmap_bridge, _watchdog_proc
     try:
         from execution_engine.watchdog.mmap_bridge import RiskMmapBridge, start_watchdog
+
         _mmap_bridge = RiskMmapBridge()
         _mmap_bridge.update(
-            drawdown_pct=0.0, var_95=0.0, var_99=0.0,
+            drawdown_pct=0.0,
+            var_95=0.0,
+            var_99=0.0,
             portfolio_equity=_portfolio.total_equity,
             peak_equity=_portfolio.peak_equity,
             max_drawdown_pct=settings.MAX_DRAWDOWN_PCT,
@@ -92,23 +111,92 @@ def _update_kill_switch() -> None:
         log.debug(f"Kill switch mmap update failed: {exc}")
 
 
-async def ingest_market_data(tickers: list[str]) -> dict[str, int]:
-    """Run the full data ingestion pipeline for a watchlist."""
-    from data_primitives.extractors.openbb_client import fetch_ohlcv
-    from data_primitives.loaders.questdb_writer import write_bars_questdb
-    from data_primitives.loaders.hopsworks_sync import sync_features, sync_all_features
+async def kill_switch_writer_loop(interval: float = 0.1) -> None:
+    """10Hz task that keeps the kill-switch mmap fresh for the C++ watchdog.
 
+    The watchdog reads the seqlock-protected struct every 100ms. If the
+    Python writer stops ticking, the struct goes stale and the watchdog
+    escalates (which is desired: a frozen trading loop should trigger
+    the kill path). This loop runs for the entire lifetime of the
+    process and is cancelled on shutdown.
+    """
+    log.info(f"Kill-switch writer loop started ({1.0 / interval:.0f}Hz)")
+    try:
+        while True:
+            _update_kill_switch()
+            await asyncio.sleep(interval)
+    except asyncio.CancelledError:
+        log.info("Kill-switch writer loop cancelled")
+        raise
+
+
+async def stop_kill_switch() -> None:
+    """Terminate the C++ watchdog and release the mmap file."""
+    global _mmap_bridge, _watchdog_proc
+    if _watchdog_proc is not None:
+        try:
+            from execution_engine.watchdog.mmap_bridge import stop_watchdog
+
+            stop_watchdog(_watchdog_proc)
+        except Exception as exc:
+            log.warning(f"stop_watchdog failed: {exc}")
+        _watchdog_proc = None
+    if _mmap_bridge is not None:
+        try:
+            _mmap_bridge.close()
+        except Exception as exc:
+            log.warning(f"mmap bridge close failed: {exc}")
+        _mmap_bridge = None
+
+
+async def ingest_market_data(tickers: list[str]) -> dict[str, int]:
+    """Run the full data ingestion pipeline for a watchlist.
+
+    P1-E: every ticker gets its OWN sequence id, strictly monotonic
+    across the batch, and the module-level `_last_graph_sequence_id`
+    advances after each successful write. The prior implementation
+    computed `seq_id = _last_graph_sequence_id + 1` once and reused
+    it for every ticker — which silently collapsed to a single write
+    in the sequence registry (`register_write` only advances on
+    `sequence_id > prev`). That broke strict event sourcing: the
+    pre-trade sync check couldn't tell a multi-ticker batch apart
+    from a single write.
+    """
+    from data_primitives.extractors.openbb_client import fetch_ohlcv
+    from data_primitives.loaders.hopsworks_sync import sync_all_features, sync_features
+    from data_primitives.loaders.questdb_writer import write_bars_questdb
+
+    global _last_graph_sequence_id
     results: dict[str, int] = {}
 
     for ticker in tickers:
         try:
             bars = await fetch_ohlcv(ticker)
             _price_cache[ticker] = bars
-            count = await write_bars_questdb(bars)
-            seq_id = _last_graph_sequence_id + 1
-            sequence_registry.register_write("questdb", seq_id)
+            # Advance AFTER fetch so a failed fetch does not consume
+            # a seq slot. The in-process counter is the source of
+            # truth for manual-allocator fallback behaviour and the
+            # graph-freshness gate.
+            _last_graph_sequence_id += 1
+            seq_id = _last_graph_sequence_id
+            # Wrap every cross-plane write through the middleware so the
+            # sequence registry is updated ONLY on successful commit.
+            count = await _seq_middleware.wrap_questdb_write(
+                write_bars_questdb(bars),
+                seq_id,
+            )
             await sync_features(ticker, bars)
             results[ticker] = count
+            try:
+                await ingestion_plane().put(
+                    {
+                        "ticker": ticker,
+                        "seq_id": seq_id,
+                        "bars": len(bars),
+                    }
+                )
+            except Exception as qexc:  # pragma: no cover — defensive
+                log.debug(f"ingestion_plane.put failed: {qexc}")
         except Exception as exc:
             log.error(f"Ingestion failed for {ticker}: {exc}")
             results[ticker] = 0
@@ -127,8 +215,8 @@ async def run_shock_analysis(shock_ticker: str) -> TradeSignal | None:
     """Execute the full causal arbitrage pipeline with NER, compression,
     multi-source sentiment, and LLM strategy orchestration.
     """
-    from data_primitives.extractors.news_scraper import scrape_news_for_tickers
     from data_primitives.extractors.ner_pipeline import process_news_batch
+    from data_primitives.extractors.news_scraper import scrape_news_for_tickers
     from graph_intelligence.pipeline import run_causal_analysis
     from graph_intelligence.tools.qdrant_tools import store_event
 
@@ -141,10 +229,13 @@ async def run_shock_analysis(shock_ticker: str) -> TradeSignal | None:
     events = await process_news_batch(news)
 
     for event in events[:20]:
+        if not event.sequence_id:
+            continue
         try:
-            await store_event(event)
-            if event.sequence_id:
-                sequence_registry.register_write("qdrant", event.sequence_id)
+            await _seq_middleware.wrap_qdrant_write(
+                store_event(event),
+                event.sequence_id,
+            )
         except Exception as exc:
             log.debug(f"Qdrant event store failed: {exc}")
 
@@ -162,6 +253,7 @@ async def run_shock_analysis(shock_ticker: str) -> TradeSignal | None:
         _signals.append(signal)
         try:
             from backend.api.sse.streamer import publish_event
+
             await publish_event("trade_signal", signal.model_dump(mode="json"))
         except Exception as exc:
             log.warning(f"SSE publish failed: {exc}")
@@ -172,10 +264,12 @@ async def run_shock_analysis(shock_ticker: str) -> TradeSignal | None:
 async def _fetch_alternative_news(ticker: str) -> list:
     """Pull supplementary news from Reddit, StockTwits, and Finnhub."""
     from shared.types import NewsItem
+
     all_extra: list[NewsItem] = []
 
     try:
         from data_primitives.extractors.reddit_client import fetch_reddit_sentiment
+
         reddit_posts = await fetch_reddit_sentiment(ticker, limit=10)
         all_extra.extend(reddit_posts)
         if reddit_posts:
@@ -185,6 +279,7 @@ async def _fetch_alternative_news(ticker: str) -> list:
 
     try:
         from data_primitives.extractors.stocktwits_client import fetch_stocktwits_sentiment
+
         st_posts, st_agg = await fetch_stocktwits_sentiment(ticker, limit=15)
         all_extra.extend(st_posts)
         if st_agg.get("total", 0) > 0:
@@ -197,6 +292,7 @@ async def _fetch_alternative_news(ticker: str) -> list:
 
     try:
         from data_primitives.extractors.finnhub_client import fetch_finnhub_news
+
         fh_news = await fetch_finnhub_news(ticker, days_back=7)
         all_extra.extend(fh_news)
         if fh_news:
@@ -208,6 +304,7 @@ async def _fetch_alternative_news(ticker: str) -> list:
     # (Reddit, Finnhub). StockTwits items already carry ±1 from the API.
     try:
         from data_primitives.transformers.sentiment import score_news_items
+
         await score_news_items(all_extra)
     except Exception as exc:
         log.debug(f"Per-item sentiment scoring skipped: {exc}")
@@ -218,14 +315,19 @@ async def _fetch_alternative_news(ticker: str) -> list:
 async def _build_market_context(
     ticker: str,
     shock_ticker: str | None = None,
-) -> "MarketContext | None":
-    """Build a full MarketContext for the LLM/rule-based orchestrator."""
-    import numpy as np
-    from graph_intelligence.agents.strategy_orchestrator import MarketContext
-    from execution_engine.math.signals import score_signal, compute_hurst_exponent, compute_trend_strength
-    from execution_engine.math.regime import classify_volatility, classify_trend
+    langgraph_final_state: dict | None = None,
+) -> MarketContext | None:
+    """Build a full MarketContext for the LLM/rule-based orchestrator.
+
+    Phase-3 (Gap A1 fix): delegates to the shared `build_decision_context`
+    so live trading receives the SAME enriched context as the backtest —
+    including vrp, vol_compression, grind_up_flag, and (when LangGraph
+    supplies it) forbidden_strategies, strategy_parameters, risk_multiplier,
+    causal_conviction. Previously the live orchestrator saw an
+    impoverished context and silently ignored LangGraph's regime gating.
+    """
     from data_primitives.extractors.openbb_client import fetch_ohlcv
-    from data_primitives.loaders.hopsworks_sync import get_cached_features
+    from execution_engine.math.decision_context import build_decision_context
 
     bars = _price_cache.get(ticker)
     if not bars or len(bars) < 30:
@@ -233,50 +335,26 @@ async def _build_market_context(
     if len(bars) < 30:
         return None
 
-    closes = np.array([b.close for b in bars])
-    highs = np.array([b.high for b in bars])
-    lows = np.array([b.low for b in bars])
-    volumes = np.array([b.volume for b in bars], dtype=float)
+    shock_ctx: dict | None = None
+    if shock_ticker and shock_ticker != ticker:
+        shock_ctx = {
+            "source": shock_ticker,
+            "magnitude": 0.0,
+            "shocked_tickers": [shock_ticker],
+            "beneficiary_tickers": [],
+            "victim_tickers": [ticker],  # downstream target is assumed victim until refined
+        }
 
-    sig = score_signal(ticker, closes, highs, lows, volumes)
-    features = get_cached_features(ticker)
-    hurst = features.get("hurst_exponent", 0.5) if features else 0.5
+    final_state: dict | None = None
+    if langgraph_final_state:
+        final_state = dict(langgraph_final_state)
 
-    log_returns = np.diff(np.log(closes[-31:])) if len(closes) > 31 else np.diff(np.log(closes))
-    vol_regime, rv, _ = classify_volatility(log_returns)
-    trend_regime, adx = classify_trend(highs, lows, closes, hurst)
-    trend = compute_trend_strength(closes, short=10, long=30)
-
-    price = float(closes[-1])
-    z_score = 0.0
-    if len(closes) >= 20:
-        mu = float(np.mean(closes[-20:]))
-        sd = float(np.std(closes[-20:], ddof=1))
-        if sd > 1e-10:
-            z_score = (price - mu) / sd
-
-    ret_5d = float(closes[-1] / closes[-6] - 1) if len(closes) >= 6 else 0.0
-    ret_20d = float(closes[-1] / closes[-21] - 1) if len(closes) >= 21 else 0.0
-
-    is_shock = shock_ticker is not None and shock_ticker != ticker
-
-    return MarketContext(
+    return build_decision_context(
         ticker=ticker,
-        current_price=price,
-        volatility_regime=vol_regime.value,
-        trend_regime=trend_regime.value,
-        hurst=hurst,
-        rsi=sig.rsi if sig else 50.0,
-        atr=sig.atr if sig else 0.0,
-        realized_vol=rv,
-        supply_chain_shock=is_shock,
-        shock_source=shock_ticker if is_shock else None,
-        shock_magnitude=0.0,
-        sector=None,
-        z_score=z_score,
-        trend_strength=trend,
-        ret_5d=ret_5d,
-        ret_20d=ret_20d,
+        bars=bars,
+        asset_class="EQUITY",
+        shock_context=shock_ctx,
+        final_state=final_state,
     )
 
 
@@ -298,6 +376,7 @@ async def fast_execute(
     Returns None if no actionable signal exists in the book.
     """
     import time
+
     global _fast_execute_latency_ms
 
     t0 = time.perf_counter()
@@ -334,14 +413,31 @@ async def fast_execute(
         return None
 
     action = TradeAction.LONG if cached.direction == "LONG" else TradeAction.SHORT
+    # P0-A: Tier-3 shock signals MUST carry the flag forward so the
+    # broker router (``_determine_order_type``) routes them as LIMIT
+    # (cross the spread, news event needs a fill now) instead of
+    # defaulting to TWAP/VWAP on the 3rd/4th order horizon.
     signal = TradeSignal(
-        signal_id=f"fast_{ticker}_{int(time.time())}",
+        intent_id=f"fast_{ticker}_{int(time.time())}",
+        execute=True,
         ticker=ticker,
-        action=action,
+        direction=action,
         alpha_horizon=AlphaHorizon("3rd_order"),
-        confidence=cached.conviction,
+        alpha_score=AlphaScore(
+            ticker=ticker,
+            direction=action,
+            factor_score=cached.conviction,
+            bayesian_conviction=cached.conviction,
+            unified_conviction=cached.conviction,
+            expected_r=cached.expected_r,
+            min_r=cached.min_r,
+            rationale=f"signal_book({cached.strategy_name})",
+        ),
+        strategy_name=cached.strategy_name,
+        tier3_shock=cached.tier3_shock,
         rationale=(
-            f"[FAST PATH] {cached.strategy_name} | "
+            f"[FAST PATH{' | TIER-3 SHOCK' if cached.tier3_shock else ''}] "
+            f"{cached.strategy_name} | "
             f"{cached.instrument_type} {cached.direction} | "
             f"R={cached.expected_r:.1f} | {cached.rationale[:100]}"
         ),
@@ -350,7 +446,8 @@ async def fast_execute(
     _fast_execute_latency_ms = (time.perf_counter() - t0) * 1000
     log.info(
         f"Fast execute: {ticker} {cached.direction} via {cached.strategy_name} "
-        f"in {_fast_execute_latency_ms:.1f}ms (signal book hit)"
+        f"in {_fast_execute_latency_ms:.1f}ms (signal book hit, "
+        f"tier3_shock={cached.tier3_shock})"
     )
 
     _signals.append(signal)
@@ -376,10 +473,11 @@ async def auto_execute_from_book() -> list[TradeSignal]:
         log.debug("Auto-execute disabled (AUTO_EXECUTE=False)")
         return []
 
-    from execution_engine.signal_book import get_signal_book
-    from execution_engine.math.regime import compute_regime_fingerprint
-    from data_primitives.extractors.openbb_client import fetch_ohlcv
     import numpy as np
+
+    from data_primitives.extractors.openbb_client import fetch_ohlcv
+    from execution_engine.math.regime import compute_regime_fingerprint
+    from execution_engine.signal_book import get_signal_book
 
     t0 = time.perf_counter()
     book = get_signal_book()
@@ -442,14 +540,15 @@ async def _apply_strategy_orchestrator(
     If a signal book hit is found, the LLM is never called.
     """
     try:
-        from execution_engine.signal_book import get_signal_book
         from execution_engine.math.regime import compute_regime_fingerprint
+        from execution_engine.signal_book import get_signal_book
 
         book = get_signal_book()
         bars = _price_cache.get(signal.ticker, [])
 
         if len(bars) >= 30:
             import numpy as np
+
             closes = np.array([b.close for b in bars])
             highs = np.array([b.high for b in bars])
             lows = np.array([b.low for b in bars])
@@ -464,7 +563,10 @@ async def _apply_strategy_orchestrator(
                 f" | SignalBook: {cached.instrument_type} {cached.direction} "
                 f"via {cached.strategy_name} (pre-computed, 0ms)"
             )
-            signal.confidence = min(signal.confidence, cached.conviction)
+            signal.alpha_score.unified_conviction = min(
+                signal.alpha_score.unified_conviction,
+                cached.conviction,
+            )
             log.info(
                 f"Signal book hit for {signal.ticker}: "
                 f"{cached.instrument_type} {cached.direction} "
@@ -475,35 +577,71 @@ async def _apply_strategy_orchestrator(
         log.debug(f"Signal book lookup skipped: {exc}")
 
     try:
-        ctx = await _build_market_context(signal.ticker, shock_ticker)
+        # Phase-3 (Gaps A1 + A2 fix): route the LangGraph final_state —
+        # forbidden_strategies, supervisor strategy_parameters,
+        # risk_multiplier, causal_intel — into the context builder so
+        # the post-pipeline orchestrator sees the SAME regime-gating
+        # the pipeline did. Previously these fields were silently
+        # dropped and the orchestrator ran against an impoverished ctx.
+        langgraph_state = signal.audit_trail if signal.audit_trail else None
+        ctx = await _build_market_context(
+            signal.ticker,
+            shock_ticker,
+            langgraph_final_state=langgraph_state,
+        )
         if ctx is None:
             return signal
 
-        use_llm = getattr(settings, "LLM_LIVE_ORCHESTRATOR", False)
+        from graph_intelligence.agents.strategy_orchestrator import orchestrate
 
-        if use_llm:
-            from graph_intelligence.agents.strategy_orchestrator import orchestrate_trade
-            decision = await orchestrate_trade(ctx)
-            log.info(f"LLM orchestrator used for {signal.ticker}")
+        mode = "llm" if getattr(settings, "LLM_LIVE_ORCHESTRATOR", False) else "rule"
+        intent = await orchestrate(ctx, mode=mode)
+        log.info(
+            f"Unified orchestrator ({mode}): "
+            f"{intent.instrument_choice.value} {intent.direction.value} "
+            f"{intent.ticker} | execute={intent.execute} "
+            f"strategy={intent.strategy_name} "
+            f"unified_conv={intent.alpha_score.unified_conviction:.2f}"
+        )
+
+        # Merge the fresh intent's decision onto the pipeline-emitted
+        # signal. The pipeline-side intent carries the causal audit
+        # trail (debate, analysts, divergence decoding); the fresh
+        # orchestrate() call carries the strategy / sizing / routing
+        # decision. We keep the pipeline's intent_id + audit_trail as
+        # the authoritative identity and overlay the orchestrator's
+        # choices on top.
+        if intent.execute:
+            signal.execute = True
+            signal.direction = intent.direction
+            signal.asset_class = intent.asset_class
+            signal.instrument_choice = intent.instrument_choice
+            signal.sizing_method = intent.sizing_method
+            signal.max_risk_pct = intent.max_risk_pct
+            signal.stop_loss_method = intent.stop_loss_method
+            signal.take_profit_method = intent.take_profit_method
+            signal.strike = intent.strike
+            signal.expiry_days = intent.expiry_days
+            signal.second_leg = intent.second_leg
+            signal.futures_contract = intent.futures_contract
+            signal.multiplier = intent.multiplier
+            signal.exchange = intent.exchange
+            signal.country = intent.country
+            signal.strategy_name = intent.strategy_name
+            signal.rationale += f" | Orchestrator: {intent.rationale}"
+            # Take the min of pipeline conviction and scorer conviction —
+            # both sides must believe for the trade to execute.
+            signal.alpha_score.unified_conviction = min(
+                signal.alpha_score.unified_conviction,
+                intent.alpha_score.unified_conviction,
+            )
+            signal.alpha_score.factor_score = intent.alpha_score.factor_score
+            signal.alpha_score.expected_r = intent.alpha_score.expected_r
+            signal.alpha_score.factor_breakdown.update(intent.alpha_score.factor_breakdown)
         else:
-            from graph_intelligence.agents.strategy_orchestrator import rule_based_orchestrate
-            decision = rule_based_orchestrate(ctx)
-
-        if decision.action == "EXECUTE":
-            signal.rationale += (
-                f" | Orchestrator: {decision.instrument_type} {decision.direction} "
-                f"via {decision.strategy_name} "
-                f"(analyse={decision.analysis_timeframe}, enter={decision.entry_timeframe})"
-            )
-            signal.confidence = min(signal.confidence, decision.conviction)
-            log.info(
-                f"Strategy orchestrator: {decision.instrument_type} "
-                f"{decision.strategy_name} @ {decision.conviction:.0%}"
-            )
-        elif decision.action == "SKIP":
-            signal.confidence *= 0.5
-            signal.rationale += f" | Orchestrator: SKIP — {decision.rationale}"
-            log.info(f"Strategy orchestrator recommended SKIP: {decision.rationale}")
+            signal.execute = False
+            signal.alpha_score.unified_conviction *= 0.5
+            signal.rationale += f" | Orchestrator: SKIP — {intent.rationale}"
 
     except Exception as exc:
         log.debug(f"Strategy orchestrator skipped: {exc}")
@@ -527,7 +665,7 @@ async def validate_graph_freshness(signal_sequence_id: int) -> bool:
         )
 
     try:
-        from graph_intelligence.tools.neo4j_tools import get_driver, _session_kwargs
+        from graph_intelligence.tools.neo4j_tools import _session_kwargs, get_driver
 
         driver = await get_driver()
         async with driver.session(**_session_kwargs()) as session:
@@ -556,9 +694,9 @@ async def execute_signal(
 
     Enforces both graph freshness AND cross-database sequence validation.
     """
-    from execution_engine.math.kelly import optimal_allocation_for_signal
-    from execution_engine.broker.orders import submit_signal
     from data_primitives.loaders.hopsworks_sync import get_cached_features
+    from execution_engine.broker.orders import submit_signal
+    from execution_engine.math.kelly import optimal_allocation_for_signal
 
     try:
         await validate_graph_freshness(sequence_id)
@@ -572,12 +710,14 @@ async def execute_signal(
 
     try:
         from data_primitives.extractors.openbb_client import fetch_ohlcv
+
         bars = await fetch_ohlcv(signal.ticker, days=90)
         _price_cache[signal.ticker] = bars
         price = bars[-1].close if bars else 100.0
 
         if not features:
             from data_primitives.loaders.hopsworks_sync import sync_features
+
             features = await sync_features(signal.ticker, bars)
     except Exception as exc:
         log.warning(f"Price/feature fetch failed for {signal.ticker}, using default: {exc}")
@@ -592,6 +732,10 @@ async def execute_signal(
         expected_return=expected_ret,
         volatility=vol,
         current_price=price,
+        # Batch-1/D: size scales linearly with the supervisor-approved
+        # conviction so a 0.62 signal gets materially less size than
+        # a 0.95 signal even when both clear the supervisor floor.
+        conviction=float(signal.confidence),
     )
 
     if shares == 0:
@@ -616,6 +760,7 @@ async def execute_signal(
 
         try:
             from backend.api.sse.streamer import publish_event
+
             await publish_event("position_update", position.model_dump(mode="json"))
         except Exception as exc:
             log.debug(f"SSE position publish failed: {exc}")
@@ -630,9 +775,10 @@ async def execute_signal_batch(signals: list[TradeSignal]) -> list[TradeSignal]:
     Kelly to optimally allocate across all positions simultaneously.
     """
     import numpy as np
-    from execution_engine.math.kelly import multivariate_kelly, compute_position_size
-    from execution_engine.broker.orders import submit_signal
+
     from data_primitives.loaders.hopsworks_sync import get_cached_features
+    from execution_engine.broker.orders import submit_signal
+    from execution_engine.math.kelly import compute_position_size, multivariate_kelly
 
     if not signals:
         return []
@@ -649,6 +795,7 @@ async def execute_signal_batch(signals: list[TradeSignal]) -> list[TradeSignal]:
         features = get_cached_features(signal.ticker)
         try:
             from data_primitives.extractors.openbb_client import fetch_ohlcv
+
             bars = await fetch_ohlcv(signal.ticker, days=90)
             _price_cache[signal.ticker] = bars
             price = bars[-1].close if bars else 100.0
@@ -662,7 +809,7 @@ async def execute_signal_batch(signals: list[TradeSignal]) -> list[TradeSignal]:
         volatilities[i] = vol
         prices.append(price)
 
-    cov_matrix = np.diag(volatilities ** 2)
+    cov_matrix = np.diag(volatilities**2)
     allocations = multivariate_kelly(expected_returns, cov_matrix)
 
     results: list[TradeSignal] = []
@@ -703,18 +850,60 @@ async def execute_manual_signal(
     confidence: float = 0.7,
     alpha_horizon: str = "3rd_order",
 ) -> dict[str, Any]:
-    """Create and execute a manual trade signal."""
+    """Create and execute a manual trade signal.
+
+    The allocated ``sequence_id`` is the max of all currently-registered
+    data-source sequences. This keeps the manual intent synchronised
+    with the autopilot registry so ``enforce_pre_trade_sync`` raises
+    when any source is materially behind, instead of silently passing
+    through with seq=0 (the P0-B defect).
+    """
+    direction = TradeAction(action)
     signal = TradeSignal(
-        signal_id=str(uuid.uuid4())[:8],
+        intent_id=f"manual_{uuid.uuid4().hex[:8]}",
+        execute=True,
         ticker=ticker,
-        action=TradeAction(action),
+        direction=direction,
         alpha_horizon=AlphaHorizon(alpha_horizon),
-        confidence=confidence,
+        alpha_score=AlphaScore(
+            ticker=ticker,
+            direction=direction,
+            factor_score=confidence,
+            bayesian_conviction=confidence,
+            unified_conviction=confidence,
+            expected_r=2.0,
+            min_r=1.5,
+            rationale="manual operator intent",
+        ),
         rationale="Manual signal",
     )
     _signals.append(signal)
-    result = await execute_signal(signal)
+    seq_id = _allocate_manual_sequence_id()
+    result = await execute_signal(signal, sequence_id=seq_id)
     return result.model_dump(mode="json")
+
+
+def _allocate_manual_sequence_id() -> int:
+    """Return a sequence_id that makes the manual signal subject to the
+    same freshness gate as autopilot signals.
+
+    We take the max of all registered source sequences. That way:
+      * On fresh startup (all sources at 0), we return 0 — the legacy
+        bypass in ``validate_graph_freshness`` still applies, so cold
+        starts without any ingestion don't deadlock the operator.
+      * Once any ingestion has happened, we return the max seq. If any
+        source is >10 behind that max, ``enforce_pre_trade_sync`` will
+        raise ``SequenceValidationError`` and the trade is REJECTED.
+      * If the graph (``_last_graph_sequence_id``) is materially behind
+        the max, ``validate_graph_freshness`` surfaces ``GraphStaleError``.
+
+    Callers should pass the returned value into ``execute_signal`` as
+    the ``sequence_id`` argument.
+    """
+    seqs = sequence_registry.get_all()
+    if not seqs:
+        return 0
+    return max(seqs.values())
 
 
 async def update_portfolio_prices() -> None:
@@ -736,13 +925,12 @@ async def update_portfolio_prices() -> None:
 
 def _update_portfolio_equity() -> None:
     """Recalculate total equity, drawdown, and push to C++ kill switch."""
-    position_value = sum(
-        p.quantity * p.current_price for p in _portfolio.positions
-    )
+    position_value = sum(p.quantity * p.current_price for p in _portfolio.positions)
     _portfolio.total_equity = _portfolio.cash + position_value
     _portfolio.total_pnl = sum(p.unrealized_pnl + p.realized_pnl for p in _portfolio.positions)
 
     from execution_engine.math.risk_metrics import update_drawdown
+
     update_drawdown(_portfolio)
     _update_kill_switch()
 
@@ -751,6 +939,7 @@ async def refresh_risk() -> RiskSnapshot:
     """Recompute the risk snapshot and push to the C++ watchdog."""
     global _risk_snapshot
     from execution_engine.math.risk_metrics import build_risk_snapshot
+
     _risk_snapshot = build_risk_snapshot(_portfolio, _price_cache)
     _update_kill_switch()
     return _risk_snapshot

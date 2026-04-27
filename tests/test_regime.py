@@ -1,20 +1,22 @@
 """Tests for market regime detection."""
+
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 
 class TestVolatilityClassification:
     def test_low_vol_regime(self):
         from execution_engine.math.regime import classify_volatility
+
         np.random.seed(42)
         returns = np.random.normal(0.0001, 0.005, 200)
         regime, vol, pct = classify_volatility(returns)
         assert vol < 0.3
 
     def test_returns_valid_regime(self):
-        from execution_engine.math.regime import classify_volatility, VolatilityRegime
+        from execution_engine.math.regime import VolatilityRegime, classify_volatility
+
         returns = np.random.normal(0, 0.02, 100)
         regime, vol, pct = classify_volatility(returns)
         assert isinstance(regime, VolatilityRegime)
@@ -24,6 +26,7 @@ class TestVolatilityClassification:
 class TestADX:
     def test_trending_market_high_adx(self):
         from execution_engine.math.regime import compute_adx
+
         n = 50
         closes = np.linspace(100, 130, n)
         highs = closes + 1
@@ -33,6 +36,7 @@ class TestADX:
 
     def test_short_series(self):
         from execution_engine.math.regime import compute_adx
+
         adx = compute_adx(np.ones(5), np.ones(5), np.ones(5))
         assert adx == 20.0
 
@@ -40,6 +44,7 @@ class TestADX:
 class TestRegimeClassification:
     def test_returns_regime_state(self):
         from execution_engine.math.regime import classify_regime
+
         np.random.seed(42)
         n = 80
         closes = 100 + np.cumsum(np.random.normal(0, 1, n))
@@ -55,11 +60,32 @@ class TestRegimeClassification:
 class TestDebateProtocol:
     def test_unanimous_long(self):
         from graph_intelligence.debate import run_debate
+
         opinions = [
-            {"analyst": "Fundamentals", "direction": "LONG", "confidence": 0.8, "thesis": "Strong fundamentals"},
-            {"analyst": "Technicals", "direction": "LONG", "confidence": 0.75, "thesis": "Oversold bounce"},
-            {"analyst": "Macro", "direction": "LONG", "confidence": 0.7, "thesis": "Risk-on regime"},
-            {"analyst": "Supply Chain", "direction": "LONG", "confidence": 0.85, "thesis": "Supply chain recovery"},
+            {
+                "analyst": "Fundamentals",
+                "direction": "LONG",
+                "confidence": 0.8,
+                "thesis": "Strong fundamentals",
+            },
+            {
+                "analyst": "Technicals",
+                "direction": "LONG",
+                "confidence": 0.75,
+                "thesis": "Oversold bounce",
+            },
+            {
+                "analyst": "Macro",
+                "direction": "LONG",
+                "confidence": 0.7,
+                "thesis": "Risk-on regime",
+            },
+            {
+                "analyst": "Supply Chain",
+                "direction": "LONG",
+                "confidence": 0.85,
+                "thesis": "Supply chain recovery",
+            },
         ]
         result = run_debate(opinions)
         assert result.consensus_direction == "LONG"
@@ -68,6 +94,7 @@ class TestDebateProtocol:
 
     def test_split_vote_no_trade(self):
         from graph_intelligence.debate import run_debate
+
         opinions = [
             {"analyst": "Fundamentals", "direction": "LONG", "confidence": 0.6, "thesis": "Buy"},
             {"analyst": "Technicals", "direction": "SHORT", "confidence": 0.7, "thesis": "Sell"},
@@ -79,6 +106,7 @@ class TestDebateProtocol:
 
     def test_empty_opinions(self):
         from graph_intelligence.debate import run_debate
+
         result = run_debate([])
         assert result.should_trade is False
         assert result.consensus_direction == "HOLD"

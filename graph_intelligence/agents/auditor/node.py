@@ -3,19 +3,17 @@
 Second node in the LangGraph DAG. Challenges the mapper's thesis
 and either approves, adjusts confidence, or kills the trade.
 """
+
 from __future__ import annotations
 
 import json
 import re
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
 
-from shared.config import settings
-from shared.logger import get_logger
+from graph_intelligence.agents.auditor.prompts import AUDITOR_REVIEW, AUDITOR_SYSTEM
 from graph_intelligence.graph_state.state import CausalArbitrageState
-from graph_intelligence.agents.auditor.prompts import AUDITOR_SYSTEM, AUDITOR_REVIEW
+from shared.logger import get_logger
 
 log = get_logger("agent.auditor")
 
@@ -25,8 +23,10 @@ log = get_logger("agent.auditor")
 # pattern is: hard quantitative gates first, then LLM judgement on
 # what survives. These thresholds mirror the orchestrator / debate
 # constants so the whole pipeline speaks the same risk language.
-AUDITOR_MIN_CONFIDENCE = 0.72          # aligns with debate _MIN_CONVICTION_TO_TRADE
-AUDITOR_MIN_CONFIDENCE_CAUSAL = 0.90   # aligns with grind-up causal override
+from shared.config import settings as _settings
+
+AUDITOR_MIN_CONFIDENCE: float = _settings.MIN_CONVICTION_AUDITOR
+AUDITOR_MIN_CONFIDENCE_CAUSAL: float = _settings.MIN_CONVICTION_CAUSAL_OVERRIDE
 
 _LONG_VOL_ALPHA_HORIZONS = {"1st_order", "first_order", "crisis"}
 
@@ -47,8 +47,15 @@ def _deterministic_auditor_kill(state: CausalArbitrageState) -> tuple[bool, str]
     # Long-vol / crisis-alpha trades must clear the causal-override bar
     is_long_vol = any(
         kw in rationale
-        for kw in ("long put", "naked put", "crisis put", "buying vol",
-                   "shock put", "decline put", "short equity")
+        for kw in (
+            "long put",
+            "naked put",
+            "crisis put",
+            "buying vol",
+            "shock put",
+            "decline put",
+            "short equity",
+        )
     )
     if is_long_vol and confidence < AUDITOR_MIN_CONFIDENCE_CAUSAL:
         return True, (
@@ -79,19 +86,9 @@ def _extract_json(text: str) -> str:
 
 
 def _get_llm():
-    if settings.LLM_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
-        return ChatAnthropic(
-            model=settings.ANTHROPIC_MODEL,
-            api_key=settings.ANTHROPIC_API_KEY,
-            temperature=0.2,
-            max_tokens=1000,
-        )
-    return ChatOpenAI(
-        model=settings.OPENAI_MODEL,
-        api_key=settings.OPENAI_API_KEY,
-        temperature=0.2,
-        max_tokens=1000,
-    )
+    from shared.llm_client import get_langchain_chat_model
+
+    return get_langchain_chat_model(temperature=0.2, max_tokens=1000)
 
 
 async def auditor_node(state: CausalArbitrageState) -> dict:
@@ -101,9 +98,7 @@ async def auditor_node(state: CausalArbitrageState) -> dict:
     sub-noise trades are killed without burning tokens or risking the
     LLM being talked into a bad trade.
     """
-    log.info(
-        f"Auditor reviewing [bold]{state.get('target_ticker', '?')}[/bold] signal"
-    )
+    log.info(f"Auditor reviewing [bold]{state.get('target_ticker', '?')}[/bold] signal")
 
     should_kill, kill_reason = _deterministic_auditor_kill(state)
     if should_kill:
@@ -116,21 +111,29 @@ async def auditor_node(state: CausalArbitrageState) -> dict:
             "iteration": state["iteration"] + 1,
         }
 
+    # P1-L: surface the researcher debate consensus to the auditor.
+    from graph_intelligence.agents.researchers.nodes import (
+        render_researcher_consensus_block,
+    )
+
     prompt = AUDITOR_REVIEW.format(
         shock_ticker=state["shock_ticker"],
         target_ticker=state.get("target_ticker", "UNKNOWN"),
         alpha_horizon=state.get("alpha_horizon", "unknown"),
         confidence=state.get("confidence", 0.0),
         rationale=state.get("rationale", "No rationale provided"),
+        researcher_consensus_block=render_researcher_consensus_block(state),
         timeline=json.dumps(state["timeline"][:15], indent=2, default=str),
         graph_topology=state.get("graph_topology_json", "No topology"),
     )
 
     llm = _get_llm()
-    response = await llm.ainvoke([
-        SystemMessage(content=AUDITOR_SYSTEM),
-        HumanMessage(content=prompt),
-    ])
+    response = await llm.ainvoke(
+        [
+            SystemMessage(content=AUDITOR_SYSTEM),
+            HumanMessage(content=prompt),
+        ]
+    )
 
     content = response.content
     try:

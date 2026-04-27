@@ -1,8 +1,8 @@
 """Structured logging for AYVID with Rich console output."""
+
 from __future__ import annotations
 
 import logging
-import sys
 
 from rich.console import Console
 from rich.logging import RichHandler
@@ -10,18 +10,20 @@ from rich.theme import Theme
 
 from shared.config import settings
 
-_AYVID_THEME = Theme({
-    "info": "cyan",
-    "warning": "yellow",
-    "error": "bold red",
-    "critical": "bold white on red",
-    "signal.long": "bold green",
-    "signal.short": "bold red",
-    "signal.hold": "dim",
-    "graph": "magenta",
-    "execution": "blue",
-    "risk": "yellow",
-})
+_AYVID_THEME = Theme(
+    {
+        "info": "cyan",
+        "warning": "yellow",
+        "error": "bold red",
+        "critical": "bold white on red",
+        "signal.long": "bold green",
+        "signal.short": "bold red",
+        "signal.hold": "dim",
+        "graph": "magenta",
+        "execution": "blue",
+        "risk": "yellow",
+    }
+)
 
 console = Console(theme=_AYVID_THEME, stderr=True)
 

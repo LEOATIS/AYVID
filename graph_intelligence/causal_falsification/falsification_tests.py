@@ -33,14 +33,14 @@ Implementation notes
   returns, heavy tails), the refinery prompts the LLM to take that
   into account as a knowledge-boundary warning.
 """
+
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable
 
 import numpy as np
-
 
 # ── Constants ────────────────────────────────────────────────────────
 SIGNIFICANCE_ALPHA: float = 0.05
@@ -51,6 +51,7 @@ FALSIFIABILITY_THRESHOLD: float = 0.05  # >5 % of perms better → falsified
 @dataclass(frozen=True)
 class CITestResult:
     """Outcome of one conditional-independence test on edge X → Y."""
+
     src: str
     dst: str
     conditioning_set: tuple[str, ...]
@@ -62,6 +63,7 @@ class CITestResult:
 @dataclass(frozen=True)
 class MinimalityResult:
     """Outcome of removing one edge and re-testing CI."""
+
     src: str
     dst: str
     unnecessary: bool
@@ -71,6 +73,7 @@ class MinimalityResult:
 @dataclass
 class FalsificationReport:
     """Full falsification pass over a candidate DAG."""
+
     edges_tested: int = 0
 
     ci_violations: list[CITestResult] = field(default_factory=list)
@@ -78,18 +81,15 @@ class FalsificationReport:
 
     unnecessary_edges: list[MinimalityResult] = field(default_factory=list)
 
-    falsifiable: bool = True          # False when MEC ambiguity is high
-    random_benchmark_p: float = 1.0   # P(random graph beats candidate)
+    falsifiable: bool = True  # False when MEC ambiguity is high
+    random_benchmark_p: float = 1.0  # P(random graph beats candidate)
     falsified_by_benchmark: bool = False
 
     @property
     def is_valid(self) -> bool:
         """A DAG is valid when CI violations are rare AND the random
         benchmark does not falsify it."""
-        return (
-            self.ci_fraction_violated < 0.20
-            and not self.falsified_by_benchmark
-        )
+        return self.ci_fraction_violated < 0.20 and not self.falsified_by_benchmark
 
 
 # ── Numerical primitives ─────────────────────────────────────────────
@@ -101,7 +101,9 @@ def _standardise(x: np.ndarray) -> np.ndarray:
 
 
 def _partial_correlation(
-    x: np.ndarray, y: np.ndarray, z: np.ndarray | None,
+    x: np.ndarray,
+    y: np.ndarray,
+    z: np.ndarray | None,
 ) -> tuple[float, float]:
     """Partial correlation between x and y controlling for z (matrix).
 
@@ -188,8 +190,12 @@ def test_conditional_independence(
 
     r, p = _partial_correlation(x, y, z)
     return CITestResult(
-        src=edge_src, dst=edge_dst, conditioning_set=cond_set,
-        partial_corr=r, p_value=p, independent=(p >= alpha),
+        src=edge_src,
+        dst=edge_dst,
+        conditioning_set=cond_set,
+        partial_corr=r,
+        p_value=p,
+        independent=(p >= alpha),
     )
 
 
@@ -210,10 +216,15 @@ def test_causal_minimality(
     """
     remaining_parents = [p for p in parents_of_dst if p != edge_src]
     reduced = test_conditional_independence(
-        edge_src, edge_dst, remaining_parents, returns, alpha=alpha,
+        edge_src,
+        edge_dst,
+        remaining_parents,
+        returns,
+        alpha=alpha,
     )
     return MinimalityResult(
-        src=edge_src, dst=edge_dst,
+        src=edge_src,
+        dst=edge_dst,
         unnecessary=reduced.independent,
         p_value_after_removal=reduced.p_value,
     )
@@ -268,9 +279,7 @@ def random_graph_benchmark(
     better = 0
     for _ in range(permutations):
         permuted = {n: nodes[rng.integers(0, len(nodes))] for n in nodes}
-        permuted_edges = [
-            (permuted.get(s, s), permuted.get(d, d)) for s, d in edges
-        ]
+        permuted_edges = [(permuted.get(s, s), permuted.get(d, d)) for s, d in edges]
         v = _count_ci_violations(permuted_edges, returns)
         if v < baseline:
             better += 1
@@ -313,13 +322,13 @@ def run_all_tests(
             report.unnecessary_edges.append(minimality)
 
     if report.edges_tested:
-        report.ci_fraction_violated = (
-            len(report.ci_violations) / report.edges_tested
-        )
+        report.ci_fraction_violated = len(report.ci_violations) / report.edges_tested
 
     # 3. Random-graph benchmark.
     p_better, falsified = random_graph_benchmark(
-        edges, returns, permutations=benchmark_permutations,
+        edges,
+        returns,
+        permutations=benchmark_permutations,
     )
     report.random_benchmark_p = p_better
     report.falsified_by_benchmark = falsified

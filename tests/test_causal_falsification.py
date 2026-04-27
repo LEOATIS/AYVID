@@ -1,4 +1,5 @@
 """Tests for Phase 2 — CausalFusion graph-falsification refinery."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -7,16 +8,19 @@ import numpy as np
 import pytest
 
 from graph_intelligence.causal_falsification import (
-    EdgeProposal, RefinedDAG, refine_dag,
-    FalsificationReport,
+    EdgeProposal,
     random_graph_benchmark,
+    refine_dag,
     run_all_tests,
 )
+from graph_intelligence.causal_falsification.falsification_tests import (
+    test_causal_minimality as minimality_test,
+)
+
 # Import with aliases so pytest's `test_*` collector does not treat the
 # imported module-level functions as test cases.
 from graph_intelligence.causal_falsification.falsification_tests import (
     test_conditional_independence as ci_test,
-    test_causal_minimality as minimality_test,
 )
 from graph_intelligence.causal_falsification.refinery import RefinementDecision
 
@@ -67,8 +71,10 @@ class TestCIPrimitive:
         assert conditioned.p_value > 0.05
 
     def test_below_min_samples_returns_neutral(self):
-        tiny = {"A": np.random.default_rng(0).standard_normal(10),
-                "B": np.random.default_rng(1).standard_normal(10)}
+        tiny = {
+            "A": np.random.default_rng(0).standard_normal(10),
+            "B": np.random.default_rng(1).standard_normal(10),
+        }
         ci = ci_test("A", "B", [], tiny)
         assert ci.p_value == 1.0
         assert ci.independent is True
@@ -100,7 +106,10 @@ class TestRandomBenchmark:
         data = _true_causal_data(seed=6)
         edges = [("A", "B"), ("B", "C")]
         p, falsified = random_graph_benchmark(
-            edges, data, permutations=50, rng_seed=1,
+            edges,
+            data,
+            permutations=50,
+            rng_seed=1,
         )
         # The real DAG should not be beaten by most random perms.
         assert falsified is False
@@ -111,7 +120,10 @@ class TestRandomBenchmark:
         # fits the data as well or better.
         edges = [("D", "A"), ("D", "B"), ("D", "C")]
         p, falsified = random_graph_benchmark(
-            edges, data, permutations=50, rng_seed=2,
+            edges,
+            data,
+            permutations=50,
+            rng_seed=2,
         )
         # We assert the call returns valid bounded values rather than a
         # specific verdict (permutation tests are stochastic).
@@ -142,12 +154,16 @@ class TestFullReport:
     def test_is_valid_flag(self):
         data = _true_causal_data(n=500, seed=100)
         clean_report = run_all_tests(
-            [("A", "B"), ("B", "C")], data, benchmark_permutations=30,
+            [("A", "B"), ("B", "C")],
+            data,
+            benchmark_permutations=30,
         )
         assert clean_report.is_valid is True
 
         bad_report = run_all_tests(
-            [("D", "A"), ("D", "B"), ("D", "C")], data, benchmark_permutations=30,
+            [("D", "A"), ("D", "B"), ("D", "C")],
+            data,
+            benchmark_permutations=30,
         )
         assert bad_report.is_valid is False
 
@@ -194,7 +210,10 @@ class TestRefineDag:
             return_value=fake_llm,
         ):
             refined = await refine_dag(
-                starting, data, alpha=3, gamma=0.80,
+                starting,
+                data,
+                alpha=3,
+                gamma=0.80,
                 benchmark_permutations=30,
             )
         final_keys = {(e.src, e.dst) for e in refined.edges}
@@ -212,7 +231,8 @@ class TestRefineDag:
         decision = RefinementDecision(
             refined_edges=[EdgeProposal(src="XX", dst="YY", confidence=0.99)],
             removed_edges=[("D", "A"), ("A", "B")],
-            rationale="confident refactor", self_confidence=0.40,  # < gamma
+            rationale="confident refactor",
+            self_confidence=0.40,  # < gamma
         )
         fake_llm = MagicMock()
         fake_llm.ainvoke = AsyncMock(return_value=decision)
@@ -221,7 +241,10 @@ class TestRefineDag:
             return_value=fake_llm,
         ):
             refined = await refine_dag(
-                starting, data, alpha=3, gamma=0.80,
+                starting,
+                data,
+                alpha=3,
+                gamma=0.80,
                 benchmark_permutations=30,
             )
         # Because self_confidence < gamma, refinement is skipped entirely;
@@ -245,7 +268,10 @@ class TestRefineDag:
             return_value=fake_llm,
         ):
             refined = await refine_dag(
-                starting, data, alpha=3, gamma=0.80,
+                starting,
+                data,
+                alpha=3,
+                gamma=0.80,
                 benchmark_permutations=30,
             )
         # LLM failure should not crash — priors pass through.

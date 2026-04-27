@@ -1,0 +1,171 @@
+name: Deploy to GCP
+
+# Triggers on every push to `main` that touches code the deploy cares
+# about. Workflow_dispatch lets you re-run a deploy manually from the
+# Actions tab without pushing a no-op commit.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "execution_engine/**"
+      - "graph_intelligence/**"
+      - "data_primitives/**"
+      - "shared/**"
+      - "cli/**"
+      - "infra/**"
+      - "Dockerfile"
+      - "Dockerfile.execution"
+      - "pyproject.toml"
+      - ".github/workflows/deploy-gcp.yml"
+      - "scripts/vm_redeploy.sh"
+  workflow_dispatch:
+
+# OIDC token + repo read are the minimum to authenticate against
+# Google's WIF and check out the repo.
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+  GCP_REGION: ${{ secrets.GCP_REGION }}
+  GCP_ZONE: ${{ secrets.GCP_ZONE }}
+  REGISTRY: ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/ayvid
+
+jobs:
+  build-and-push:
+    name: Build & push images
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: meta
+        run: echo "tag=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOYER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build on the runner and push directly. We use the gha cache so
+      # repeat builds reuse layers across workflow runs — first build
+      # of the day takes ~6 min, subsequent are ~90s.
+      - name: Build & push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/ayvid-backend:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/ayvid-backend:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build & push execution image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.execution
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/ayvid-execution:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/ayvid-execution:latest
+          cache-from: type=gha,scope=execution
+          cache-to: type=gha,mode=max,scope=execution
+
+  deploy-cloud-run:
+    name: Deploy backend (Cloud Run)
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOYER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Update the running Cloud Run service to point at the new image.
+      # We do this with `gcloud run services update-traffic` style calls
+      # rather than terraform, because terraform-managed Cloud Run env
+      # vars get overwritten on every apply — we want a tight diff
+      # surface where Actions only changes the image, nothing else.
+      - name: Deploy new Cloud Run revision
+        run: |
+          gcloud run services update ayvid-backend \
+            --region=${{ env.GCP_REGION }} \
+            --image=${{ env.REGISTRY }}/ayvid-backend:${{ needs.build-and-push.outputs.image_tag }} \
+            --quiet
+
+      - name: Wait for revision to be ready
+        run: |
+          for i in $(seq 1 30); do
+            ready=$(gcloud run services describe ayvid-backend \
+              --region=${{ env.GCP_REGION }} \
+              --format='value(status.conditions[?type=Ready].status)')
+            if [ "$ready" = "True" ]; then
+              echo "Cloud Run is Ready."
+              gcloud run services describe ayvid-backend --region=${{ env.GCP_REGION }} --format='value(status.url)'
+              exit 0
+            fi
+            echo "[$i] revision not ready yet (status=$ready); sleeping..."
+            sleep 10
+          done
+          echo "Cloud Run revision did not reach Ready within 5 min" >&2
+          exit 1
+
+  deploy-vm:
+    name: Roll execution VM container
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOYER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Stream the redeploy script over IAP-tunneled SSH. The VM does
+      # the actual pull + restart using the metadata server token; the
+      # workflow just orchestrates and waits.
+      - name: Roll container on ayvid-execution VM
+        run: |
+          gcloud compute ssh ayvid-execution \
+            --tunnel-through-iap \
+            --zone=${{ env.GCP_ZONE }} \
+            --command="bash -s ${{ env.GCP_REGION }} ${{ env.GCP_PROJECT }} ${{ needs.build-and-push.outputs.image_tag }}" \
+            --quiet \
+            < scripts/vm_redeploy.sh
+
+      - name: Verify container healthy
+        run: |
+          gcloud compute ssh ayvid-execution \
+            --tunnel-through-iap \
+            --zone=${{ env.GCP_ZONE }} \
+            --command="sudo docker ps --filter name=ayvid-execution --format '{{.Status}}' | grep -q healthy || (sudo docker logs --tail 30 ayvid-execution; exit 1)" \
+            --quiet

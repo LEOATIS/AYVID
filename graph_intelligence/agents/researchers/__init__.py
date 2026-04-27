@@ -17,17 +17,18 @@ directional bias propagating unchallenged into the analyst swarm
 Reference: Xiao et al., *TradingAgents: Multi-Agents LLM Financial
 Trading Framework* (arXiv 2412.20138v7), §3.2 Researcher Team.
 """
-from graph_intelligence.agents.researchers.schema import (
-    BullArgument,
-    BearArgument,
-    ResearcherConsensus,
-    DebateRound,
-)
+
 from graph_intelligence.agents.researchers.nodes import (
-    researcher_debate_node,
-    bull_advocate,
     bear_advocate,
+    bull_advocate,
     facilitator_judge,
+    researcher_debate_node,
+)
+from graph_intelligence.agents.researchers.schema import (
+    BearArgument,
+    BullArgument,
+    DebateRound,
+    ResearcherConsensus,
 )
 
 __all__ = [

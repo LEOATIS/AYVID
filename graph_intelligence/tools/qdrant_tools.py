@@ -3,23 +3,23 @@
 Stores news events as embeddings for semantic search, while the chronological
 timeline is maintained separately in the LangGraph state.
 """
+
 from __future__ import annotations
 
 import uuid
 from typing import Any
 
 from qdrant_client import AsyncQdrantClient, models
-from openai import AsyncOpenAI
 
 from shared.config import settings
 from shared.exceptions import QdrantConnectionError
+from shared.llm_client import embed as _llm_embed
 from shared.logger import get_logger
 from shared.types import CausalEvent
 
 log = get_logger("graph.qdrant")
 
 _client: AsyncQdrantClient | None = None
-_openai: AsyncOpenAI | None = None
 _EMBEDDING_DIM = 1536
 
 
@@ -36,13 +36,6 @@ async def get_client() -> AsyncQdrantClient:
         except Exception as exc:
             raise QdrantConnectionError(f"Cannot connect to Qdrant: {exc}") from exc
     return _client
-
-
-def _get_openai() -> AsyncOpenAI:
-    global _openai
-    if _openai is None:
-        _openai = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-    return _openai
 
 
 async def ensure_collection() -> None:
@@ -63,13 +56,8 @@ async def ensure_collection() -> None:
 
 
 async def embed_text(text: str) -> list[float]:
-    """Generate an embedding vector using OpenAI."""
-    client = _get_openai()
-    response = await client.embeddings.create(
-        model=settings.OPENAI_EMBEDDING_MODEL,
-        input=text,
-    )
-    return response.data[0].embedding
+    """Generate an embedding vector via the shared LLM dispatch."""
+    return await _llm_embed(text)
 
 
 async def store_event(event: CausalEvent) -> str:

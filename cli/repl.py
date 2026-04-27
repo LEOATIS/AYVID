@@ -21,6 +21,7 @@ Design goals
 * Built-ins: ``help`` / ``?``, ``clear`` / ``cls``, ``exit`` / ``quit``
   / ``:q``. Ctrl+D and Ctrl+C both leave the shell cleanly.
 """
+
 from __future__ import annotations
 
 import shlex
@@ -93,8 +94,7 @@ def _print_shell_help() -> None:
 
     console.print(
         Text(
-            "  Examples:  trade paper-status   ·   data scan --top 10   ·   "
-            "graph --help",
+            "  Examples:  trade paper-status   ·   data scan --top 10   ·   graph --help",
             style="dim #6e7080",
         )
     )
@@ -123,7 +123,7 @@ def _print_command_finished() -> None:
 # ──────────────────────────────────────────────────────────────────
 # Dispatch
 # ──────────────────────────────────────────────────────────────────
-def _dispatch(typer_app: "typer.Typer", line: str) -> None:
+def _dispatch(typer_app: typer.Typer, line: str) -> None:
     """Run a single REPL line through the typer/click command tree."""
     try:
         tokens = shlex.split(line)
@@ -162,7 +162,7 @@ def _dispatch(typer_app: "typer.Typer", line: str) -> None:
 # ──────────────────────────────────────────────────────────────────
 # Main loop
 # ──────────────────────────────────────────────────────────────────
-def run_shell(typer_app: "typer.Typer") -> None:
+def run_shell(typer_app: typer.Typer) -> None:
     """Block on the interactive AYVID shell until the user exits.
 
     Parameters

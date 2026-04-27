@@ -14,7 +14,13 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 
 WORKDIR /build
 COPY pyproject.toml ./
+# Wheel setuptools + wheel up front so the runtime `pip install
+# --no-index` step can satisfy the PEP 517 build-system requirement
+# without reaching PyPI. Without this, pip 23+ tries to spin up an
+# isolated venv and fails because /wheels has the project's runtime
+# deps but not its build-time deps.
 RUN pip install --upgrade pip && \
+    pip wheel --wheel-dir /wheels "setuptools>=61.0" "wheel" && \
     pip wheel --wheel-dir /wheels .
 
 
@@ -36,7 +42,14 @@ WORKDIR /app
 
 COPY --from=builder /wheels /wheels
 COPY pyproject.toml ./
-RUN pip install --no-index --find-links=/wheels . && rm -rf /wheels
+# `--no-build-isolation` because we're installing offline from /wheels;
+# pip would otherwise try to fetch setuptools from PyPI inside a fresh
+# venv. The wheel for setuptools is already in /wheels (above) so the
+# system Python can resolve the build backend locally.
+RUN pip install --no-index --find-links=/wheels --no-build-isolation \
+        "setuptools>=61.0" "wheel" && \
+    pip install --no-index --find-links=/wheels --no-build-isolation . && \
+    rm -rf /wheels
 
 COPY --chown=ayvid:ayvid . .
 

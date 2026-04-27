@@ -1,6 +1,6 @@
 """Vision-LLM prompts for the 16-class chart pattern classifier."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 PATTERN_SYSTEM = """\
 You are a senior technical analyst at a quantitative hedge fund. Your

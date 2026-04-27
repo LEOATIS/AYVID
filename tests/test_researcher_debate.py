@@ -1,4 +1,5 @@
 """Tests for Phase 3 — bull/bear adversarial researcher debate."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -6,8 +7,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from graph_intelligence.agents.researchers import (
-    BullArgument, BearArgument, DebateRound, ResearcherConsensus,
-    researcher_debate_node, bull_advocate, bear_advocate, facilitator_judge,
+    BearArgument,
+    BullArgument,
+    DebateRound,
+    ResearcherConsensus,
+    bear_advocate,
+    bull_advocate,
+    facilitator_judge,
+    researcher_debate_node,
 )
 from graph_intelligence.graph_state.state import create_initial_state
 
@@ -112,13 +119,17 @@ class TestResearcherDebateNode:
             "[TOPOLOGY]\n{}"
         )
         s["causal_intel"] = {
-            "shock_type": "macro", "expected_direction": "BULLISH",
+            "shock_type": "macro",
+            "expected_direction": "BULLISH",
             "shock_magnitude": 0.03,
-            "beneficiary_tickers": ["AAPL"], "victim_tickers": [],
+            "beneficiary_tickers": ["AAPL"],
+            "victim_tickers": [],
         }
         s["strategy_parameters"] = {
-            "max_rsi_entry_long": 30.0, "max_z_entry_long": -1.5,
-            "min_factor_score": 0.40, "min_expected_r": 1.5,
+            "max_rsi_entry_long": 30.0,
+            "max_z_entry_long": -1.5,
+            "min_factor_score": 0.40,
+            "min_expected_r": 1.5,
         }
         return s
 
@@ -128,27 +139,36 @@ class TestResearcherDebateNode:
         bull_mock = BullArgument(
             thesis_summary="AAPL earnings acceleration",
             strongest_catalysts=["iPhone 17 super-cycle", "Services margin expansion"],
-            conviction=0.85, invalidation_level="AAPL closes < 180 on 2× ADV",
+            conviction=0.85,
+            invalidation_level="AAPL closes < 180 on 2× ADV",
         )
         bear_mock = BearArgument(
             counter_thesis="Multiple contraction risk",
             strongest_risks=["China headwind"],
-            conviction=0.35, invalidation_level="Services growth re-accelerates",
+            conviction=0.35,
+            invalidation_level="Services growth re-accelerates",
         )
         cons_mock = ResearcherConsensus(
-            dominant_side="BULL", direction="LONG", conviction=0.78,
-            margin=0.65, executive_summary="Bull case strong; bear rebuttal weak",
+            dominant_side="BULL",
+            direction="LONG",
+            conviction=0.78,
+            margin=0.65,
+            executive_summary="Bull case strong; bear rebuttal weak",
         )
 
-        with patch(
-            "graph_intelligence.agents.researchers.nodes.bull_advocate",
-            new=AsyncMock(return_value=bull_mock),
-        ), patch(
-            "graph_intelligence.agents.researchers.nodes.bear_advocate",
-            new=AsyncMock(return_value=bear_mock),
-        ), patch(
-            "graph_intelligence.agents.researchers.nodes.facilitator_judge",
-            new=AsyncMock(return_value=cons_mock),
+        with (
+            patch(
+                "graph_intelligence.agents.researchers.nodes.bull_advocate",
+                new=AsyncMock(return_value=bull_mock),
+            ),
+            patch(
+                "graph_intelligence.agents.researchers.nodes.bear_advocate",
+                new=AsyncMock(return_value=bear_mock),
+            ),
+            patch(
+                "graph_intelligence.agents.researchers.nodes.facilitator_judge",
+                new=AsyncMock(return_value=cons_mock),
+            ),
         ):
             patch_dict = await researcher_debate_node(s, rounds=2)
 
@@ -159,22 +179,29 @@ class TestResearcherDebateNode:
 
     @pytest.mark.asyncio
     async def test_facilitator_overrules_mapper(self):
-        s = self._state()   # mapper says LONG
+        s = self._state()  # mapper says LONG
         bull_mock = BullArgument(conviction=0.40)
         bear_mock = BearArgument(conviction=0.85)
         cons_mock = ResearcherConsensus(
-            dominant_side="BEAR", direction="SHORT", conviction=0.75,
-            margin=0.45, executive_summary="Bear case wins — valuation ceiling",
+            dominant_side="BEAR",
+            direction="SHORT",
+            conviction=0.75,
+            margin=0.45,
+            executive_summary="Bear case wins — valuation ceiling",
         )
-        with patch(
-            "graph_intelligence.agents.researchers.nodes.bull_advocate",
-            new=AsyncMock(return_value=bull_mock),
-        ), patch(
-            "graph_intelligence.agents.researchers.nodes.bear_advocate",
-            new=AsyncMock(return_value=bear_mock),
-        ), patch(
-            "graph_intelligence.agents.researchers.nodes.facilitator_judge",
-            new=AsyncMock(return_value=cons_mock),
+        with (
+            patch(
+                "graph_intelligence.agents.researchers.nodes.bull_advocate",
+                new=AsyncMock(return_value=bull_mock),
+            ),
+            patch(
+                "graph_intelligence.agents.researchers.nodes.bear_advocate",
+                new=AsyncMock(return_value=bear_mock),
+            ),
+            patch(
+                "graph_intelligence.agents.researchers.nodes.facilitator_judge",
+                new=AsyncMock(return_value=cons_mock),
+            ),
         ):
             patch_dict = await researcher_debate_node(s)
 
@@ -188,18 +215,25 @@ class TestResearcherDebateNode:
         bull_mock = BullArgument(conviction=0.55)
         bear_mock = BearArgument(conviction=0.55)
         cons_mock = ResearcherConsensus(
-            dominant_side="NEITHER", direction="HOLD", conviction=0.0,
-            margin=0.10, executive_summary="Evenly matched — no clear edge",
+            dominant_side="NEITHER",
+            direction="HOLD",
+            conviction=0.0,
+            margin=0.10,
+            executive_summary="Evenly matched — no clear edge",
         )
-        with patch(
-            "graph_intelligence.agents.researchers.nodes.bull_advocate",
-            new=AsyncMock(return_value=bull_mock),
-        ), patch(
-            "graph_intelligence.agents.researchers.nodes.bear_advocate",
-            new=AsyncMock(return_value=bear_mock),
-        ), patch(
-            "graph_intelligence.agents.researchers.nodes.facilitator_judge",
-            new=AsyncMock(return_value=cons_mock),
+        with (
+            patch(
+                "graph_intelligence.agents.researchers.nodes.bull_advocate",
+                new=AsyncMock(return_value=bull_mock),
+            ),
+            patch(
+                "graph_intelligence.agents.researchers.nodes.bear_advocate",
+                new=AsyncMock(return_value=bear_mock),
+            ),
+            patch(
+                "graph_intelligence.agents.researchers.nodes.facilitator_judge",
+                new=AsyncMock(return_value=cons_mock),
+            ),
         ):
             patch_dict = await researcher_debate_node(s)
 
@@ -226,15 +260,19 @@ class TestResearcherDebateNode:
         bear_mock = AsyncMock(side_effect=[r1_bear, r2_bear])
         cons_mock = ResearcherConsensus()
 
-        with patch(
-            "graph_intelligence.agents.researchers.nodes.bull_advocate",
-            new=bull_mock,
-        ), patch(
-            "graph_intelligence.agents.researchers.nodes.bear_advocate",
-            new=bear_mock,
-        ), patch(
-            "graph_intelligence.agents.researchers.nodes.facilitator_judge",
-            new=AsyncMock(return_value=cons_mock),
+        with (
+            patch(
+                "graph_intelligence.agents.researchers.nodes.bull_advocate",
+                new=bull_mock,
+            ),
+            patch(
+                "graph_intelligence.agents.researchers.nodes.bear_advocate",
+                new=bear_mock,
+            ),
+            patch(
+                "graph_intelligence.agents.researchers.nodes.facilitator_judge",
+                new=AsyncMock(return_value=cons_mock),
+            ),
         ):
             await researcher_debate_node(s, rounds=2)
 
@@ -253,6 +291,7 @@ class TestResearcherDebateNode:
 class TestPipelineIntegration:
     def test_graph_contains_researcher_debate_node(self):
         from graph_intelligence.pipeline import build_causal_graph
+
         g = build_causal_graph()
         # LangGraph's StateGraph doesn't expose node names cleanly; the
         # safest assertion is that the graph compiles without error.

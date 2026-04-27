@@ -19,6 +19,7 @@ Exit codes::
     1  no runner data yet
     2  date requested has no data
 """
+
 from __future__ import annotations
 
 import argparse
@@ -90,6 +91,7 @@ def _render_curve_png(day: dt.date) -> Path | None:
     """Render cumulative equity curve up to ``day`` as a PNG for the digest."""
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.dates as mdates
         import matplotlib.pyplot as plt
@@ -115,7 +117,8 @@ def _render_curve_png(day: dt.date) -> Path | None:
     ax.axhline(initial, color="#888", linewidth=0.6, linestyle="--", alpha=0.5)
     ax.set_title(
         f"AYVID Live Paper Equity — {ts[0]:%Y-%m-%d} → {ts[-1]:%Y-%m-%d}",
-        fontsize=11, weight="bold",
+        fontsize=11,
+        weight="bold",
     )
     ax.set_ylabel("Net Liquidation ($)")
     ax.grid(True, alpha=0.25)
@@ -137,10 +140,21 @@ def _render_curve_png(day: dt.date) -> Path | None:
         f"DD:      {dd:.2f}%"
     )
     ax.text(
-        0.99, 0.02, stats, transform=ax.transAxes, fontsize=9, family="monospace",
-        va="bottom", ha="right",
-        bbox=dict(boxstyle="round,pad=0.4", facecolor="#f7f7f7",
-                  edgecolor=stats_color, linewidth=1.0, alpha=0.9),
+        0.99,
+        0.02,
+        stats,
+        transform=ax.transAxes,
+        fontsize=9,
+        family="monospace",
+        va="bottom",
+        ha="right",
+        bbox=dict(
+            boxstyle="round,pad=0.4",
+            facecolor="#f7f7f7",
+            edgecolor=stats_color,
+            linewidth=1.0,
+            alpha=0.9,
+        ),
     )
 
     DAILY_DIR.mkdir(parents=True, exist_ok=True)
@@ -163,12 +177,22 @@ def _summarize_day(day: dt.date) -> dict[str, Any]:
     closing_eq = float(today_curve[-1]["equity"]) if today_curve else None
     prev_eq = float(prev_close_row["equity"]) if prev_close_row else None
 
-    daily_pnl = (closing_eq - (prev_eq or opening_eq or closing_eq or 0)) if closing_eq is not None else 0.0
-    daily_pct = ((closing_eq / (prev_eq or opening_eq or closing_eq)) - 1) * 100 if closing_eq else 0.0
+    daily_pnl = (
+        (closing_eq - (prev_eq or opening_eq or closing_eq or 0))
+        if closing_eq is not None
+        else 0.0
+    )
+    daily_pct = (
+        ((closing_eq / (prev_eq or opening_eq or closing_eq)) - 1) * 100 if closing_eq else 0.0
+    )
 
     first_row = curve_rows[0] if curve_rows else None
     run_start_eq = float(first_row["equity"]) if first_row else None
-    cum_pnl = (closing_eq - run_start_eq) if (closing_eq is not None and run_start_eq is not None) else 0.0
+    cum_pnl = (
+        (closing_eq - run_start_eq)
+        if (closing_eq is not None and run_start_eq is not None)
+        else 0.0
+    )
     cum_pct = ((closing_eq / run_start_eq) - 1) * 100 if (closing_eq and run_start_eq) else 0.0
 
     # Mode distribution — did we run ib_paper today, or shadow?
@@ -274,8 +298,10 @@ def _render_markdown(day: dt.date, summary: dict[str, Any], curve_png: Path | No
             if positions:
                 lines.append("## Open Positions (end of day)")
                 lines.append("")
-                lines.append(f"Cash: {_fmt_money(float(pos.get('cash', 0)))}  ·  "
-                             f"As of: {pos.get('as_of', '?')}")
+                lines.append(
+                    f"Cash: {_fmt_money(float(pos.get('cash', 0)))}  ·  "
+                    f"As of: {pos.get('as_of', '?')}"
+                )
                 lines.append("")
                 lines.append("| Ticker | Shares | Entry | Entered |")
                 lines.append("|---|---:|---:|---|")

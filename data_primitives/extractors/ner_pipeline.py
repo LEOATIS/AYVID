@@ -7,6 +7,7 @@ pipeline and the backtest engine to replace the hardcoded
 
 Supports both OpenAI and Anthropic backends (selected via LLM_PROVIDER config).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -15,62 +16,21 @@ import json
 import re
 from typing import Any
 
-from shared.config import settings
+from data_primitives.security import (
+    is_safe,
+    safe_for_ticker_extraction,
+    sanitize_news_text,
+)
 from shared.exceptions import LLMProviderError
 from shared.logger import get_logger
 from shared.types import CausalEvent, EventType, NewsItem
-from data_primitives.security import (
-    SanitizedText,
-    sanitize_news_text,
-    is_safe,
-    safe_for_ticker_extraction,
-)
 
 log = get_logger("data.ner")
 
-_openai_client = None
-_anthropic_client = None
+from shared.llm_client import json_call as _llm_json_call  # noqa: E402
+
 _sequence_counter = itertools.count(start=1)
 _DEFAULT_LLM_CONCURRENCY = 25
-
-
-async def _llm_json_call(system: str, user: str) -> str:
-    """Dispatch a JSON-mode LLM call to the configured provider."""
-    if settings.LLM_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
-        return await _anthropic_call(system, user)
-    return await _openai_call(system, user)
-
-
-async def _openai_call(system: str, user: str) -> str:
-    global _openai_client
-    if _openai_client is None:
-        from openai import AsyncOpenAI
-        _openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-    response = await _openai_client.chat.completions.create(
-        model=settings.OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        temperature=0.0,
-        response_format={"type": "json_object"},
-    )
-    return response.choices[0].message.content or "{}"
-
-
-async def _anthropic_call(system: str, user: str) -> str:
-    global _anthropic_client
-    if _anthropic_client is None:
-        from anthropic import AsyncAnthropic
-        _anthropic_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-    response = await _anthropic_client.messages.create(
-        model=settings.ANTHROPIC_MODEL,
-        max_tokens=1500,
-        system=system + "\n\nYou MUST respond with valid JSON only. No markdown, no explanation.",
-        messages=[{"role": "user", "content": user}],
-        temperature=0.0,
-    )
-    return response.content[0].text if response.content else "{}"
 
 
 def _next_seq() -> int:
@@ -257,13 +217,14 @@ async def classify_event_with_llm(title: str, text: str) -> tuple[EventType, flo
 
 # ── Graph Mapping ─────────────────────────────────────────────
 
+
 async def map_entities_to_graph(entities: list[dict[str, Any]]) -> int:
     """Upsert extracted entities into the Neo4j supply chain graph.
 
     Companies become Company nodes; products become Product nodes.
     Returns count of nodes upserted.
     """
-    from graph_intelligence.tools.neo4j_tools import get_driver, _session_kwargs
+    from graph_intelligence.tools.neo4j_tools import _session_kwargs, get_driver
     from shared.types import CompanyNode
 
     companies = [e for e in entities if e.get("type") == "COMPANY" and e.get("ticker")]
@@ -304,11 +265,14 @@ async def map_entities_to_graph(entities: list[dict[str, Any]]) -> int:
             )
             upserted += 1
 
-    log.info(f"Upserted {upserted} entities to Neo4j ({len(companies)} companies, {len(products)} products)")
+    log.info(
+        f"Upserted {upserted} entities to Neo4j ({len(companies)} companies, {len(products)} products)"
+    )
     return upserted
 
 
 # ── Full News Batch Pipeline ──────────────────────────────────
+
 
 async def _process_single_item(
     item: NewsItem,
@@ -328,27 +292,45 @@ async def _process_single_item(
         if upserted > 0:
             try:
                 from backend.services.orchestrator import update_graph_sequence
+
                 update_graph_sequence(_next_seq())
             except Exception as exc:
                 log.debug(f"Graph sequence update skipped: {exc}")
 
         symbols = item.symbols or [
-            e["ticker"] for e in entities
-            if e.get("type") == "COMPANY" and e.get("ticker")
+            e["ticker"] for e in entities if e.get("type") == "COMPANY" and e.get("ticker")
         ]
         if not symbols:
             symbols = ["UNKNOWN"]
 
+        # P1-P: ``compressed_summary`` survives into Qdrant, the
+        # dashboard, and any downstream prompt that renders
+        # ``state['timeline']`` to an LLM. The raw title can carry
+        # hidden HTML/CSS, homoglyph attacks, or direct prompt
+        # injection — the sanitiser normalises unicode, strips hidden
+        # spans, and redacts script-switched tokens.
+        #
+        # ``sanitize_news_text`` returns a ``SanitizedText`` dataclass,
+        # not a plain ``str`` — we pass its ``.clean`` field to the
+        # Pydantic model. The prior revision handed the dataclass
+        # directly, causing every NER-produced CausalEvent to fail
+        # validation with "Input should be a valid string" and 0
+        # events to land per cycle.
+        sanitized = sanitize_news_text(item.title or "")
+        clean_title = sanitized.clean or (item.title or "")
+
         events: list[CausalEvent] = []
         for symbol in symbols:
-            events.append(CausalEvent(
-                timestamp=item.timestamp,
-                source_node=symbol,
-                event_type=event_type,
-                compressed_summary=item.title,
-                confidence=confidence,
-                sequence_id=_next_seq(),
-            ))
+            events.append(
+                CausalEvent(
+                    timestamp=item.timestamp,
+                    source_node=symbol,
+                    event_type=event_type,
+                    compressed_summary=clean_title,
+                    confidence=confidence,
+                    sequence_id=_next_seq(),
+                )
+            )
         return events
 
 
@@ -372,10 +354,7 @@ async def process_news_batch(
     effective_concurrency = concurrency or _DEFAULT_LLM_CONCURRENCY
     semaphore = asyncio.Semaphore(effective_concurrency)
 
-    log.info(
-        f"NER processing {len(news_items)} items "
-        f"(concurrency={effective_concurrency})"
-    )
+    log.info(f"NER processing {len(news_items)} items (concurrency={effective_concurrency})")
 
     tasks = [_process_single_item(item, semaphore) for item in news_items]
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -414,39 +393,114 @@ async def process_news_batch(
 # on broad equity indices.
 _SHOCK_KEYWORD_FAMILIES: list[tuple[str, tuple[str, ...], str]] = [
     # Geopolitical — historically index-bearish
-    ("geopolitical_war",   ("war", "invasion", "attack", "strike", "airstrike",
-                            "missile", "drone strike", "military conflict",
-                            "ceasefire violation", "mobilisation", "mobilization"),
-     "BEARISH"),
-    ("geopolitical_tension", ("tensions escalate", "escalating tensions",
-                              "standoff", "confrontation", "retaliation",
-                              "provocation", "threat of war", "red line"),
-     "BEARISH"),
-    ("sanctions_tariffs",  ("sanctions", "sanction", "tariff", "tariffs",
-                            "trade war", "export ban", "export controls",
-                            "embargo", "blockade", "blacklist"),
-     "BEARISH"),
-    ("middle_east",        ("iran", "israel", "gaza", "hezbollah", "houthi",
-                            "red sea", "strait of hormuz", "oil supply"),
-     "BEARISH"),
+    (
+        "geopolitical_war",
+        (
+            "war",
+            "invasion",
+            "attack",
+            "strike",
+            "airstrike",
+            "missile",
+            "drone strike",
+            "military conflict",
+            "ceasefire violation",
+            "mobilisation",
+            "mobilization",
+        ),
+        "BEARISH",
+    ),
+    (
+        "geopolitical_tension",
+        (
+            "tensions escalate",
+            "escalating tensions",
+            "standoff",
+            "confrontation",
+            "retaliation",
+            "provocation",
+            "threat of war",
+            "red line",
+        ),
+        "BEARISH",
+    ),
+    (
+        "sanctions_tariffs",
+        (
+            "sanctions",
+            "sanction",
+            "tariff",
+            "tariffs",
+            "trade war",
+            "export ban",
+            "export controls",
+            "embargo",
+            "blockade",
+            "blacklist",
+        ),
+        "BEARISH",
+    ),
+    (
+        "middle_east",
+        (
+            "iran",
+            "israel",
+            "gaza",
+            "hezbollah",
+            "houthi",
+            "red sea",
+            "strait of hormuz",
+            "oil supply",
+        ),
+        "BEARISH",
+    ),
     # Supply chain — selectively bearish on consumer / industrials
-    ("supply_chain",       ("factory fire", "plant explosion", "port closure",
-                            "shipping disruption", "container shortage",
-                            "chip shortage", "semiconductor shortage",
-                            "supply chain disruption", "supplier halt",
-                            "logistics bottleneck"),
-     "BEARISH"),
-    ("commodity_shock",    ("oil spike", "opec cuts", "opec+ cut",
-                            "natural gas crisis", "copper squeeze",
-                            "gold surge", "commodity rally",
-                            "power outage", "grid failure"),
-     "BEARISH"),
+    (
+        "supply_chain",
+        (
+            "factory fire",
+            "plant explosion",
+            "port closure",
+            "shipping disruption",
+            "container shortage",
+            "chip shortage",
+            "semiconductor shortage",
+            "supply chain disruption",
+            "supplier halt",
+            "logistics bottleneck",
+        ),
+        "BEARISH",
+    ),
+    (
+        "commodity_shock",
+        (
+            "oil spike",
+            "opec cuts",
+            "opec+ cut",
+            "natural gas crisis",
+            "copper squeeze",
+            "gold surge",
+            "commodity rally",
+            "power outage",
+            "grid failure",
+        ),
+        "BEARISH",
+    ),
     # Recovery / positive
-    ("recovery",           ("ceasefire agreed", "truce signed", "peace deal",
-                            "sanctions lifted", "tariff rollback",
-                            "plant reopened", "capacity restored",
-                            "supply restored"),
-     "BULLISH"),
+    (
+        "recovery",
+        (
+            "ceasefire agreed",
+            "truce signed",
+            "peace deal",
+            "sanctions lifted",
+            "tariff rollback",
+            "plant reopened",
+            "capacity restored",
+            "supply restored",
+        ),
+        "BULLISH",
+    ),
 ]
 
 # Minimum aggregate keyword-hit score (across all families) at which we
@@ -501,9 +555,18 @@ def _score_news_for_shock(
 # Index symbols we attach directional biases to. These match the keys
 # used by the backtest engine's shock_context / index_bias block.
 _TRACKED_INDICES = (
-    "^GSPC", "^IXIC", "^DJI", "^RUT",
-    "^FTSE", "^GDAXI", "^FCHI", "^STOXX50E",
-    "^N225", "^HSI", "^NSEI", "^BSESN",
+    "^GSPC",
+    "^IXIC",
+    "^DJI",
+    "^RUT",
+    "^FTSE",
+    "^GDAXI",
+    "^FCHI",
+    "^STOXX50E",
+    "^N225",
+    "^HSI",
+    "^NSEI",
+    "^BSESN",
 )
 
 
@@ -511,7 +574,7 @@ def _ticker_frequency(news_items: list[NewsItem]) -> dict[str, int]:
     """Count which tickers are most mentioned in the news window."""
     freq: dict[str, int] = {}
     for item in news_items:
-        for t in (item.symbols or []):
+        for t in item.symbols or []:
             if not t:
                 continue
             freq[t] = freq.get(t, 0) + 1
@@ -660,8 +723,9 @@ def shock_context_from_news(
         "supply_chain_shock": True,
         "shock_source": f"auto:{intel['shock_type']}",
         "shock_tickers": mentioned,
-        "shock_magnitude": shock_magnitude if intel["expected_direction"] == "BEARISH"
-                           else abs(shock_magnitude),
+        "shock_magnitude": shock_magnitude
+        if intel["expected_direction"] == "BEARISH"
+        else abs(shock_magnitude),
         "causal_intel": intel,
         "beneficiary_tickers": set(intel.get("beneficiary_tickers") or []),
         "victim_tickers": set(intel.get("victim_tickers") or []),
@@ -671,7 +735,10 @@ def shock_context_from_news(
 
 
 __all__ = [
-    "extract_entities", "classify_event_with_llm", "map_entities_to_graph",
+    "extract_entities",
+    "classify_event_with_llm",
+    "map_entities_to_graph",
     "process_news_batch",
-    "detect_live_shock", "shock_context_from_news",
+    "detect_live_shock",
+    "shock_context_from_news",
 ]

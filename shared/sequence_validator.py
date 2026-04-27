@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import threading
-from typing import Any, Coroutine
+from collections.abc import Coroutine
+from typing import Any
 
 from shared.exceptions import SequenceValidationError
 from shared.logger import get_logger
@@ -59,24 +60,16 @@ class SequenceMiddleware:
     def __init__(self, registry: SequenceRegistry | None = None) -> None:
         self._registry = registry or sequence_registry
 
-    async def wrap_neo4j_write(
-        self, coro: Coroutine[Any, Any, Any], sequence_id: int
-    ) -> Any:
+    async def wrap_neo4j_write(self, coro: Coroutine[Any, Any, Any], sequence_id: int) -> Any:
         return await self._wrap("neo4j", coro, sequence_id)
 
-    async def wrap_questdb_write(
-        self, coro: Coroutine[Any, Any, Any], sequence_id: int
-    ) -> Any:
+    async def wrap_questdb_write(self, coro: Coroutine[Any, Any, Any], sequence_id: int) -> Any:
         return await self._wrap("questdb", coro, sequence_id)
 
-    async def wrap_qdrant_write(
-        self, coro: Coroutine[Any, Any, Any], sequence_id: int
-    ) -> Any:
+    async def wrap_qdrant_write(self, coro: Coroutine[Any, Any, Any], sequence_id: int) -> Any:
         return await self._wrap("qdrant", coro, sequence_id)
 
-    async def _wrap(
-        self, source: str, coro: Coroutine[Any, Any, Any], sequence_id: int
-    ) -> Any:
+    async def _wrap(self, source: str, coro: Coroutine[Any, Any, Any], sequence_id: int) -> Any:
         try:
             result = await coro
         except Exception:
@@ -89,8 +82,6 @@ class SequenceMiddleware:
 sequence_registry = SequenceRegistry()
 
 
-async def enforce_pre_trade_sync(
-    signal_sequence_id: int, tolerance: int = 10
-) -> bool:
+async def enforce_pre_trade_sync(signal_sequence_id: int, tolerance: int = 10) -> bool:
     sequence_registry.validate_for_trade(signal_sequence_id, tolerance)
     return True

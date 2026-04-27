@@ -1,18 +1,20 @@
 """QuestDB writer for high-throughput OHLCV tick storage.
 
-Uses the InfluxDB Line Protocol (ILP) over TCP for maximum ingestion speed.
-Falls back to local Parquet storage when QuestDB is unavailable.
+Uses the InfluxDB Line Protocol (ILP) over TCP for maximum ingestion
+speed, with a Polars-vectorised payload builder (`bars_to_ilp_polars`)
+so we don't burn cycles in per-bar f-string concatenation. Local JSONL
+is the durable fallback when QuestDB is unreachable.
 """
+
 from __future__ import annotations
 
-import asyncio
 import datetime as dt
-import json
 import socket
 from pathlib import Path
 
 from shared.config import settings
 from shared.exceptions import QuestDBWriteError
+from shared.executors import run_in_io
 from shared.logger import get_logger
 from shared.types import OHLCVBar
 
@@ -21,70 +23,103 @@ log = get_logger("data.questdb")
 _LOCAL_STORAGE = Path("data_store/ohlcv")
 _LOCAL_STORAGE.mkdir(parents=True, exist_ok=True)
 
+# P2-23: health tracker for the TSDB sink.
+# Downstream callers (and eventually `/health/data`) can read this to
+# distinguish "QuestDB has never worked" from "QuestDB was working and
+# is now stale". Previously the ILP failure path only emitted a
+# log.debug line — operators had no way to tell their TSDB was behind.
+_writer_health: dict[str, dt.datetime | str | int | None] = {
+    "last_success_at": None,
+    "last_failure_at": None,
+    "last_failure_reason": None,
+    "consecutive_failures": 0,
+}
 
-def _bar_to_ilp(bar: OHLCVBar) -> str:
-    """Convert an OHLCV bar to InfluxDB Line Protocol format."""
-    ts_ns = int(bar.timestamp.timestamp() * 1_000_000_000)
-    return (
-        f"ohlcv,symbol={bar.symbol} "
-        f"open={bar.open},high={bar.high},low={bar.low},"
-        f"close={bar.close},volume={bar.volume}i "
-        f"{ts_ns}\n"
-    )
+
+def get_questdb_writer_health() -> dict[str, dt.datetime | str | int | None]:
+    """Snapshot of the QuestDB writer's last-known state."""
+    return dict(_writer_health)
 
 
 async def write_bars_questdb(bars: list[OHLCVBar]) -> int:
     """Write OHLCV bars to local JSONL (primary) and QuestDB via ILP TCP (secondary).
 
     Local JSONL is always written first so the backtester always has data
-    regardless of whether QuestDB is reachable.
+    regardless of whether QuestDB is reachable. Both the JSONL append and
+    the QuestDB ILP build go through Polars when available.
+
+    P2-23: ILP failures now emit at log.warning (was log.debug), and
+    the writer-health dict is updated so operators can see staleness
+    via ``get_questdb_writer_health()``.
     """
     if not bars:
         return 0
 
     local_count = await _write_bars_local(bars)
 
-    payload = "".join(_bar_to_ilp(b) for b in bars)
+    from data_primitives.loaders.polars_loader import bars_to_ilp_polars
+
+    payload = await run_in_io(bars_to_ilp_polars, bars)
+    if not payload:
+        return local_count
+
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(5.0)
-        await asyncio.to_thread(
-            sock.connect, (settings.QUESTDB_HOST, settings.QUESTDB_PORT)
-        )
-        await asyncio.to_thread(sock.sendall, payload.encode())
+        await run_in_io(sock.connect, (settings.QUESTDB_HOST, settings.QUESTDB_PORT))
+        await run_in_io(sock.sendall, payload.encode())
         sock.close()
-        log.info(f"Wrote {len(bars)} bars to QuestDB (+ local)")
+        prior_failures = int(_writer_health["consecutive_failures"] or 0)
+        if prior_failures:
+            log.info(
+                f"QuestDB ILP recovered after {prior_failures} consecutive "
+                f"failures — resumed TSDB writes ({len(bars)} bars)."
+            )
+        else:
+            log.info(f"Wrote {len(bars)} bars to QuestDB (+ local)")
+        _writer_health["last_success_at"] = dt.datetime.now(dt.UTC)
+        _writer_health["consecutive_failures"] = 0
     except (ConnectionRefusedError, OSError) as exc:
-        log.debug(f"QuestDB unavailable (local write succeeded): {exc}")
+        _writer_health["last_failure_at"] = dt.datetime.now(dt.UTC)
+        _writer_health["last_failure_reason"] = str(exc)[:200]
+        prior = int(_writer_health["consecutive_failures"] or 0)
+        _writer_health["consecutive_failures"] = prior + 1
+        # Noise control: surface the FIRST failure at WARN with full
+        # context so operators notice. Subsequent failures while the
+        # TSDB is still down downgrade to DEBUG — 32 identical warns
+        # per 15-minute cycle was drowning real signal in the log.
+        # The health dict still counts every failure for /system-status
+        # to report accurately.
+        if prior == 0:
+            log.warning(
+                f"QuestDB ILP write failed (local write succeeded, TSDB "
+                f"will be stale until recovery): {exc}. "
+                f"Further failures in this downtime window will log at "
+                f"DEBUG level; check /system-status for live counters."
+            )
+        else:
+            log.debug(f"QuestDB ILP still offline (consecutive_failures={prior + 1}): {exc}")
 
     return local_count
 
 
 async def _write_bars_local(bars: list[OHLCVBar]) -> int:
-    """Fallback: persist bars as JSON to local storage."""
+    """Persist bars to local JSONL via the Polars-backed appender."""
     if not bars:
         return 0
-
     symbol = bars[0].symbol
-    path = _LOCAL_STORAGE / f"{symbol}.jsonl"
+    from data_primitives.loaders.polars_loader import append_jsonl_polars
 
-    lines = [json.dumps(bar.model_dump(), default=str) + "\n" for bar in bars]
-    await asyncio.to_thread(path.open("a").writelines, lines)
-    log.info(f"Wrote {len(bars)} bars to local store: {path}")
-    return len(bars)
+    written = await run_in_io(append_jsonl_polars, symbol, bars)
+    log.info(f"Wrote {written} bars to local store: data_store/ohlcv/{symbol}.jsonl")
+    return written
 
 
 async def read_local_bars(symbol: str) -> list[OHLCVBar]:
-    """Read bars from local JSONL fallback storage."""
-    path = _LOCAL_STORAGE / f"{symbol}.jsonl"
-    if not path.exists():
-        return []
+    """Read bars from local JSONL via the Polars-backed loader."""
+    from data_primitives.loaders.polars_loader import load_bars
 
-    bars: list[OHLCVBar] = []
-    for line in path.read_text().strip().split("\n"):
-        if line.strip():
-            bars.append(OHLCVBar.model_validate_json(line))
-    return bars
+    return await run_in_io(load_bars, symbol)
 
 
 _MAX_BARS_PER_FILE = 5000

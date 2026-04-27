@@ -1,4 +1,5 @@
 """Tests for Phase 5 — multimodal PatternAgent."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -8,9 +9,12 @@ import numpy as np
 import pytest
 
 from graph_intelligence.agents.pattern import (
-    PatternClass, PatternClassification,
-    pattern_analyst_opinion, classify_pattern,
-    render_candlestick_chart, chart_fingerprint,
+    PatternClass,
+    PatternClassification,
+    chart_fingerprint,
+    classify_pattern,
+    pattern_analyst_opinion,
+    render_candlestick_chart,
 )
 from graph_intelligence.agents.pattern.chart_renderer import OHLCVSeries
 from graph_intelligence.graph_state.state import create_initial_state
@@ -20,9 +24,9 @@ def _synthetic_series(n: int = 60, seed: int = 42) -> OHLCVSeries:
     """Deterministic synthetic OHLCV for testing the renderer."""
     rng = np.random.default_rng(seed)
     closes = 100 + np.cumsum(rng.standard_normal(n) * 0.5)
-    opens  = closes + rng.standard_normal(n) * 0.2
-    highs  = np.maximum(opens, closes) + np.abs(rng.standard_normal(n)) * 0.3
-    lows   = np.minimum(opens, closes) - np.abs(rng.standard_normal(n)) * 0.3
+    opens = closes + rng.standard_normal(n) * 0.2
+    highs = np.maximum(opens, closes) + np.abs(rng.standard_normal(n)) * 0.3
+    lows = np.minimum(opens, closes) - np.abs(rng.standard_normal(n)) * 0.3
     volumes = rng.integers(1_000_000, 5_000_000, n).astype(float)
     start = dt.datetime(2026, 1, 1)
     dates = [start + dt.timedelta(days=i) for i in range(n)]
@@ -36,6 +40,7 @@ def _clear_pattern_cache():
     prior test's result pollutes later tests that use the same
     synthetic series (same bytes → same fingerprint → cached hit)."""
     from graph_intelligence.agents.pattern.node import _pattern_cache
+
     _pattern_cache.clear()
     yield
     _pattern_cache.clear()
@@ -95,14 +100,16 @@ class TestChartRenderer:
     def test_renderer_respects_lookback(self):
         series = _synthetic_series(n=200)
         png_short = render_candlestick_chart(series, lookback=20)
-        png_long  = render_candlestick_chart(series, lookback=100)
+        png_long = render_candlestick_chart(series, lookback=100)
         assert chart_fingerprint(png_short) != chart_fingerprint(png_long)
 
     def test_empty_series_raises(self):
         empty = OHLCVSeries(
             dates=[],
-            opens=np.array([]), highs=np.array([]),
-            lows=np.array([]), closes=np.array([]),
+            opens=np.array([]),
+            highs=np.array([]),
+            lows=np.array([]),
+            closes=np.array([]),
             volumes=np.array([]),
         )
         with pytest.raises(ValueError):
@@ -180,11 +187,13 @@ class TestClassifyPattern:
     async def test_result_is_cached(self):
         """Second call with identical chart bytes hits the cache."""
         from graph_intelligence.agents.pattern.node import _pattern_cache
+
         _pattern_cache.clear()
         series = _synthetic_series()
         expected = PatternClassification(
             pattern=PatternClass.ASCENDING_TRIANGLE,
-            confidence=0.70, implied_direction="LONG",
+            confidence=0.70,
+            implied_direction="LONG",
         )
         fake_llm = MagicMock()
         fake_llm.ainvoke = AsyncMock(return_value=expected)
@@ -213,12 +222,15 @@ class TestAnalystOpinionAdapter:
             rationale="Three distinct peaks; middle highest.",
         )
         state = create_initial_state(shock_ticker="AAPL", target_ticker="AAPL")
-        with patch(
-            "graph_intelligence.agents.pattern.node._fetch_ohlcv_for_pattern",
-            new=AsyncMock(return_value=series),
-        ), patch(
-            "graph_intelligence.agents.pattern.node.classify_pattern",
-            new=AsyncMock(return_value=expected),
+        with (
+            patch(
+                "graph_intelligence.agents.pattern.node._fetch_ohlcv_for_pattern",
+                new=AsyncMock(return_value=series),
+            ),
+            patch(
+                "graph_intelligence.agents.pattern.node.classify_pattern",
+                new=AsyncMock(return_value=expected),
+            ),
         ):
             op = await pattern_analyst_opinion(state)
         assert op["analyst"] == "Pattern"
@@ -231,15 +243,19 @@ class TestAnalystOpinionAdapter:
     async def test_none_pattern_becomes_hold(self):
         series = _synthetic_series()
         none_result = PatternClassification(
-            pattern=PatternClass.NONE, confidence=0.10,
+            pattern=PatternClass.NONE,
+            confidence=0.10,
         )
         state = create_initial_state(shock_ticker="AAPL", target_ticker="AAPL")
-        with patch(
-            "graph_intelligence.agents.pattern.node._fetch_ohlcv_for_pattern",
-            new=AsyncMock(return_value=series),
-        ), patch(
-            "graph_intelligence.agents.pattern.node.classify_pattern",
-            new=AsyncMock(return_value=none_result),
+        with (
+            patch(
+                "graph_intelligence.agents.pattern.node._fetch_ohlcv_for_pattern",
+                new=AsyncMock(return_value=series),
+            ),
+            patch(
+                "graph_intelligence.agents.pattern.node.classify_pattern",
+                new=AsyncMock(return_value=none_result),
+            ),
         ):
             op = await pattern_analyst_opinion(state)
         assert op["direction"] == "HOLD"
@@ -249,15 +265,19 @@ class TestAnalystOpinionAdapter:
         series = _synthetic_series()
         neutral = PatternClassification(
             pattern=PatternClass.SYMMETRICAL_TRIANGLE,
-            confidence=0.65, implied_direction="NEUTRAL",
+            confidence=0.65,
+            implied_direction="NEUTRAL",
         )
         state = create_initial_state(shock_ticker="AAPL", target_ticker="AAPL")
-        with patch(
-            "graph_intelligence.agents.pattern.node._fetch_ohlcv_for_pattern",
-            new=AsyncMock(return_value=series),
-        ), patch(
-            "graph_intelligence.agents.pattern.node.classify_pattern",
-            new=AsyncMock(return_value=neutral),
+        with (
+            patch(
+                "graph_intelligence.agents.pattern.node._fetch_ohlcv_for_pattern",
+                new=AsyncMock(return_value=series),
+            ),
+            patch(
+                "graph_intelligence.agents.pattern.node.classify_pattern",
+                new=AsyncMock(return_value=neutral),
+            ),
         ):
             op = await pattern_analyst_opinion(state)
         assert op["direction"] == "HOLD"
@@ -289,19 +309,22 @@ class TestAnalystOpinionAdapter:
 class TestDebateIntegration:
     def test_pattern_analyst_has_weight(self):
         from graph_intelligence.debate import _ANALYST_WEIGHTS
+
         assert "Pattern" in _ANALYST_WEIGHTS
         assert _ANALYST_WEIGHTS["Pattern"] == 1.1
 
     def test_jsd_works_with_5_analyst_opinions(self):
         from graph_intelligence.debate import (
-            compute_epistemic_divergence, _EPISTEMIC_DIVERGENCE_THRESHOLD,
+            _EPISTEMIC_DIVERGENCE_THRESHOLD,
+            compute_epistemic_divergence,
         )
+
         opinions = [
             {"analyst": "Supply Chain", "direction": "LONG", "confidence": 0.80},
             {"analyst": "Fundamentals", "direction": "LONG", "confidence": 0.78},
-            {"analyst": "Technicals",   "direction": "LONG", "confidence": 0.82},
-            {"analyst": "Macro",        "direction": "LONG", "confidence": 0.75},
-            {"analyst": "Pattern",      "direction": "LONG", "confidence": 0.70},
+            {"analyst": "Technicals", "direction": "LONG", "confidence": 0.82},
+            {"analyst": "Macro", "direction": "LONG", "confidence": 0.75},
+            {"analyst": "Pattern", "direction": "LONG", "confidence": 0.70},
         ]
         jsd = compute_epistemic_divergence(opinions)
         # 5-analyst unanimous — should be very coherent.

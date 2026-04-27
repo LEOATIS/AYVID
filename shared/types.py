@@ -3,6 +3,7 @@
 Every Pydantic model that crosses module boundaries lives here.
 NO business logic. NO imports from outer layers.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -13,10 +14,11 @@ from pydantic import BaseModel, Field
 
 
 def _utcnow() -> dt.datetime:
-    return dt.datetime.now(dt.timezone.utc)
+    return dt.datetime.now(dt.UTC)
 
 
 # ── Enums ────────────────────────────────────────────────────
+
 
 class AssetClass(str, Enum):
     EQUITY = "EQUITY"
@@ -112,8 +114,10 @@ class SignalStatus(str, Enum):
 
 # ── Global Instrument Universe ───────────────────────────────
 
+
 class Instrument(BaseModel):
     """A single tradeable instrument in the global universe."""
+
     symbol: str
     name: str | None = None
     asset_class: AssetClass = AssetClass.EQUITY
@@ -154,6 +158,7 @@ class OptionsContract(BaseModel):
 
 class OptionsChainSnapshot(BaseModel):
     """Single row from an options chain."""
+
     underlying: str
     expiry: dt.date
     strike: float
@@ -172,6 +177,7 @@ class OptionsChainSnapshot(BaseModel):
 
 class FuturesQuote(BaseModel):
     """Snapshot of a futures contract."""
+
     symbol: str
     underlying: str
     exchange: str = "CME"
@@ -209,6 +215,7 @@ class MarketIndex(BaseModel):
 
 class UniverseSnapshot(BaseModel):
     """Point-in-time snapshot of the full investment universe."""
+
     timestamp: dt.datetime = Field(default_factory=_utcnow)
     equities: int = 0
     indices: int = 0
@@ -224,6 +231,7 @@ class UniverseSnapshot(BaseModel):
 
 # ── Supply Chain Graph ───────────────────────────────────────
 
+
 class CompanyNode(BaseModel):
     ticker: str
     name: str | None = None
@@ -234,15 +242,27 @@ class CompanyNode(BaseModel):
 
 
 class FacilityNode(BaseModel):
+    """Physical facility (fab, refinery, warehouse, port).
+
+    The PDF spec calls for a Neo4j ``point`` geospatial property and a
+    boolean operational status. ``location`` is set on ingest by composing
+    ``latitude``/``longitude`` into ``point({latitude, longitude})`` in
+    Cypher; the model carries the raw scalars so we can serialise.
+    """
+
     facility_id: str
     name: str | None = None
     latitude: float | None = None
     longitude: float | None = None
     operational: bool = True
+    facility_type: str = "unknown"  # fab | refinery | warehouse | port | mine | datacenter
+    capacity_units: float | None = None
+    operator_ticker: str | None = None
 
 
 class ProductNode(BaseModel):
     """Product node in the supply chain graph."""
+
     sku: str
     name: str | None = None
     category: str = "unknown"
@@ -251,6 +271,7 @@ class ProductNode(BaseModel):
 
 class CompetitorEdge(BaseModel):
     """Competitive relationship between two companies."""
+
     ticker_a: str
     ticker_b: str
     market_overlap_pct: float = Field(ge=0.0, le=1.0)
@@ -274,6 +295,7 @@ class CausalPath(BaseModel):
 
 # ── Time-Series & Market Data ────────────────────────────────
 
+
 class OHLCVBar(BaseModel):
     timestamp: dt.datetime
     symbol: str
@@ -296,8 +318,10 @@ class NewsItem(BaseModel):
 
 # ── Causal Intelligence ──────────────────────────────────────
 
+
 class CausalEvent(BaseModel):
     """Single event in the chronological timeline fed to the reasoning LLM."""
+
     timestamp: dt.datetime
     source_node: str
     event_type: EventType
@@ -308,6 +332,7 @@ class CausalEvent(BaseModel):
 
 class AgenticState(BaseModel):
     """LangGraph state object passed between reasoning nodes."""
+
     target_ticker: str
     current_date: str
     timeline: list[CausalEvent] = Field(default_factory=list)
@@ -321,25 +346,156 @@ class AgenticState(BaseModel):
 
 # ── Trade Signals & Execution ────────────────────────────────
 
-class TradeSignal(BaseModel):
-    signal_id: str
-    timestamp: dt.datetime = Field(default_factory=_utcnow)
+
+class InstrumentChoice(str, Enum):
+    """Concrete instrument the orchestrator decides to trade.
+
+    Separate from `AssetClass` because a single underlying asset class
+    maps to multiple instrument families (equity vs option on equity,
+    future vs option on future, spread vs single-leg).
+    """
+
+    EQUITY = "EQUITY"
+    INDEX_FUTURE = "INDEX_FUTURE"
+    INDEX_CALL = "INDEX_CALL"
+    INDEX_PUT = "INDEX_PUT"
+    INDEX_SPREAD = "INDEX_SPREAD"
+
+
+class SizingMethod(str, Enum):
+    """Which Kelly variant the sizing layer should use for this intent."""
+
+    KELLY_EQUITY = "KELLY_EQUITY"
+    KELLY_OPTIONS = "KELLY_OPTIONS"
+    KELLY_FUTURES = "KELLY_FUTURES"
+    FIXED_RISK = "FIXED_RISK"
+
+
+class AlphaScore(BaseModel):
+    """Unified scoring block — the single source of truth for conviction.
+
+    Consolidates the 5 previously-fragmented conviction stacks:
+        * `_multi_factor_score`  (independent-factor confirmation count)
+        * `signals.score_signal` composite + Bayesian update
+        * `debate.py` analyst-vote / Bayesian aggregation
+        * `_dynamic_conviction` orchestrator helper
+        * researcher facilitator margin
+
+    Every field below traces deterministically from `MarketContext` — no
+    hidden state, no opaque LLM scoring. `AlphaScorer.score(ctx)` is the
+    unique producer.
+
+    The composite `unified_conviction` is the only number the post-scorer
+    gates should compare against `settings.MIN_CONVICTION_TRADE`.
+    """
+
     ticker: str
-    action: TradeAction
-    alpha_horizon: AlphaHorizon
-    confidence: float = Field(ge=0.0, le=1.0)
-    rationale: str
-    compound_risk: float | None = None
-    causal_path: list[str] = Field(default_factory=list)
-    status: SignalStatus = SignalStatus.PENDING
-    # Tier-3 news shocks demand immediate liquidity and bypass passive
-    # pegging. Everything else (Tier-1 structural, Tier-2 causal) routes
-    # passive by default to capture maker rebates.
+    direction: TradeAction
+    factor_score: float = Field(ge=0.0, le=1.0)
+    bayesian_conviction: float = Field(ge=0.0, le=1.0)
+    unified_conviction: float = Field(ge=0.0, le=1.0)
+    expected_r: float = 0.0
+    min_r: float = 1.5
+    kl_divergence_to_naive: float = 0.0
+    factor_breakdown: dict[str, float] = Field(default_factory=dict)
+    rationale: str = ""
+
+
+class TradeIntent(BaseModel):
+    """Single canonical execution contract for AYVID.
+
+    Replaces the previous dual surface (`TradeDecision` emitted by the
+    rule-based / LLM orchestrator, `TradeSignal` emitted by the LangGraph
+    causal pipeline). Every downstream layer — Kelly sizing, IB routing,
+    logging, dashboard, live/equity API — consumes this one type.
+
+    Semantics:
+        * `execute`   : True → sizing + routing; False → logged only.
+        * `direction` : LONG/SHORT/HOLD (the trade side).
+        * `alpha_score` : the unified AlphaScore that justified the intent.
+        * `audit_trail` : analyst opinions, debate outcome, divergence
+          decoding KL, and any other per-intent diagnostic payload.
+    """
+
+    intent_id: str
+    timestamp: dt.datetime = Field(default_factory=_utcnow)
+
+    # ── Core decision ────────────────────────────────────────
+    execute: bool = False
+    ticker: str
+    direction: TradeAction = TradeAction.HOLD
+    asset_class: AssetClass = AssetClass.EQUITY
+    instrument_choice: InstrumentChoice = InstrumentChoice.EQUITY
+    alpha_horizon: AlphaHorizon = AlphaHorizon.FIRST_ORDER
+
+    # ── Unified scoring block ───────────────────────────────
+    alpha_score: AlphaScore
+
+    # ── Sizing ──────────────────────────────────────────────
+    sizing_method: SizingMethod = SizingMethod.KELLY_EQUITY
+    max_risk_pct: float = 1.0
+
+    # ── Exits ───────────────────────────────────────────────
+    stop_loss_method: str = "ATR"
+    take_profit_method: str = "ATR"
+
+    # ── Derivative details ──────────────────────────────────
+    strike: float | None = None
+    expiry_days: int | None = None
+    second_leg: dict | None = None
+    futures_contract: str | None = None
+    multiplier: float = 1.0
+    # IB contract specifier fields — used by `submit_signal` to build
+    # the right ib_async contract for non-equity intents. `contract_strike`
+    # is distinct from `strike` because strike is the strategy-level
+    # choice while contract_strike is the concrete strike written onto
+    # the IB Option contract (they can differ for synthetic structures).
+    contract_expiry: str | None = None  # YYYYMM or YYYYMMDD
+    contract_strike: float | None = None
+    contract_right: Literal["CALL", "PUT"] | None = None
+    contract_multiplier: str | None = None
+
+    # ── Routing ────────────────────────────────────────────
+    exchange: str = "SMART"
+    currency: str = "USD"
+    country: str = ""
+
+    # ── Pipeline metadata ───────────────────────────────────
+    strategy_name: str = ""
     tier3_shock: bool = False
+    graph_intel: bool = False
+    rationale: str = ""
+    causal_path: list[str] = Field(default_factory=list)
+    compound_risk: float | None = None
+    audit_trail: dict = Field(default_factory=dict)
+
+    # ── Execution status ───────────────────────────────────
+    status: SignalStatus = SignalStatus.PENDING
+
+    # Read-only convenience accessors that mirror legacy `TradeSignal`
+    # field names so existing callers that only READ these values keep
+    # working. Callers that MUTATE conviction must update
+    # `intent.alpha_score.unified_conviction` directly — conviction is
+    # derived from the unified AlphaScore, not a free-standing field.
+    @property
+    def confidence(self) -> float:
+        """Read-only alias for `alpha_score.unified_conviction`."""
+        return self.alpha_score.unified_conviction
+
+    @property
+    def signal_id(self) -> str:
+        """Read-only alias for `intent_id`."""
+        return self.intent_id
+
+    @property
+    def action(self) -> TradeAction:
+        """Read-only alias for `direction`."""
+        return self.direction
 
 
 class BracketOrder(BaseModel):
     """IB bracket order: entry + take-profit + stop-loss."""
+
     parent_order_id: int | None = None
     ticker: str
     action: Literal["BUY", "SELL"]
@@ -363,6 +519,7 @@ class Position(BaseModel):
 
 
 # ── Portfolio & Risk ─────────────────────────────────────────
+
 
 class PortfolioState(BaseModel):
     timestamp: dt.datetime = Field(default_factory=_utcnow)
@@ -389,6 +546,7 @@ class RiskSnapshot(BaseModel):
 
 # ── LLM Interaction ──────────────────────────────────────────
 
+
 class LLMResponse(BaseModel):
     provider: str
     model: str
@@ -399,9 +557,19 @@ class LLMResponse(BaseModel):
 
 class CompressedDaySummary(BaseModel):
     """Chronological Semantic Compression output for a single day."""
+
     date: dt.date
     ticker: str
     facts: list[str] = Field(default_factory=list)
     sentiment_shift: float = 0.0
     key_entities: list[str] = Field(default_factory=list)
     raw_event_count: int = 0
+
+
+# ── Legacy type alias ────────────────────────────────────────
+# Phase-3 consolidated `TradeSignal` → `TradeIntent`. The alias is kept
+# exclusively for in-tree imports that haven't been touched yet (chaos
+# tests, order-routing tests, signal-book helpers). New code MUST use
+# `TradeIntent` directly. The alias will be removed when all call sites
+# have been migrated.
+TradeSignal = TradeIntent

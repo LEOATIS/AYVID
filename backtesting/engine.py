@@ -13,6 +13,7 @@ Track 2 — EQUITY INVESTMENT:
 
 Both tracks feed into a unified equity curve with proper P&L attribution.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -22,8 +23,8 @@ from typing import Any
 
 import numpy as np
 
-from backtesting.cost_model import (
-    COST_DISCLOSURE,
+from shared.config import settings
+from shared.cost_model import (
     equity_costs,
     future_costs,
     option_costs,
@@ -32,6 +33,7 @@ from backtesting.cost_model import (
 from shared.logger import get_logger
 from shared.types import (
     AlphaHorizon,
+    AlphaScore,
     OHLCVBar,
     SignalStatus,
     TradeAction,
@@ -122,7 +124,12 @@ SHOCK_SCENARIOS: dict[str, dict] = {
             "shock_type": "pandemic",
             "beneficiary_tickers": ["AMZN", "NFLX", "AMGN", "JNJ"],
             "victim_tickers": ["BA", "AAL", "DAL"],
-            "index_bias": {"^GSPC": "BEARISH", "^IXIC": "BEARISH", "^DJI": "BEARISH", "^FTSE": "BEARISH"},
+            "index_bias": {
+                "^GSPC": "BEARISH",
+                "^IXIC": "BEARISH",
+                "^DJI": "BEARISH",
+                "^FTSE": "BEARISH",
+            },
             "expected_direction": "BEARISH",
             "causal_chain": "Pandemic → lockdowns → airline collapse → remote work surge → pharma vaccine race",
         },
@@ -131,12 +138,35 @@ SHOCK_SCENARIOS: dict[str, dict] = {
         "name": "Post-COVID Tech Megacap Rally",
         "start_date": "2020-04-15",
         "end_date": "2020-12-31",
-        "tickers": ["AAPL", "MSFT", "NVDA", "AMZN", "NFLX", "GOOG", "GOOGL", "META", "AMD", "TSM", "AVGO"],
+        "tickers": [
+            "AAPL",
+            "MSFT",
+            "NVDA",
+            "AMZN",
+            "NFLX",
+            "GOOG",
+            "GOOGL",
+            "META",
+            "AMD",
+            "TSM",
+            "AVGO",
+        ],
         "indices": ["^GSPC", "^IXIC"],
         "description": "Fed liquidity + WFH → tech megacap moonshot",
         "causal_intel": {
             "shock_type": "monetary_easing",
-            "beneficiary_tickers": ["AAPL", "MSFT", "NVDA", "AMZN", "NFLX", "GOOG", "GOOGL", "META", "AMD", "TSM"],
+            "beneficiary_tickers": [
+                "AAPL",
+                "MSFT",
+                "NVDA",
+                "AMZN",
+                "NFLX",
+                "GOOG",
+                "GOOGL",
+                "META",
+                "AMD",
+                "TSM",
+            ],
             "victim_tickers": [],
             "index_bias": {"^GSPC": "BULLISH", "^IXIC": "BULLISH"},
             "expected_direction": "BULLISH",
@@ -179,13 +209,32 @@ SHOCK_SCENARIOS: dict[str, dict] = {
         "name": "China Big-Tech Regulatory Crackdown",
         "start_date": "2021-07-01",
         "end_date": "2021-12-31",
-        "tickers": ["BABA", "JD", "BIDU", "FXI", "KWEB", "9988.HK", "9618.HK", "0700.HK", "1299.HK"],
+        "tickers": [
+            "BABA",
+            "JD",
+            "BIDU",
+            "FXI",
+            "KWEB",
+            "9988.HK",
+            "9618.HK",
+            "0700.HK",
+            "1299.HK",
+        ],
         "indices": ["^HSI", "000001.SS"],
         "description": "DiDi probe → tutoring crackdown → Tencent fines → Alibaba antitrust",
         "causal_intel": {
             "shock_type": "regulatory",
             "beneficiary_tickers": [],
-            "victim_tickers": ["BABA", "JD", "BIDU", "FXI", "KWEB", "9988.HK", "9618.HK", "0700.HK"],
+            "victim_tickers": [
+                "BABA",
+                "JD",
+                "BIDU",
+                "FXI",
+                "KWEB",
+                "9988.HK",
+                "9618.HK",
+                "0700.HK",
+            ],
             "index_bias": {"^HSI": "BEARISH", "000001.SS": "BEARISH"},
             "expected_direction": "BEARISH",
             "causal_chain": "DiDi probe → CSRC tutoring ban → ADR delisting risk → Hang Seng tech wreck",
@@ -195,13 +244,36 @@ SHOCK_SCENARIOS: dict[str, dict] = {
         "name": "2022 Fed Hike Cycle / Tech Bear",
         "start_date": "2022-01-03",
         "end_date": "2022-10-14",
-        "tickers": ["AAPL", "MSFT", "AMZN", "NVDA", "META", "NFLX", "GOOG", "GOOGL", "AMD", "ARKK", "TSLA"],
+        "tickers": [
+            "AAPL",
+            "MSFT",
+            "AMZN",
+            "NVDA",
+            "META",
+            "NFLX",
+            "GOOG",
+            "GOOGL",
+            "AMD",
+            "ARKK",
+            "TSLA",
+        ],
         "indices": ["^IXIC", "^GSPC", "^DJI"],
         "description": "Fastest hike cycle since 1980s → tech multiple compression",
         "causal_intel": {
             "shock_type": "monetary_tightening",
             "beneficiary_tickers": [],
-            "victim_tickers": ["AAPL", "MSFT", "AMZN", "NVDA", "META", "NFLX", "GOOG", "AMD", "ARKK", "TSLA"],
+            "victim_tickers": [
+                "AAPL",
+                "MSFT",
+                "AMZN",
+                "NVDA",
+                "META",
+                "NFLX",
+                "GOOG",
+                "AMD",
+                "ARKK",
+                "TSLA",
+            ],
             "index_bias": {"^IXIC": "BEARISH", "^GSPC": "BEARISH", "^DJI": "BEARISH"},
             "expected_direction": "BEARISH",
             "causal_chain": "CPI prints → Fed hawkish pivot → 75 bp hikes → DCF crush on tech megacaps",
@@ -227,7 +299,22 @@ SHOCK_SCENARIOS: dict[str, dict] = {
         "name": "Semiconductor Inventory Correction",
         "start_date": "2022-06-01",
         "end_date": "2022-12-31",
-        "tickers": ["TSM", "NVDA", "AMD", "INTC", "ASML", "QCOM", "AVGO", "MU", "TXN", "LRCX", "AMAT", "MCHP", "ON", "NXPI"],
+        "tickers": [
+            "TSM",
+            "NVDA",
+            "AMD",
+            "INTC",
+            "ASML",
+            "QCOM",
+            "AVGO",
+            "MU",
+            "TXN",
+            "LRCX",
+            "AMAT",
+            "MCHP",
+            "ON",
+            "NXPI",
+        ],
         "indices": ["^IXIC", "^TWII", "^KS11"],
         "description": "Post-COVID demand reset — DRAM/consumer chip inventory glut",
         "causal_intel": {
@@ -259,14 +346,50 @@ SHOCK_SCENARIOS: dict[str, dict] = {
         "name": "ChatGPT / Generative-AI Rally",
         "start_date": "2023-01-15",
         "end_date": "2023-07-31",
-        "tickers": ["NVDA", "MSFT", "GOOG", "GOOGL", "META", "AMD", "AVGO", "ASML", "TSM", "AAPL", "AMAT", "LRCX", "KLAC", "2330.TW", "005930.KS"],
+        "tickers": [
+            "NVDA",
+            "MSFT",
+            "GOOG",
+            "GOOGL",
+            "META",
+            "AMD",
+            "AVGO",
+            "ASML",
+            "TSM",
+            "AAPL",
+            "AMAT",
+            "LRCX",
+            "KLAC",
+            "2330.TW",
+            "005930.KS",
+        ],
         "indices": ["^IXIC", "^GSPC", "^TWII", "^KS11"],
         "description": "ChatGPT viral moment → trillion-dollar AI capex thesis",
         "causal_intel": {
             "shock_type": "ai_capex",
-            "beneficiary_tickers": ["NVDA", "MSFT", "GOOG", "GOOGL", "META", "AMD", "AVGO", "ASML", "TSM", "AMAT", "LRCX", "KLAC", "2330.TW", "005930.KS"],
+            "beneficiary_tickers": [
+                "NVDA",
+                "MSFT",
+                "GOOG",
+                "GOOGL",
+                "META",
+                "AMD",
+                "AVGO",
+                "ASML",
+                "TSM",
+                "AMAT",
+                "LRCX",
+                "KLAC",
+                "2330.TW",
+                "005930.KS",
+            ],
             "victim_tickers": [],
-            "index_bias": {"^IXIC": "BULLISH", "^GSPC": "BULLISH", "^TWII": "BULLISH", "^KS11": "BULLISH"},
+            "index_bias": {
+                "^IXIC": "BULLISH",
+                "^GSPC": "BULLISH",
+                "^TWII": "BULLISH",
+                "^KS11": "BULLISH",
+            },
             "expected_direction": "BULLISH",
             "causal_chain": "ChatGPT → hyperscaler GPU bid → NVDA Q1 guide → semicap supercycle → Asian fab beneficiaries",
         },
@@ -323,14 +446,50 @@ SHOCK_SCENARIOS: dict[str, dict] = {
         "name": "NVIDIA Q4 Blowout / AI Capex Phase 2",
         "start_date": "2024-02-01",
         "end_date": "2024-06-28",
-        "tickers": ["NVDA", "AMD", "MU", "AVGO", "ASML", "TSM", "AMAT", "LRCX", "MSFT", "GOOG", "GOOGL", "META", "2330.TW", "005930.KS", "000660.KS"],
+        "tickers": [
+            "NVDA",
+            "AMD",
+            "MU",
+            "AVGO",
+            "ASML",
+            "TSM",
+            "AMAT",
+            "LRCX",
+            "MSFT",
+            "GOOG",
+            "GOOGL",
+            "META",
+            "2330.TW",
+            "005930.KS",
+            "000660.KS",
+        ],
         "indices": ["^IXIC", "^GSPC", "^TWII", "^KS11"],
         "description": "NVDA Q4 FY24 print → datacentre revenue +400% YoY → second AI leg",
         "causal_intel": {
             "shock_type": "ai_capex",
-            "beneficiary_tickers": ["NVDA", "AMD", "MU", "AVGO", "ASML", "TSM", "AMAT", "LRCX", "MSFT", "GOOG", "META", "2330.TW", "005930.KS", "000660.KS"],
+            "beneficiary_tickers": [
+                "NVDA",
+                "AMD",
+                "MU",
+                "AVGO",
+                "ASML",
+                "TSM",
+                "AMAT",
+                "LRCX",
+                "MSFT",
+                "GOOG",
+                "META",
+                "2330.TW",
+                "005930.KS",
+                "000660.KS",
+            ],
             "victim_tickers": [],
-            "index_bias": {"^IXIC": "BULLISH", "^GSPC": "BULLISH", "^TWII": "BULLISH", "^KS11": "BULLISH"},
+            "index_bias": {
+                "^IXIC": "BULLISH",
+                "^GSPC": "BULLISH",
+                "^TWII": "BULLISH",
+                "^KS11": "BULLISH",
+            },
             "expected_direction": "BULLISH",
             "causal_chain": "NVDA Q4 print → hyperscaler reaffirm → HBM (SK Hynix) bid → TSMC CoWoS bottleneck → Asia semi melt-up",
         },
@@ -390,7 +549,7 @@ async def run_scenario_backtest(
     scenario_name: str,
     initial_equity: float = 1_000_000.0,
     **kwargs,
-) -> "BacktestResult":
+) -> BacktestResult:
     """Run a backtest targeting a named historical shock scenario."""
     if scenario_name not in SHOCK_SCENARIOS:
         available = ", ".join(SHOCK_SCENARIOS.keys())
@@ -418,6 +577,7 @@ async def run_scenario_backtest(
     }
 
     from graph_intelligence.agents.strategy_orchestrator import TRADEABLE_INDEX_SYMBOLS
+
     original_indices = list(TRADEABLE_INDEX_SYMBOLS)
     try:
         TRADEABLE_INDEX_SYMBOLS.clear()
@@ -439,6 +599,17 @@ async def run_scenario_backtest(
     result.metadata["scenario"] = scenario_name
     result.metadata["scenario_name"] = scenario["name"]
     result.metadata["scenario_description"] = scenario["description"]
+
+    # Append closed trades to the outcomes log for priors recalibration.
+    # Any exception here is non-fatal: a failed log write must never
+    # mask the backtest result itself. The priors feedback loop is a
+    # separate concern and can be retried.
+    try:
+        from backtesting.trade_outcomes import append_backtest_outcomes
+
+        append_backtest_outcomes(result, scenario_id=scenario_name)
+    except Exception as exc:
+        log.warning(f"trade_outcomes append failed for scenario {scenario_name}: {exc}")
     return result
 
 
@@ -452,6 +623,7 @@ def _nth_weekday_of_month(year: int, month: int, weekday: int, n: int) -> dt.dat
 def _last_weekday_of_month(year: int, month: int, weekday: int) -> dt.date:
     """Return the last occurrence of a weekday in a month."""
     import calendar
+
     last_day = calendar.monthrange(year, month)[1]
     d = dt.date(year, month, last_day)
     while d.weekday() != weekday:
@@ -482,6 +654,7 @@ def _next_expiry(trade_date: dt.date, rule: str) -> dt.date:
             exp = _nth_weekday_of_month(cy, cm, 3, 2)
         elif rule == "2nd_last_bd":
             import calendar
+
             last_day = calendar.monthrange(cy, cm)[1]
             d = dt.date(cy, cm, last_day)
             bd_count = 0
@@ -552,6 +725,23 @@ class BacktestTrade:
     hold_days: int = 0
     stop_loss_price: float = 0.0
     take_profit_price: float = 0.0
+    # Per-trade diagnostic fields captured at entry so the trade
+    # outcomes logger (``backtesting.trade_outcomes``) and the priors
+    # recalibrator can group closed trades by the (strategy, regime)
+    # cell the orchestrator put them in. The regime_key matches the
+    # format `_compose_regime_key` uses in strategy_orchestrator so the
+    # priors.json bucket lookup is consistent.
+    regime_key: str = ""
+    strategy_name: str = ""
+    conviction: float = 0.0
+    expected_r: float = 0.0
+    exit_reason: str = ""
+    # Dollars of risk per share at entry (|entry - initial_stop|).
+    # Pinned at construction so the Batch-2/E pyramid trail keeps
+    # computing correct R-multiples after the stop has ratcheted
+    # past breakeven — the live stop can't be used to recover 1R
+    # once it has moved through entry.
+    initial_risk_per_share: float = 0.0
 
     @property
     def is_closed(self) -> bool:
@@ -609,6 +799,20 @@ class BacktestResult:
 
 
 def _load_local_bars(symbol: str) -> list[OHLCVBar]:
+    """Load OHLCV bars for a ticker.
+
+    Uses the Polars-backed fast path when available (~10× faster on
+    large symbols), with a transparent fallback to the original per-line
+    Pydantic loader so behaviour is identical when Polars is missing.
+    """
+    try:
+        from data_primitives.loaders.polars_loader import load_bars as _polars_load_bars
+
+        bars = _polars_load_bars(symbol)
+        if bars:
+            return bars
+    except Exception:
+        pass
     path = _DATA_DIR / f"{symbol}.jsonl"
     if not path.exists():
         return []
@@ -661,7 +865,10 @@ def _save_equity_bars(symbol: str, bars: list[OHLCVBar]) -> None:
 
 # ── Data Refresh & Smart Screening ───────────────────────────
 
-async def refresh_all_data(days: int = 120) -> dict[str, Any]:
+
+async def refresh_all_data(days: int | None = None) -> dict[str, Any]:
+    if days is None:
+        days = settings.SCREEN_LOOKBACK_DAYS
     """Refresh ALL data before backtesting — the AI-native pipeline.
 
     1. Fetch fresh OHLCV for all world indices
@@ -714,8 +921,8 @@ async def refresh_all_data(days: int = 120) -> dict[str, Any]:
 
 
 async def screen_best_equities(
-    days: int = 120,
-    top_n: int = 50,
+    days: int | None = None,
+    top_n: int | None = None,
 ) -> list[str]:
     """AI-native equity screener: rank the global universe by multi-factor score.
 
@@ -728,8 +935,12 @@ async def screen_best_equities(
 
     Returns the top_n tickers sorted by composite score.
     """
-    from data_primitives.extractors.universe_builder import GLOBAL_EQUITY_SCREENS
+    if days is None:
+        days = settings.SCREEN_LOOKBACK_DAYS
+    if top_n is None:
+        top_n = settings.SCREEN_TOP_N
     from data_primitives.extractors.openbb_client import fetch_ohlcv
+    from data_primitives.extractors.universe_builder import GLOBAL_EQUITY_SCREENS
 
     all_tickers: list[str] = []
     for region, tickers in GLOBAL_EQUITY_SCREENS.items():
@@ -781,11 +992,11 @@ async def screen_best_equities(
 
         # Composite score (each factor normalized to ~0-1 range)
         score = (
-            abs(momentum) * 2.0          # strong movers either direction
-            + value * 1.5                 # oversold = value
-            + max(hurst - 0.45, 0) * 3.0 # trending stocks
+            abs(momentum) * 2.0  # strong movers either direction
+            + value * 1.5  # oversold = value
+            + max(hurst - 0.45, 0) * 3.0  # trending stocks
             + max(vol_ratio - 1.0, 0) * 1.0  # volume spikes
-            + min(rv, 0.80) * 0.5        # volatile enough for alpha
+            + min(rv, 0.80) * 0.5  # volatile enough for alpha
         )
         ticker_scores.append((ticker, score))
 
@@ -819,10 +1030,15 @@ def _compute_metrics(
 ) -> dict[str, float]:
     if not trades:
         return {
-            "total_return_pct": 0, "annualized_return_pct": 0,
-            "sharpe_ratio": 0, "max_drawdown_pct": 0,
-            "win_rate": 0, "avg_win_pct": 0, "avg_loss_pct": 0,
-            "avg_hold_days": 0, "profit_factor": 0,
+            "total_return_pct": 0,
+            "annualized_return_pct": 0,
+            "sharpe_ratio": 0,
+            "max_drawdown_pct": 0,
+            "win_rate": 0,
+            "avg_win_pct": 0,
+            "avg_loss_pct": 0,
+            "avg_hold_days": 0,
+            "profit_factor": 0,
         }
 
     closed = [t for t in trades if t.is_closed]
@@ -862,155 +1078,6 @@ def _compute_metrics(
         "avg_hold_days": float(np.mean([t.hold_days for t in closed])) if closed else 0,
         "profit_factor": profit_factor,
     }
-
-
-def _bollinger_signal(
-    closes: np.ndarray,
-    volumes: np.ndarray,
-    period: int = 20,
-    entry_sigma: float = 2.0,
-    stop_sigma: float = 3.0,
-) -> dict | None:
-    """Bollinger Band Bounce + Confirmation strategy.
-
-    Enters when price bounces off the 2σ band with next-day confirmation.
-    TP is at the 20-day mean (guaranteed reversion target for mean-reverting assets).
-    SL is at 3σ (extreme protection, wide enough to survive noise).
-    """
-    if len(closes) < period + 2:
-        return None
-
-    sma = np.mean(closes[-period:])
-    std = np.std(closes[-period:], ddof=1)
-    if std < 1e-10:
-        return None
-
-    upper_2s = sma + entry_sigma * std
-    lower_2s = sma - entry_sigma * std
-    upper_3s = sma + stop_sigma * std
-    lower_3s = sma - stop_sigma * std
-
-    current = closes[-1]
-    prev = closes[-2]
-    prev2 = closes[-3] if len(closes) > period + 1 else prev
-
-    z_score = (current - sma) / std
-    avg_vol = np.mean(volumes[-(period + 1):-1]) if len(volumes) > period else np.mean(volumes)
-    vol_ratio = volumes[-1] / max(avg_vol, 1) if avg_vol > 0 else 1.0
-
-    # --- LONG signal: price was below lower band, now bouncing ---
-    if prev <= lower_2s and current > prev:
-        bounce_pct = (current - prev) / prev * 100
-        if bounce_pct > 0.1:
-            tp_price = sma
-            sl_price = lower_3s
-            rr = (tp_price - current) / max(current - sl_price, 0.01)
-            return {
-                "direction": "LONG",
-                "entry": current,
-                "tp": tp_price,
-                "sl": sl_price,
-                "z_score": z_score,
-                "rr_ratio": rr,
-                "vol_ratio": vol_ratio,
-                "bounce_pct": bounce_pct,
-                "rationale": f"BB bounce: z={z_score:+.1f} bounce={bounce_pct:.1f}% vol_r={vol_ratio:.1f}",
-            }
-
-    # --- SHORT signal: price was above upper band, now retreating ---
-    if prev >= upper_2s and current < prev:
-        retreat_pct = (prev - current) / prev * 100
-        if retreat_pct > 0.1:
-            tp_price = sma
-            sl_price = upper_3s
-            rr = (current - tp_price) / max(sl_price - current, 0.01)
-            return {
-                "direction": "SHORT",
-                "entry": current,
-                "tp": tp_price,
-                "sl": sl_price,
-                "z_score": z_score,
-                "rr_ratio": rr,
-                "vol_ratio": vol_ratio,
-                "bounce_pct": retreat_pct,
-                "rationale": f"BB retreat: z={z_score:+.1f} ret={retreat_pct:.1f}% vol_r={vol_ratio:.1f}",
-            }
-
-    return None
-
-
-def _divergence_signal(
-    ticker: str,
-    closes: np.ndarray,
-    all_closes: dict[str, np.ndarray],
-    period: int = 20,
-) -> dict | None:
-    """Cross-asset divergence detection.
-
-    If a ticker's return deviates significantly from the sector average,
-    fade the divergence back to equilibrium.
-    """
-    if len(closes) < period + 1:
-        return None
-
-    ticker_return = (closes[-1] / closes[-period] - 1)
-
-    peer_returns: list[float] = []
-    for other_ticker, other_closes in all_closes.items():
-        if other_ticker == ticker:
-            continue
-        if len(other_closes) >= period + 1:
-            pr = (other_closes[-1] / other_closes[-period] - 1)
-            peer_returns.append(pr)
-
-    if len(peer_returns) < 5:
-        return None
-
-    avg_peer = float(np.mean(peer_returns))
-    std_peer = float(np.std(peer_returns))
-    if std_peer < 1e-10:
-        return None
-
-    divergence = (ticker_return - avg_peer) / std_peer
-
-    if abs(divergence) < 1.5:
-        return None
-
-    current = closes[-1]
-    fair_value = closes[-period] * (1 + avg_peer)
-    move_needed = (fair_value - current) / current
-
-    if divergence > 1.5 and move_needed < -0.01:
-        return {
-            "direction": "SHORT",
-            "divergence": divergence,
-            "expected_reversion": move_needed,
-            "rationale": f"Divergence: {divergence:+.1f}σ vs peers, expected rev={move_needed:+.1%}",
-        }
-    elif divergence < -1.5 and move_needed > 0.01:
-        return {
-            "direction": "LONG",
-            "divergence": divergence,
-            "expected_reversion": move_needed,
-            "rationale": f"Divergence: {divergence:+.1f}σ vs peers, expected rev={move_needed:+.1%}",
-        }
-
-    return None
-
-
-def _compute_rsi_fast(closes: np.ndarray, period: int = 14) -> float:
-    """Wilder RSI — lightweight inline version to avoid cross-module import."""
-    if len(closes) < period + 1:
-        return 50.0
-    deltas = np.diff(closes[-(period + 1):])
-    gains = np.where(deltas > 0, deltas, 0.0)
-    losses = np.where(deltas < 0, -deltas, 0.0)
-    avg_gain = float(np.mean(gains))
-    avg_loss = float(np.mean(losses))
-    if avg_loss < 1e-10:
-        return 100.0
-    rs = avg_gain / avg_loss
-    return 100.0 - 100.0 / (1.0 + rs)
 
 
 def _build_dynamic_supply_chain(
@@ -1077,7 +1144,7 @@ def _discover_pairs_from_data(
     ticker_list = list(returns_map.keys())
 
     for i, t1 in enumerate(ticker_list):
-        for t2 in ticker_list[i + 1:]:
+        for t2 in ticker_list[i + 1 :]:
             r1, r2 = returns_map[t1], returns_map[t2]
             n = min(len(r1), len(r2))
             if n < 10:
@@ -1113,10 +1180,10 @@ async def run_backtest(
     tickers: list[str] | None = None,
     initial_equity: float = 1_000_000.0,
     days: int = 60,
-    max_position_pct: float = 5.0,
+    max_position_pct: float | None = None,
     stop_loss_pct: float = 3.0,
     take_profit_pct: float = 6.0,
-    min_conviction: float = 0.55,
+    min_conviction: float | None = None,
     min_composite_score: float = 0.20,
     refresh: bool = False,
     start_date: str | None = None,
@@ -1151,24 +1218,49 @@ async def run_backtest(
     **LLM gating** — ``forbidden_strategies`` and ``strategy_parameters``
     are passed through into every MarketContext so the orchestrator's
     Tier-1 gates operate exactly as they would in live trading.
+
+    **Option-C gate policy** — the engine TRUSTS the orchestrator's
+    decision and performs no signal-quality double-gating. ``min_conviction``
+    is preserved as a parameter for backward compatibility and for
+    callers that want to see its value in logs, but it is NOT used as an
+    entry filter. Signal quality is the orchestrator's responsibility
+    (``_orchestrator_ev_gate``, ``_grind_up_gate``, the priors blocklist,
+    and the supervisor's conviction merge). The engine only enforces
+    capital limits, per-index cooldowns, and execution physics
+    (minimum lots, minimum option premium, minimum DTE).
     """
+    from execution_engine.math.decision_context import build_decision_context
     from execution_engine.math.kelly import (
-        kelly_fraction_single, compute_position_size, kelly_options, compute_contracts_size,
+        compute_position_size,
+        kelly_fraction_single,
     )
-    from execution_engine.math.options_pricing import black_scholes, straddle_price, iron_condor_price
-    from execution_engine.math.regime import (
-        classify_volatility, classify_trend,
-        compute_vol_windows, compute_vrp, is_grind_up_regime,
-    )
-    from execution_engine.math.signals import (
-        compute_hurst_exponent, compute_rsi, compute_atr, compute_trend_strength,
-        compute_volume_profile,
+    from execution_engine.math.options_pricing import (
+        black_scholes,
     )
     from graph_intelligence.agents.strategy_orchestrator import (
-        MarketContext, rule_based_orchestrate, naive_baseline_orchestrate,
-        INDEX_FUTURES_SPECS, TRADEABLE_INDEX_SYMBOLS,
+        INDEX_FUTURES_SPECS,
+        TRADEABLE_INDEX_SYMBOLS,
+        MarketContext,
+        naive_baseline_orchestrate,
+        rule_based_orchestrate,
     )
+
     orchestrate_fn = naive_baseline_orchestrate if use_baseline else rule_based_orchestrate
+
+    # Local alias for the regime-key composer used downstream. Imported
+    # inside `run_backtest` so the module's import graph stays shallow
+    # (strategy_orchestrator already imports from shared/execution_engine,
+    # and pulling it at module load would be a circular-import risk).
+    from graph_intelligence.agents.strategy_orchestrator import (
+        _compose_regime_key as _compose_regime_key_local,
+    )
+
+    # Resolve config-driven defaults. Kept as kwargs so explicit CLI
+    # overrides still take precedence.
+    if max_position_pct is None:
+        max_position_pct = settings.MAX_POSITION_PCT
+    if min_conviction is None:
+        min_conviction = settings.BACKTEST_MIN_CONVICTION
 
     # ── Parse explicit date range ──────────────────────────────────
     _start_dt: dt.date | None = None
@@ -1192,20 +1284,46 @@ async def run_backtest(
         )
 
     # ── Load equity data ──────────────────────────────────────────
+    # P2-17 SURVIVORSHIP-BIAS NOTICE:
+    # ``tickers = None`` triggers universe auto-discovery from the
+    # locally-cached JSONL files. The on-disk cache only contains
+    # names that have SURVIVED to the present day — delisted,
+    # merged, and bankrupt companies are absent. Back-tests that
+    # rely on this auto-discovered universe therefore over-estimate
+    # realised returns because losing names that would have hurt
+    # the strategy simply never appear in the simulation.
+    #
+    # To avoid this bias, pass an explicit historical-constituents
+    # list (e.g. S&P 500 members on the backtest start date) or
+    # enable the `tickers=None` path only for scenario-specific
+    # subsets where the ticker set is already event-scoped. The
+    # fallback to `GLOBAL_EQUITY_SCREENS` is also survivorship-
+    # biased (curated US mega caps) — it is a dev convenience, not
+    # a validation-ready universe.
     if tickers is None:
-        available = sorted(
-            p.stem for p in _DATA_DIR.glob("*.jsonl") if p.stat().st_size > 0
-        )
+        available = sorted(p.stem for p in _DATA_DIR.glob("*.jsonl") if p.stat().st_size > 0)
         if available:
             tickers = available
+            log.warning(
+                "Backtest universe auto-discovered from local cache "
+                "(N=%d) — SURVIVORSHIP BIAS: delisted/merged names "
+                "are absent. Pass `tickers=<historical constituents>` "
+                "for validation-quality results.",
+                len(available),
+            )
         else:
             from data_primitives.extractors.universe_builder import GLOBAL_EQUITY_SCREENS
+
             tickers = (
                 GLOBAL_EQUITY_SCREENS.get("US_MEGA_CAP", [])
                 + GLOBAL_EQUITY_SCREENS.get("MAJOR_ETFS", [])[:15]
                 + GLOBAL_EQUITY_SCREENS.get("SUPPLY_CHAIN_CRITICAL", [])[:10]
             )
             tickers = sorted(set(tickers))
+            log.warning(
+                "Backtest universe fell back to GLOBAL_EQUITY_SCREENS "
+                "(curated survivors) — SURVIVORSHIP BIAS applies."
+            )
 
     equity_data: dict[str, list[OHLCVBar]] = {}
     _needs_fetch: list[str] = []
@@ -1227,9 +1345,12 @@ async def run_backtest(
         log.info(f"Auto-fetching {len(_needs_fetch)} equity tickers...")
         try:
             from data_primitives.extractors.openbb_client import fetch_multi_ohlcv
+
             fetched = await fetch_multi_ohlcv(
-                _needs_fetch[:50], days=max(days + 30, 120),
-                start_date=_fetch_start, end_date=_fetch_end,
+                _needs_fetch[:50],
+                days=max(days + 30, 120),
+                start_date=_fetch_start,
+                end_date=_fetch_end,
             )
             for sym, bars in fetched.items():
                 if bars:
@@ -1258,11 +1379,14 @@ async def run_backtest(
         log.info(f"Auto-fetching {len(missing_indices)} world indices...")
         try:
             from data_primitives.extractors.openbb_client import fetch_ohlcv
+
             for idx_sym in missing_indices:
                 try:
                     bars = await fetch_ohlcv(
-                        idx_sym, days=max(days + 30, 120),
-                        start_date=_fetch_start, end_date=_fetch_end,
+                        idx_sym,
+                        days=max(days + 30, 120),
+                        start_date=_fetch_start,
+                        end_date=_fetch_end,
                     )
                     if bars and len(bars) >= 20:
                         index_data[idx_sym] = bars
@@ -1335,7 +1459,9 @@ async def run_backtest(
     _idx_consec_losses: dict[str, int] = {}
     _idx_cooldown_until: dict[str, dt.date] = {}
 
-    def _get_bars_up_to(data: dict[str, list[OHLCVBar]], ticker: str, date: dt.date) -> list[OHLCVBar]:
+    def _get_bars_up_to(
+        data: dict[str, list[OHLCVBar]], ticker: str, date: dt.date
+    ) -> list[OHLCVBar]:
         return [b for b in data.get(ticker, []) if b.timestamp.date() <= date]
 
     # ── Autonomous shock detection: if a news feed is supplied, run the
@@ -1345,6 +1471,7 @@ async def run_backtest(
     if news_feed:
         try:
             from data_primitives.extractors.ner_pipeline import shock_context_from_news
+
             auto_ctx = shock_context_from_news(news_feed)
             if auto_ctx:
                 log.info(
@@ -1376,103 +1503,46 @@ async def run_backtest(
         _beneficiary_tickers = shock_context.get("beneficiary_tickers", set())
         _victim_tickers = shock_context.get("victim_tickers", set())
 
-    def _build_ctx(ticker: str, bars_list: list[OHLCVBar], asset_class: str) -> MarketContext | None:
-        """Build MarketContext from OHLCV bars."""
+    def _build_ctx(
+        ticker: str, bars_list: list[OHLCVBar], asset_class: str
+    ) -> MarketContext | None:
+        """Build MarketContext for the backtest.
+
+        Phase-3: delegates to the shared `build_decision_context()` builder
+        so backtest and live trading produce identical contexts from
+        identical inputs. The local shock-overlay state (`_shock_tickers`,
+        `_beneficiary_tickers`, `_index_bias`, `_forbidden_strategies`,
+        etc.) is packed into the shared builder's `shock_context` /
+        `final_state` arguments.
+        """
         if len(bars_list) < 30:
             return None
-        closes = np.array([b.close for b in bars_list])
-        highs = np.array([b.high for b in bars_list])
-        lows = np.array([b.low for b in bars_list])
-        volumes = np.array([b.volume for b in bars_list], dtype=float)
-
-        price = float(closes[-1])
-        log_returns = np.diff(np.log(closes[-31:])) if len(closes) > 31 else np.diff(np.log(closes))
-
-        hurst = compute_hurst_exponent(log_returns)
-        rsi = compute_rsi(closes, 14)
-        atr_val = compute_atr(highs, lows, closes, 14)
-        trend = compute_trend_strength(closes, short=10, long=30)
-        vol_ratio = compute_volume_profile(volumes, 20)
-
-        vol_regime, rv, vol_pct = classify_volatility(log_returns)
-        trend_regime, adx = classify_trend(highs, lows, closes, hurst)
-
-        z_score = 0.0
-        if len(closes) >= 20:
-            mu = float(np.mean(closes[-20:]))
-            sd = float(np.std(closes[-20:], ddof=1))
-            if sd > 1e-10:
-                z_score = (price - mu) / sd
-
-        ret_5d = float(closes[-1] / closes[-6] - 1) if len(closes) >= 6 else 0.0
-        ret_20d = float(closes[-1] / closes[-21] - 1) if len(closes) >= 21 else 0.0
-
-        iv_proxy = rv + abs(ret_5d) * 2.0 + 0.02
-        iv_rv_spread = iv_proxy - rv if rv > 0 else None
-
-        # ── Tier-1 regime gating inputs: VRP + grind-up filter ──
-        rv_short, rv_long, vol_compression = compute_vol_windows(
-            log_returns, short=20, long=60,
-        )
-        vrp_val = compute_vrp(iv_proxy, rv_short) if iv_rv_spread is not None else 0.0
-        grind_up = is_grind_up_regime(
-            vol_percentile=vol_pct,
-            vol_compression=vol_compression,
-            ret_20d=ret_20d,
-            adx=adx,
-            hurst=hurst,
-            vrp=vrp_val,
-        )
-
-        is_shock_ticker = _shock_active and ticker in _shock_tickers
-        shock_mag = _shock_magnitude if is_shock_ticker else 0.0
-        # Rolling 5-bar window for shock magnitude so early bars still register
-        if is_shock_ticker and len(closes) >= 6:
-            window = min(5, len(closes) - 1)
-            shock_mag = float(closes[-1] / closes[-1 - window] - 1)
-
-        # For indices, use index_bias from causal_intel; for equities, classify as beneficiary/victim
-        idx_bias = _index_bias.get(ticker, "") if asset_class == "INDEX" else ""
-        is_benef = _shock_active and ticker in _beneficiary_tickers
-        is_vict = _shock_active and ticker in _victim_tickers
-
-        spec = INDEX_FUTURES_SPECS.get(ticker, {})
-        return MarketContext(
+        shock_ctx: dict[str, Any] | None = None
+        if _shock_active:
+            shock_ctx = {
+                "source": _shock_source,
+                "magnitude": _shock_magnitude,
+                "shocked_tickers": list(_shock_tickers),
+                "beneficiary_tickers": list(_beneficiary_tickers),
+                "victim_tickers": list(_victim_tickers),
+                "index_bias": dict(_index_bias),
+            }
+        # Backtest has no live LangGraph output, so final_state carries
+        # only the strategist/supervisor kwargs passed into run_backtest.
+        backtest_final_state: dict[str, Any] = {
+            "forbidden_strategies": _forbidden_strategies,
+            "strategy_parameters": _strategy_parameters,
+            "risk_multiplier": _risk_multiplier,
+            # Backtest-mode causal conviction is always 0; the grind-up
+            # gate therefore holds unless a live run supplies intel.
+            "confidence": 0.0,
+        }
+        return build_decision_context(
             ticker=ticker,
-            current_price=price,
-            volatility_regime=vol_regime.value,
-            trend_regime=trend_regime.value,
-            hurst=hurst,
-            rsi=rsi,
-            atr=atr_val,
-            realized_vol=rv,
-            implied_vol=iv_proxy if iv_rv_spread is not None else None,
-            iv_rv_spread=iv_rv_spread,
-            z_score=z_score,
-            trend_strength=trend,
-            volume_ratio=vol_ratio,
-            ret_5d=ret_5d,
-            ret_20d=ret_20d,
+            bars=bars_list,
             asset_class=asset_class,
-            country=spec.get("country", "US"),
-            supply_chain_shock=is_shock_ticker or _shock_active,
-            shock_source=_shock_source if _shock_active else None,
-            shock_magnitude=shock_mag,
-            shock_bias=idx_bias,
-            is_beneficiary=is_benef,
-            is_victim=is_vict,
-            vrp=vrp_val,
-            vol_compression=vol_compression,
-            grind_up_flag=grind_up,
-            # Causal conviction only arrives via the live LangGraph path;
-            # in backtest we default to 0 so the grind-up gate holds.
-            causal_conviction=0.0,
-            # Strategist-emitted blocklist + Supervisor-emitted dynamic
-            # thresholds. In offline walk-forwards these are typically
-            # empty / default; live and scenario runs populate them.
-            forbidden_strategies=_forbidden_strategies,
-            strategy_parameters=_strategy_parameters,
-            risk_multiplier=_risk_multiplier,
+            shock_context=shock_ctx,
+            final_state=backtest_final_state,
         )
 
     for date in sorted_dates:
@@ -1486,38 +1556,157 @@ async def run_backtest(
             if bars_to:
                 date_eq_prices[ticker] = bars_to[-1].close
 
+        # Batch-2/C thesis-invalidation helper. Rebuilds each open
+        # position's ticker ctx on the current day; if that ticker's
+        # (strategy, regime) cell is now `blocked_by_regime`, the
+        # trade's original causal thesis is contradicted and we close
+        # regardless of price action. Priors.json is the authoritative
+        # blocklist — if the offline calibrator OR a Batch-1/A manual
+        # override has since flipped the cell to blocked, the position
+        # must not survive past today. Cheap: just a priors dict read
+        # plus ctx rebuild, skipped when the strategy name is empty.
+        from graph_intelligence.agents.strategy_orchestrator import (
+            is_strategy_regime_blocked as _is_blocked,
+        )
+
+        def _thesis_invalidated(pos: BacktestTrade) -> bool:
+            if not pos.strategy_name or pos.signal.ticker not in equity_data:
+                return False
+            bars_here = _get_bars_up_to(
+                equity_data,
+                pos.signal.ticker,
+                date,
+            )
+            if not bars_here or len(bars_here) < 30:
+                return False
+            ctx_here = _build_ctx(pos.signal.ticker, bars_here, "EQUITY")
+            if ctx_here is None:
+                return False
+            return _is_blocked(ctx_here, pos.strategy_name)
+
+        # Batch-2/F hold-time gate: structural trades need time to
+        # play out. Take-profit does NOT fire before the min-hold
+        # window has elapsed, but stop-loss is ALWAYS honoured — we
+        # never let a thesis cook past its stop just because the
+        # timer's not up. Max hold also scales with alpha_horizon so
+        # 4th-order trades don't auto-close at 20 days.
+        def _hold_bounds(pos: BacktestTrade) -> tuple[int, int]:
+            """Return (min_hold_days, max_hold_days) for this position's horizon."""
+            horizon = getattr(pos.signal, "alpha_horizon", None)
+            hv = horizon.value if horizon is not None else "2nd_order"
+            # (min, max) pairs mirror strategy docs:
+            #   1st_order: intraday/quick — no min, cap at 3 days
+            #   2nd_order: swing — 1-7 days  (default)
+            #   3rd_order: structural — 5-10 days
+            #   4th_order: macro — 14-42 days
+            bounds = {
+                "1st_order": (0, 3),
+                "2nd_order": (1, 10),
+                "3rd_order": (5, 15),
+                "4th_order": (14, 42),
+            }
+            return bounds.get(hv, (1, 20))
+
+        # Batch-2/E trailing-stop pyramid.
+        # Given a LONG entry at `E` with initial stop `SL0`, one-R is
+        # the entry-to-stop distance (E - SL0). At each threshold we
+        # ratchet the stop UP only (never reintroduce risk):
+        #   +1R unrealised: stop → breakeven (E)
+        #   +2R unrealised: stop → E + 0.5 × (current_price - E)
+        #   +3R unrealised: stop → E + 0.50 × (current_price - E)
+        #                          (same formula as +2R but still
+        #                          a monotonic ratchet vs prior
+        #                          level; the effect is a 50%-of-
+        #                          open-profit trail)
+        # SHORT is the mirror image: initial stop is ABOVE entry,
+        # thresholds become -1R / -2R / -3R in the favourable
+        # direction, and trails move the stop DOWN only.
+        def _pyramid_trail_long(pos: BacktestTrade, cur: float) -> None:
+            # Use the pinned initial-risk-per-share so the ratchet
+            # keeps computing correct R-multiples even after the stop
+            # has moved past entry. Falls back to the live distance
+            # only when a legacy trade without the pin field is
+            # encountered (shouldn't happen post-Batch-2/E).
+            E = pos.entry_price
+            one_r = pos.initial_risk_per_share
+            if one_r <= 0:
+                one_r = E - pos.stop_loss_price if pos.stop_loss_price < E else 0.0
+            if one_r <= 0:
+                return
+            gain = cur - E
+            if gain < one_r:
+                return
+            r_multiple = gain / one_r
+            if r_multiple >= 2.0:
+                new_sl = E + 0.50 * gain
+            elif r_multiple >= 1.0:
+                new_sl = E
+            else:
+                return
+            pos.stop_loss_price = max(pos.stop_loss_price, new_sl)
+
+        def _pyramid_trail_short(pos: BacktestTrade, cur: float) -> None:
+            E = pos.entry_price
+            one_r = pos.initial_risk_per_share
+            if one_r <= 0:
+                one_r = pos.stop_loss_price - E if pos.stop_loss_price > E else 0.0
+            if one_r <= 0:
+                return
+            gain = E - cur
+            if gain < one_r:
+                return
+            r_multiple = gain / one_r
+            if r_multiple >= 2.0:
+                new_sl = E - 0.50 * gain
+            elif r_multiple >= 1.0:
+                new_sl = E
+            else:
+                return
+            pos.stop_loss_price = min(pos.stop_loss_price, new_sl)
+
         to_close: list[int] = []
         for i, pos in enumerate(equity_positions):
             if pos.signal.ticker not in date_eq_prices:
                 continue
             current_price = date_eq_prices[pos.signal.ticker]
+            hold = (date - pos.entry_date.date()).days
+            min_hold, max_hold = _hold_bounds(pos)
+
+            # Thesis invalidation takes precedence over TP/SL — a
+            # contradicted thesis means the trade has no upside.
+            if _thesis_invalidated(pos):
+                pos.exit_reason = "thesis_invalidated"
+                _close_position(pos, current_price, date)
+                to_close.append(i)
+                continue
 
             if pos.signal.action == TradeAction.LONG:
-                unrealized = (current_price - pos.entry_price) / pos.entry_price
-                if unrealized > 0.02:
-                    new_sl = current_price - (current_price - pos.entry_price) * 0.4
-                    pos.stop_loss_price = max(pos.stop_loss_price, new_sl)
+                _pyramid_trail_long(pos, current_price)
                 if current_price <= pos.stop_loss_price:
+                    pos.exit_reason = (
+                        "trail_stop" if pos.stop_loss_price >= pos.entry_price else "stop_loss"
+                    )
                     _close_position(pos, current_price, date)
                     to_close.append(i)
-                elif current_price >= pos.take_profit_price:
+                elif current_price >= pos.take_profit_price and hold >= min_hold:
+                    pos.exit_reason = "take_profit"
                     _close_position(pos, current_price, date)
                     to_close.append(i)
             else:
-                unrealized = (pos.entry_price - current_price) / pos.entry_price
-                if unrealized > 0.02:
-                    new_sl = current_price + (pos.entry_price - current_price) * 0.4
-                    pos.stop_loss_price = min(pos.stop_loss_price, new_sl)
+                _pyramid_trail_short(pos, current_price)
                 if current_price >= pos.stop_loss_price:
+                    pos.exit_reason = (
+                        "trail_stop" if pos.stop_loss_price <= pos.entry_price else "stop_loss"
+                    )
                     _close_position(pos, current_price, date)
                     to_close.append(i)
-                elif current_price <= pos.take_profit_price:
+                elif current_price <= pos.take_profit_price and hold >= min_hold:
+                    pos.exit_reason = "take_profit"
                     _close_position(pos, current_price, date)
                     to_close.append(i)
 
-            max_hold = 20
-            hold = (date - pos.entry_date.date()).days
             if hold > max_hold and i not in to_close:
+                pos.exit_reason = "max_hold_reached"
                 _close_position(pos, current_price, date)
                 to_close.append(i)
 
@@ -1548,16 +1737,22 @@ async def run_backtest(
             shocks_analyzed += 1
             decision = orchestrate_fn(ctx)
 
+            # NOTE (Option C refactor): the backtest engine used to layer
+            # three signal-quality filters on top of the orchestrator's
+            # own decision: a 0.70 F&O conviction floor, an
+            # `expected_r < min_r` hurdle, and (separately on the equity
+            # path) a `conviction < min_conviction` floor. All three
+            # double-gate logic the orchestrator already performs in
+            # `_orchestrator_ev_gate`, `_grind_up_gate`, the priors
+            # blocklist, and `_dynamic_conviction`. The combination was
+            # silently killing 100% of shock_directed_put / _call
+            # decisions because the orchestrator clamps
+            # `expected_r=max(..., 1.2)` while the engine demanded
+            # `>= 1.5`. The engine now trusts the orchestrator: if it
+            # emits EXECUTE, we size + risk + capital-gate it, but we do
+            # NOT re-litigate its edge calculation.
             if decision.action == "SKIP":
                 signals_filtered += 1
-                continue
-            fno_min_conviction = max(min_conviction, 0.70)
-            if decision.conviction < fno_min_conviction:
-                signals_filtered += 1
-                continue
-            if decision.expected_r < decision.min_r:
-                signals_filtered += 1
-                r_distribution["rejected"].append(decision.expected_r)
                 continue
 
             r_distribution["accepted"].append(decision.expected_r)
@@ -1582,7 +1777,9 @@ async def run_backtest(
 
             # F&O capital cap: max 50% of portfolio in F&O at risk
             fno_cap = cash * FNO_CAPITAL_CAP
-            available_capital = max(min(cash - fno_capital_at_risk, fno_cap - fno_capital_at_risk), 0.0)
+            available_capital = max(
+                min(cash - fno_capital_at_risk, fno_cap - fno_capital_at_risk), 0.0
+            )
             if available_capital < 1000:
                 continue
 
@@ -1625,7 +1822,9 @@ async def run_backtest(
                 margin_1lot = notional_1lot * margin_pct
                 total_margin = margin_1lot * lots
                 if total_margin > available_capital * MAX_PORTFOLIO_RISK_PCT:
-                    lots = max(1, int(available_capital * MAX_PORTFOLIO_RISK_PCT / max(margin_1lot, 1.0)))
+                    lots = max(
+                        1, int(available_capital * MAX_PORTFOLIO_RISK_PCT / max(margin_1lot, 1.0))
+                    )
                     total_margin = margin_1lot * lots
                 if lots < 1:
                     continue
@@ -1690,7 +1889,9 @@ async def run_backtest(
                         exit_reason = "profit_target"
                         break
                 else:
-                    exp_bars = _get_bars_up_to(index_data, idx_sym, sorted_dates[min(exit_idx, len(sorted_dates) - 1)])
+                    exp_bars = _get_bars_up_to(
+                        index_data, idx_sym, sorted_dates[min(exit_idx, len(sorted_dates) - 1)]
+                    )
                     if exp_bars:
                         spot_exit = exp_bars[-1].close
                         fut_exit_price = spot_exit
@@ -1713,7 +1914,9 @@ async def run_backtest(
                 )
                 pnl_usd -= fut_costs.total
                 cost_breakdown["commission_total"] += fut_costs.commission
-                cost_breakdown["slippage_total"] += fut_costs.slippage_entry + fut_costs.slippage_exit
+                cost_breakdown["slippage_total"] += (
+                    fut_costs.slippage_entry + fut_costs.slippage_exit
+                )
                 cost_breakdown["cost_total"] += fut_costs.total
                 cost_breakdown["cost_count"] += 1
 
@@ -1727,47 +1930,52 @@ async def run_backtest(
                 fno_capital_at_risk += total_margin
                 actual_exit_date = sorted_dates[min(day_idx + actual_hold, len(sorted_dates) - 1)]
 
-                fno_trades.append(FnOTrade(
-                    trade_id=f"bt_{date}_{future_name}_fut",
-                    strategy=decision.strategy_name,
-                    underlying=idx_sym,
-                    instrument="INDEX_FUTURE",
-                    direction=decision.direction,
-                    entry_date=date,
-                    exit_date=actual_exit_date,
-                    entry_cost=round(total_margin, 2),
-                    exit_value=round(total_margin + pnl_usd, 2),
-                    pnl=round(pnl_usd, 2),
-                    pnl_pct=round(pnl_usd / max(total_margin, 0.01) * 100, 2),
-                    hold_days=actual_hold,
-                    details={
-                        "contract": future_name,
-                        "index_name": spec.get("name", ""),
-                        "country": country,
-                        "exchange": spec.get("exchange", ""),
-                        "multiplier": multiplier,
-                        "lots": lots,
-                        "currency": spec.get("currency", "USD"),
-                        "trade_mode": trade_mode,
-                        "spot_entry": round(spot_entry, 2),
-                        "spot_exit": round(spot_exit, 2),
-                        "fut_entry": round(fut_entry_price, 2),
-                        "fut_exit": round(fut_exit_price, 2),
-                        "pnl_pts": round(pnl_pts, 2),
-                        "margin_per_lot": round(margin_1lot, 0),
-                        "notional_usd": round(notional_1lot * lots, 0),
-                        "stop_loss_pts": round(stop_dist, 2),
-                        "risk_1R_usd": round(risk_usd, 2),
-                        "expiry_date": expiry_date.isoformat(),
-                        "dte_at_entry": days_to_expiry,
-                        "expected_r": round(decision.expected_r, 2),
-                        "realized_r": round(realized_r, 2),
-                        "exit_reason": exit_reason,
-                        "conviction": round(decision.conviction, 3),
-                        "rationale": decision.rationale,
-                        "graph_intel": decision.graph_intel,
-                    },
-                ))
+                fno_trades.append(
+                    FnOTrade(
+                        trade_id=f"bt_{date}_{future_name}_fut",
+                        strategy=decision.strategy_name,
+                        underlying=idx_sym,
+                        instrument="INDEX_FUTURE",
+                        direction=decision.direction,
+                        entry_date=date,
+                        exit_date=actual_exit_date,
+                        entry_cost=round(total_margin, 2),
+                        exit_value=round(total_margin + pnl_usd, 2),
+                        pnl=round(pnl_usd, 2),
+                        pnl_pct=round(pnl_usd / max(total_margin, 0.01) * 100, 2),
+                        hold_days=actual_hold,
+                        details={
+                            "contract": future_name,
+                            "index_name": spec.get("name", ""),
+                            "country": country,
+                            "exchange": spec.get("exchange", ""),
+                            "multiplier": multiplier,
+                            "lots": lots,
+                            "currency": spec.get("currency", "USD"),
+                            "trade_mode": trade_mode,
+                            "spot_entry": round(spot_entry, 2),
+                            "spot_exit": round(spot_exit, 2),
+                            "fut_entry": round(fut_entry_price, 2),
+                            "fut_exit": round(fut_exit_price, 2),
+                            "pnl_pts": round(pnl_pts, 2),
+                            "margin_per_lot": round(margin_1lot, 0),
+                            "notional_usd": round(notional_1lot * lots, 0),
+                            "stop_loss_pts": round(stop_dist, 2),
+                            "risk_1R_usd": round(risk_usd, 2),
+                            "expiry_date": expiry_date.isoformat(),
+                            "dte_at_entry": days_to_expiry,
+                            "expected_r": round(decision.expected_r, 2),
+                            "realized_r": round(realized_r, 2),
+                            "exit_reason": exit_reason,
+                            "conviction": round(decision.conviction, 3),
+                            "rationale": decision.rationale,
+                            "graph_intel": decision.graph_intel,
+                            # Regime bucket as of entry — used by the priors
+                            # recalibrator to group outcomes.
+                            "regime_key": _compose_regime_key_local(ctx),
+                        },
+                    )
+                )
 
             # ── INDEX_CALL / INDEX_PUT: real weekly/monthly expiry, 2% risk sizing ──
             elif decision.instrument_type in ("INDEX_CALL", "INDEX_PUT"):
@@ -1804,13 +2012,17 @@ async def run_backtest(
                     continue
 
                 stop_dist_pts = entry_premium * 0.60
-                lots = _compute_lots_from_risk(available_capital, stop_dist_pts, multiplier, usd_rate)
+                lots = _compute_lots_from_risk(
+                    available_capital, stop_dist_pts, multiplier, usd_rate
+                )
                 dte_scale = min(1.0, days_to_expiry / 5.0)
                 lots = max(1, int(lots * dte_scale))
                 cost_1lot = entry_premium * multiplier * usd_rate
                 total_cost = cost_1lot * lots
                 if total_cost > available_capital * MAX_PORTFOLIO_RISK_PCT:
-                    lots = max(1, int(available_capital * MAX_PORTFOLIO_RISK_PCT / max(cost_1lot, 1.0)))
+                    lots = max(
+                        1, int(available_capital * MAX_PORTFOLIO_RISK_PCT / max(cost_1lot, 1.0))
+                    )
                     total_cost = cost_1lot * lots
                 if lots < 1:
                     continue
@@ -1849,7 +2061,9 @@ async def run_backtest(
                     if profit_pct >= 0.30:
                         stop_prem = max(stop_prem, entry_premium)
                     if peak_prem > entry_premium * 1.5:
-                        stop_prem = max(stop_prem, entry_premium + (peak_prem - entry_premium) * 0.50)
+                        stop_prem = max(
+                            stop_prem, entry_premium + (peak_prem - entry_premium) * 0.50
+                        )
 
                     if profit_pct >= 0.80:
                         exit_premium = mid_prem
@@ -1861,10 +2075,14 @@ async def run_backtest(
                         exit_premium = mid_prem
                         spot_exit = S_mid
                         actual_hold = check_idx - day_idx
-                        exit_reason = "trailing_stop" if stop_prem >= entry_premium else "initial_stop"
+                        exit_reason = (
+                            "trailing_stop" if stop_prem >= entry_premium else "initial_stop"
+                        )
                         break
                 else:
-                    exp_bars = _get_bars_up_to(index_data, idx_sym, sorted_dates[min(exit_idx, len(sorted_dates) - 1)])
+                    exp_bars = _get_bars_up_to(
+                        index_data, idx_sym, sorted_dates[min(exit_idx, len(sorted_dates) - 1)]
+                    )
                     if exp_bars:
                         S_exit = exp_bars[-1].close
                         spot_exit = S_exit
@@ -1886,7 +2104,9 @@ async def run_backtest(
                 )
                 pnl_usd -= opt_costs.total
                 cost_breakdown["commission_total"] += opt_costs.commission
-                cost_breakdown["slippage_total"] += opt_costs.slippage_entry + opt_costs.slippage_exit
+                cost_breakdown["slippage_total"] += (
+                    opt_costs.slippage_entry + opt_costs.slippage_exit
+                )
                 cost_breakdown["cost_total"] += opt_costs.total
                 cost_breakdown["cost_count"] += 1
 
@@ -1899,48 +2119,51 @@ async def run_backtest(
 
                 actual_exit_date = sorted_dates[min(day_idx + actual_hold, len(sorted_dates) - 1)]
 
-                fno_trades.append(FnOTrade(
-                    trade_id=f"bt_{date}_{future_name}_{opt_type.lower()}",
-                    strategy=decision.strategy_name,
-                    underlying=idx_sym,
-                    instrument=f"INDEX_{opt_type}",
-                    direction=decision.direction,
-                    entry_date=date,
-                    exit_date=actual_exit_date,
-                    entry_cost=round(total_cost, 2),
-                    exit_value=round(total_cost + pnl_usd, 2),
-                    pnl=round(pnl_usd, 2),
-                    pnl_pct=round(pnl_usd / max(total_cost, 0.01) * 100, 2),
-                    hold_days=actual_hold,
-                    details={
-                        "contract": f"{future_name} {strike:.0f}{opt_type[0]}E",
-                        "index_name": spec.get("name", ""),
-                        "country": country,
-                        "exchange": spec.get("exchange", ""),
-                        "opt_type": opt_type,
-                        "strike": round(strike, 2),
-                        "lots": lots,
-                        "multiplier": multiplier,
-                        "currency": spec.get("currency", "USD"),
-                        "trade_mode": trade_mode,
-                        "spot_entry": round(spot_entry, 2),
-                        "spot_exit": round(spot_exit, 2),
-                        "entry_premium": round(entry_premium, 2),
-                        "exit_premium": round(exit_premium, 2),
-                        "iv": round(sigma, 4),
-                        "cost_per_lot": round(cost_1lot, 2),
-                        "stop_loss_premium": round(stop_prem, 2),
-                        "risk_1R_usd": round(risk_usd, 2),
-                        "expiry_date": expiry_date.isoformat(),
-                        "dte_at_entry": days_to_expiry,
-                        "expected_r": round(decision.expected_r, 2),
-                        "realized_r": round(realized_r, 2),
-                        "exit_reason": exit_reason,
-                        "conviction": round(decision.conviction, 3),
-                        "rationale": decision.rationale,
-                        "graph_intel": decision.graph_intel,
-                    },
-                ))
+                fno_trades.append(
+                    FnOTrade(
+                        trade_id=f"bt_{date}_{future_name}_{opt_type.lower()}",
+                        strategy=decision.strategy_name,
+                        underlying=idx_sym,
+                        instrument=f"INDEX_{opt_type}",
+                        direction=decision.direction,
+                        entry_date=date,
+                        exit_date=actual_exit_date,
+                        entry_cost=round(total_cost, 2),
+                        exit_value=round(total_cost + pnl_usd, 2),
+                        pnl=round(pnl_usd, 2),
+                        pnl_pct=round(pnl_usd / max(total_cost, 0.01) * 100, 2),
+                        hold_days=actual_hold,
+                        details={
+                            "contract": f"{future_name} {strike:.0f}{opt_type[0]}E",
+                            "index_name": spec.get("name", ""),
+                            "country": country,
+                            "exchange": spec.get("exchange", ""),
+                            "opt_type": opt_type,
+                            "strike": round(strike, 2),
+                            "lots": lots,
+                            "multiplier": multiplier,
+                            "currency": spec.get("currency", "USD"),
+                            "trade_mode": trade_mode,
+                            "spot_entry": round(spot_entry, 2),
+                            "spot_exit": round(spot_exit, 2),
+                            "entry_premium": round(entry_premium, 2),
+                            "exit_premium": round(exit_premium, 2),
+                            "iv": round(sigma, 4),
+                            "cost_per_lot": round(cost_1lot, 2),
+                            "stop_loss_premium": round(stop_prem, 2),
+                            "risk_1R_usd": round(risk_usd, 2),
+                            "expiry_date": expiry_date.isoformat(),
+                            "dte_at_entry": days_to_expiry,
+                            "expected_r": round(decision.expected_r, 2),
+                            "realized_r": round(realized_r, 2),
+                            "exit_reason": exit_reason,
+                            "conviction": round(decision.conviction, 3),
+                            "rationale": decision.rationale,
+                            "graph_intel": decision.graph_intel,
+                            "regime_key": _compose_regime_key_local(ctx),
+                        },
+                    )
+                )
 
             # ── INDEX_SPREAD: real expiry, 2% risk lot sizing ──
             elif decision.instrument_type == "INDEX_SPREAD":
@@ -1983,13 +2206,17 @@ async def run_backtest(
                     continue
 
                 stop_dist_pts = net_debit * 0.60
-                lots = _compute_lots_from_risk(available_capital, stop_dist_pts, multiplier, usd_rate)
+                lots = _compute_lots_from_risk(
+                    available_capital, stop_dist_pts, multiplier, usd_rate
+                )
                 dte_scale = min(1.0, days_to_expiry / 5.0)
                 lots = max(1, int(lots * dte_scale))
                 cost_1lot = net_debit * multiplier * usd_rate
                 total_cost = cost_1lot * lots
                 if total_cost > available_capital * MAX_PORTFOLIO_RISK_PCT:
-                    lots = max(1, int(available_capital * MAX_PORTFOLIO_RISK_PCT / max(cost_1lot, 1.0)))
+                    lots = max(
+                        1, int(available_capital * MAX_PORTFOLIO_RISK_PCT / max(cost_1lot, 1.0))
+                    )
                     total_cost = cost_1lot * lots
                 if lots < 1:
                     continue
@@ -2039,7 +2266,9 @@ async def run_backtest(
                         locked_pnl_pts += (mid_spread - net_debit) * 0.50
                         qty_remaining = 0.50
                     if qty_remaining <= 0.50 and peak_spread_val > net_debit:
-                        stop_spread_val = max(stop_spread_val, net_debit + (peak_spread_val - net_debit) * 0.50)
+                        stop_spread_val = max(
+                            stop_spread_val, net_debit + (peak_spread_val - net_debit) * 0.50
+                        )
                     if mid_spread >= net_debit + max_profit_pts * 0.75:
                         exit_spread_val = mid_spread
                         spot_exit = S_mid
@@ -2054,10 +2283,14 @@ async def run_backtest(
                         locked_pnl_pts += (mid_spread - net_debit) * qty_remaining
                         qty_remaining = 0.0
                         actual_hold = check_idx - day_idx
-                        exit_reason = "trailing_stop" if stop_spread_val >= net_debit else "initial_stop"
+                        exit_reason = (
+                            "trailing_stop" if stop_spread_val >= net_debit else "initial_stop"
+                        )
                         break
                 else:
-                    exp_bars = _get_bars_up_to(index_data, idx_sym, sorted_dates[min(exit_idx, len(sorted_dates) - 1)])
+                    exp_bars = _get_bars_up_to(
+                        index_data, idx_sym, sorted_dates[min(exit_idx, len(sorted_dates) - 1)]
+                    )
                     if exp_bars:
                         S_exit = exp_bars[-1].close
                         spot_exit = S_exit
@@ -2081,7 +2314,9 @@ async def run_backtest(
                 )
                 pnl_usd -= spr_costs.total
                 cost_breakdown["commission_total"] += spr_costs.commission
-                cost_breakdown["slippage_total"] += spr_costs.slippage_entry + spr_costs.slippage_exit
+                cost_breakdown["slippage_total"] += (
+                    spr_costs.slippage_entry + spr_costs.slippage_exit
+                )
                 cost_breakdown["cost_total"] += spr_costs.total
                 cost_breakdown["cost_count"] += 1
 
@@ -2094,53 +2329,56 @@ async def run_backtest(
 
                 actual_exit_date = sorted_dates[min(day_idx + actual_hold, len(sorted_dates) - 1)]
 
-                fno_trades.append(FnOTrade(
-                    trade_id=f"bt_{date}_{future_name}_spread",
-                    strategy=decision.strategy_name,
-                    underlying=idx_sym,
-                    instrument="INDEX_SPREAD",
-                    direction=decision.direction,
-                    entry_date=date,
-                    exit_date=actual_exit_date,
-                    entry_cost=round(total_cost, 2),
-                    exit_value=round(total_cost + pnl_usd, 2),
-                    pnl=round(pnl_usd, 2),
-                    pnl_pct=round(pnl_usd / max(total_cost, 0.01) * 100, 2),
-                    hold_days=actual_hold,
-                    details={
-                        "contract": f"{future_name} {long_K:.0f}/{short_K:.0f} {opt_type[0]}E",
-                        "index_name": spec.get("name", ""),
-                        "country": country,
-                        "exchange": spec.get("exchange", ""),
-                        "opt_type": opt_type,
-                        "long_strike": round(long_K, 2),
-                        "short_strike": round(short_K, 2),
-                        "spread_width": round(spread_width, 2),
-                        "lots": lots,
-                        "multiplier": multiplier,
-                        "currency": spec.get("currency", "USD"),
-                        "trade_mode": trade_mode,
-                        "long_prem": round(long_prem, 2),
-                        "short_prem": round(short_prem, 2),
-                        "net_debit": round(net_debit, 2),
-                        "exit_spread_val": round(exit_spread_val, 2),
-                        "max_profit_pts": round(max_profit_pts, 2),
-                        "spot_entry": round(spot_entry, 2),
-                        "spot_exit": round(spot_exit, 2),
-                        "iv": round(sigma, 4),
-                        "cost_per_lot": round(cost_1lot, 2),
-                        "stop_loss_pts": round(stop_dist_pts, 2),
-                        "risk_1R_usd": round(risk_usd, 2),
-                        "expiry_date": expiry_date.isoformat(),
-                        "dte_at_entry": days_to_expiry,
-                        "expected_r": round(decision.expected_r, 2),
-                        "realized_r": round(realized_r, 2),
-                        "exit_reason": exit_reason,
-                        "conviction": round(decision.conviction, 3),
-                        "rationale": decision.rationale,
-                        "graph_intel": decision.graph_intel,
-                    },
-                ))
+                fno_trades.append(
+                    FnOTrade(
+                        trade_id=f"bt_{date}_{future_name}_spread",
+                        strategy=decision.strategy_name,
+                        underlying=idx_sym,
+                        instrument="INDEX_SPREAD",
+                        direction=decision.direction,
+                        entry_date=date,
+                        exit_date=actual_exit_date,
+                        entry_cost=round(total_cost, 2),
+                        exit_value=round(total_cost + pnl_usd, 2),
+                        pnl=round(pnl_usd, 2),
+                        pnl_pct=round(pnl_usd / max(total_cost, 0.01) * 100, 2),
+                        hold_days=actual_hold,
+                        details={
+                            "contract": f"{future_name} {long_K:.0f}/{short_K:.0f} {opt_type[0]}E",
+                            "index_name": spec.get("name", ""),
+                            "country": country,
+                            "exchange": spec.get("exchange", ""),
+                            "opt_type": opt_type,
+                            "long_strike": round(long_K, 2),
+                            "short_strike": round(short_K, 2),
+                            "spread_width": round(spread_width, 2),
+                            "lots": lots,
+                            "multiplier": multiplier,
+                            "currency": spec.get("currency", "USD"),
+                            "trade_mode": trade_mode,
+                            "long_prem": round(long_prem, 2),
+                            "short_prem": round(short_prem, 2),
+                            "net_debit": round(net_debit, 2),
+                            "exit_spread_val": round(exit_spread_val, 2),
+                            "max_profit_pts": round(max_profit_pts, 2),
+                            "spot_entry": round(spot_entry, 2),
+                            "spot_exit": round(spot_exit, 2),
+                            "iv": round(sigma, 4),
+                            "cost_per_lot": round(cost_1lot, 2),
+                            "stop_loss_pts": round(stop_dist_pts, 2),
+                            "risk_1R_usd": round(risk_usd, 2),
+                            "expiry_date": expiry_date.isoformat(),
+                            "dte_at_entry": days_to_expiry,
+                            "expected_r": round(decision.expected_r, 2),
+                            "realized_r": round(realized_r, 2),
+                            "exit_reason": exit_reason,
+                            "conviction": round(decision.conviction, 3),
+                            "rationale": decision.rationale,
+                            "graph_intel": decision.graph_intel,
+                            "regime_key": _compose_regime_key_local(ctx),
+                        },
+                    )
+                )
 
         # ══════════════════════════════════════════════════════════
         #  TRACK 2: EQUITY INVESTMENT — stock positions only
@@ -2154,15 +2392,12 @@ async def run_backtest(
             shocks_analyzed += 1
             decision = orchestrate_fn(ctx)
 
+            # Option-C refactor (sibling of the F&O site above):
+            # trust the orchestrator. If EXECUTE, we continue; if SKIP,
+            # we count and move on. No local conviction or R-hurdle
+            # re-litigation — those are the orchestrator's job.
             if decision.action == "SKIP":
                 signals_filtered += 1
-                continue
-            if decision.conviction < min_conviction:
-                signals_filtered += 1
-                continue
-            if decision.expected_r < decision.min_r:
-                signals_filtered += 1
-                r_distribution["rejected"].append(decision.expected_r)
                 continue
 
             if decision.instrument_type != "EQUITY":
@@ -2193,29 +2428,57 @@ async def run_backtest(
             shares = compute_position_size(cash, frac, price)
             if shares > 0 and price * shares < cash * 0.80:
                 cash -= shares * price
+                # NB: the legacy kwargs `signal_id` / `action` / `confidence`
+                # are now read-only properties on TradeIntent. Constructing
+                # with them raises ValidationError (the bug that broke the
+                # entire 20-scenario walk-forward). Use the canonical
+                # required fields: intent_id / direction / alpha_score.
                 signal = TradeSignal(
-                    signal_id=f"bt_{date}_{ticker}_eq",
+                    intent_id=f"bt_{date}_{ticker}_eq",
+                    execute=True,
                     timestamp=dt.datetime.combine(date, dt.time()),
                     ticker=ticker,
-                    action=action,
+                    direction=action,
                     alpha_horizon=AlphaHorizon.SECOND_ORDER,
-                    confidence=decision.conviction,
+                    alpha_score=AlphaScore(
+                        ticker=ticker,
+                        direction=action,
+                        factor_score=decision.conviction,
+                        bayesian_conviction=decision.conviction,
+                        unified_conviction=decision.conviction,
+                        expected_r=getattr(decision, "expected_r", 2.0) or 2.0,
+                        min_r=getattr(decision, "min_r", 1.5) or 1.5,
+                        rationale=decision.rationale[:120],
+                    ),
+                    strategy_name=decision.strategy_name,
                     rationale=f"[{decision.strategy_name}] {decision.rationale}",
                     status=SignalStatus.PENDING,
                 )
-                equity_positions.append(BacktestTrade(
-                    signal=signal,
-                    entry_price=price,
-                    entry_date=dt.datetime.combine(date, dt.time()),
-                    shares=shares,
-                    stop_loss_price=sl_price,
-                    take_profit_price=tp_price,
-                ))
+                # Capture the regime key + strategy metadata at entry so
+                # the trade outcomes logger can group by (strategy,
+                # regime) for priors recalibration.
+                entry_regime = _compose_regime_key_local(ctx)
+                equity_positions.append(
+                    BacktestTrade(
+                        signal=signal,
+                        entry_price=price,
+                        entry_date=dt.datetime.combine(date, dt.time()),
+                        shares=shares,
+                        stop_loss_price=sl_price,
+                        take_profit_price=tp_price,
+                        regime_key=entry_regime,
+                        strategy_name=decision.strategy_name,
+                        conviction=float(decision.conviction),
+                        expected_r=float(getattr(decision, "expected_r", 0.0) or 0.0),
+                        # Batch-2/E: pin 1R in dollars at entry so the
+                        # pyramid trail survives past-breakeven ratchets.
+                        initial_risk_per_share=abs(price - sl_price),
+                    )
+                )
 
         # ── Release F&O capital for settled trades ──
         newly_settled = [
-            ft for ft in fno_trades
-            if ft.exit_date == date and ft.trade_id not in _settled_fno
+            ft for ft in fno_trades if ft.exit_date == date and ft.trade_id not in _settled_fno
         ]
         for ft in newly_settled:
             cash += ft.pnl
@@ -2233,8 +2496,7 @@ async def run_backtest(
                 _idx_consec_losses[idx] = 0
 
         position_value = sum(
-            p.shares * date_eq_prices.get(p.signal.ticker, p.entry_price)
-            for p in equity_positions
+            p.shares * date_eq_prices.get(p.signal.ticker, p.entry_price) for p in equity_positions
         )
         equity_curve.append(cash + position_value)
         equity_dates.append(date.isoformat())
@@ -2312,8 +2574,7 @@ async def run_backtest(
         trades=all_closed_equity,
         fno_trade_log=all_fno,
         equity_curve=[
-            {"date": d, "equity": round(e, 2)}
-            for d, e in zip(equity_dates, equity_curve)
+            {"date": d, "equity": round(e, 2)} for d, e in zip(equity_dates, equity_curve)
         ],
         shocks_analyzed=shocks_analyzed,
         signals_generated=signals_generated,
@@ -2355,9 +2616,7 @@ async def run_backtest(
             "fno_costs_usd": round(fno_costs, 2),
             "equity_costs_usd": round(eq_costs_total, 2),
             "total_costs_usd": round(fno_costs + eq_costs_total, 2),
-            "cost_drag_pct": round(
-                (fno_costs + eq_costs_total) / max(initial_equity, 1) * 100, 3
-            ),
+            "cost_drag_pct": round((fno_costs + eq_costs_total) / max(initial_equity, 1) * 100, 3),
             "round_trip_count": cost_breakdown["cost_count"] + len(all_closed_equity),
             "model": "IBKR Tiered (post-cost)",
         },
@@ -2378,7 +2637,14 @@ async def run_backtest(
 
 
 def _compute_hurst_fast(closes: np.ndarray, max_lag: int = 20) -> float:
-    """Fast Hurst exponent via R/S analysis (inline, no cross-module import)."""
+    """Fast Hurst exponent via R/S analysis.
+
+    LEGACY_VARIANT: Different lag grid / chunking from the canonical
+    `execution_engine.math._primitives.compute_hurst`. Used by the
+    equity screener (`screen_best_equities`) only. Kept as-is so the
+    published universe doesn't shift under Phase-2 DRY consolidation —
+    full unification is a Phase-3 item (re-calibration required).
+    """
     if len(closes) < max_lag + 2:
         return 0.5
     log_returns = np.diff(np.log(closes))
@@ -2386,7 +2652,7 @@ def _compute_hurst_fast(closes: np.ndarray, max_lag: int = 20) -> float:
     rs_list: list[float] = []
     lag_list: list[float] = []
     for lag in lags:
-        chunks = [log_returns[i:i + lag] for i in range(0, len(log_returns) - lag + 1, lag)]
+        chunks = [log_returns[i : i + lag] for i in range(0, len(log_returns) - lag + 1, lag)]
         if not chunks:
             continue
         rs_vals: list[float] = []
@@ -2408,21 +2674,15 @@ def _compute_hurst_fast(closes: np.ndarray, max_lag: int = 20) -> float:
     return float(np.clip(coeffs[0], 0.0, 1.0))
 
 
-def _compute_realized_vol(closes: np.ndarray, window: int = 20) -> float:
-    if len(closes) < window + 1:
-        return 0.0
-    log_returns = np.diff(np.log(closes[-window - 1:]))
-    return float(np.std(log_returns, ddof=1) * np.sqrt(252))
-
-
 @dataclass
 class FnOTrade:
     """Single index F&O backtest trade (futures, index options, index spreads)."""
+
     trade_id: str
     strategy: str
     underlying: str  # index symbol: "^GSPC", "^NSEI", etc.
     instrument: str  # "INDEX_FUTURE", "INDEX_CALL", "INDEX_PUT", "INDEX_SPREAD"
-    direction: str   # "LONG" or "SHORT"
+    direction: str  # "LONG" or "SHORT"
     entry_date: dt.date
     exit_date: dt.date | None = None
     entry_cost: float = 0.0
@@ -2435,554 +2695,3 @@ class FnOTrade:
     @property
     def is_winner(self) -> bool:
         return self.pnl > 0
-
-
-@dataclass
-class FnOBacktestResult:
-    strategy: str
-    total_trades: int = 0
-    winning_trades: int = 0
-    win_rate: float = 0.0
-    total_pnl: float = 0.0
-    avg_pnl: float = 0.0
-    max_win: float = 0.0
-    max_loss: float = 0.0
-    sharpe: float = 0.0
-    trades: list[FnOTrade] = field(default_factory=list)
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "strategy": self.strategy,
-            "total_trades": self.total_trades,
-            "winning_trades": self.winning_trades,
-            "win_rate": round(self.win_rate, 2),
-            "total_pnl": round(self.total_pnl, 2),
-            "avg_pnl": round(self.avg_pnl, 2),
-            "max_win": round(self.max_win, 2),
-            "max_loss": round(self.max_loss, 2),
-            "sharpe": round(self.sharpe, 2),
-        }
-
-
-async def run_volatility_arbitrage_backtest(
-    tickers: list[str] | None = None,
-    days: int = 60,
-    iv_rv_threshold: float = 0.08,
-    hold_days: int = 5,
-) -> FnOBacktestResult:
-    """Strategy A — Volatility Arbitrage (Renaissance-style).
-
-    When implied vol significantly deviates from realised vol:
-    - IV >> RV → sell straddles (collect overpriced premium)
-    - IV << RV → buy straddles (buy underpriced vol)
-
-    Uses Hurst exponent to confirm regime and filter noise.
-    """
-    from execution_engine.math.options_pricing import straddle_price, black_scholes
-
-    if tickers is None:
-        available = sorted(p.stem for p in _DATA_DIR.glob("*.jsonl") if p.stat().st_size > 0)
-        tickers = available[:30] if available else ["AAPL", "MSFT", "NVDA", "AMZN", "GOOG"]
-
-    all_bars: dict[str, list[OHLCVBar]] = {}
-    for ticker in tickers:
-        bars = _load_local_bars(ticker)
-        if bars and len(bars) >= 30:
-            all_bars[ticker] = bars
-
-    trades: list[FnOTrade] = []
-    all_dates: set[dt.date] = set()
-    for bars in all_bars.values():
-        for bar in bars:
-            all_dates.add(bar.timestamp.date())
-    sorted_dates = sorted(all_dates)[-days:]
-
-    for day_idx, date in enumerate(sorted_dates):
-        if day_idx >= len(sorted_dates) - hold_days - 1:
-            break
-
-        for ticker, bars in all_bars.items():
-            closes = np.array([b.close for b in bars if b.timestamp.date() <= date])
-            if len(closes) < 30:
-                continue
-
-            S = float(closes[-1])
-            rv = _compute_realized_vol(closes, 20)
-            hurst = _compute_hurst_fast(closes, 15)
-
-            ret_5d = abs(float(closes[-1] / closes[-6] - 1)) if len(closes) >= 6 else 0
-            iv_proxy = rv + ret_5d * 2.0 + 0.02
-            iv_proxy = max(iv_proxy, 0.10)
-
-            T = hold_days / 252.0
-            r = 0.05
-            K = S
-
-            diff = iv_proxy - rv
-
-            if abs(diff) < iv_rv_threshold:
-                continue
-
-            straddle_info = straddle_price(S, K, T, r, iv_proxy)
-            cost = straddle_info["total_cost"]
-
-            exit_idx = day_idx + hold_days
-            if exit_idx >= len(sorted_dates):
-                continue
-
-            exit_date = sorted_dates[exit_idx]
-            exit_closes = np.array([b.close for b in bars if b.timestamp.date() == exit_date])
-            if len(exit_closes) == 0:
-                continue
-            S_exit = float(exit_closes[0])
-
-            call_payoff = max(S_exit - K, 0)
-            put_payoff = max(K - S_exit, 0)
-            straddle_payoff = call_payoff + put_payoff
-
-            if diff > iv_rv_threshold and hurst < 0.55:
-                pnl = (cost - straddle_payoff) * 100
-                direction = "SHORT"
-                instrument = "STRADDLE"
-            elif hurst > 0.55:
-                pnl = (straddle_payoff - cost) * 100
-                direction = "LONG"
-                instrument = "STRADDLE"
-            else:
-                continue
-
-            trade = FnOTrade(
-                trade_id=f"vol_arb_{date}_{ticker}",
-                strategy="volatility_arbitrage",
-                underlying=ticker,
-                instrument=instrument,
-                direction=direction,
-                entry_date=date,
-                exit_date=exit_date,
-                entry_cost=cost * 100,
-                exit_value=straddle_payoff * 100,
-                pnl=pnl,
-                pnl_pct=(pnl / max(cost * 100, 0.01)) * 100,
-                hold_days=hold_days,
-                details={
-                    "iv": round(iv_proxy, 4), "rv": round(rv, 4),
-                    "iv_rv_diff": round(diff, 4), "hurst": round(hurst, 3),
-                    "strike": K, "entry_spot": S, "exit_spot": S_exit,
-                },
-            )
-            trades.append(trade)
-
-    return _build_fno_result("volatility_arbitrage", trades)
-
-
-async def run_supply_chain_options_backtest(
-    tickers: list[str] | None = None,
-    days: int = 60,
-    shock_threshold: float = 0.05,
-    hold_days: int = 7,
-) -> FnOBacktestResult:
-    """Strategy B — Supply Chain Options Plays.
-
-    When a supply chain shock is detected (large move), buy options on
-    the shocked ticker's supply chain neighbours. This is the "entirely
-    new strategy" — causal graph intelligence driving options trades.
-
-    In backtest mode, we simulate shocks as days with |return| > threshold,
-    and use correlated tickers as supply chain neighbours.
-    """
-    from execution_engine.math.options_pricing import black_scholes
-
-    if tickers is None:
-        available = sorted(p.stem for p in _DATA_DIR.glob("*.jsonl") if p.stat().st_size > 0)
-        tickers = available[:30] if available else ["AAPL", "MSFT", "NVDA"]
-
-    all_bars: dict[str, list[OHLCVBar]] = {}
-    for ticker in tickers:
-        bars = _load_local_bars(ticker)
-        if bars:
-            all_bars[ticker] = bars
-
-    # Dynamically build supply chain map from available data correlations
-    supply_chain_map = _build_dynamic_supply_chain(all_bars)
-
-    for chain_tickers in supply_chain_map.values():
-        for t in chain_tickers:
-            if t not in all_bars:
-                bars = _load_local_bars(t)
-                if bars:
-                    all_bars[t] = bars
-
-    trades: list[FnOTrade] = []
-    all_dates: set[dt.date] = set()
-    for bars in all_bars.values():
-        for bar in bars:
-            all_dates.add(bar.timestamp.date())
-    sorted_dates = sorted(all_dates)[-days:]
-
-    for day_idx, date in enumerate(sorted_dates):
-        if day_idx < 1 or day_idx >= len(sorted_dates) - hold_days - 1:
-            continue
-
-        for shock_ticker in supply_chain_map:
-            if shock_ticker not in all_bars:
-                continue
-
-            closes = np.array([b.close for b in all_bars[shock_ticker] if b.timestamp.date() <= date])
-            if len(closes) < 5:
-                continue
-
-            daily_ret = float(closes[-1] / closes[-2] - 1)
-            if abs(daily_ret) < shock_threshold:
-                continue
-
-            neighbours = [t for t in supply_chain_map[shock_ticker] if t in all_bars]
-            if not neighbours:
-                continue
-
-            for neighbour in neighbours:
-                n_closes = np.array([b.close for b in all_bars[neighbour] if b.timestamp.date() <= date])
-                if len(n_closes) < 10:
-                    continue
-
-                S = float(n_closes[-1])
-                rv = _compute_realized_vol(n_closes, 15)
-                sigma = max(rv, 0.15)
-                T = hold_days / 252.0
-                r = 0.05
-
-                if daily_ret < -shock_threshold:
-                    K = S * 0.97
-                    option_type = "PUT"
-                    direction = "LONG"
-                else:
-                    K = S * 1.03
-                    option_type = "CALL"
-                    direction = "LONG"
-
-                premium = black_scholes(S, K, T, r, sigma, option_type)
-                if premium < 0.10:
-                    continue
-
-                exit_idx = day_idx + hold_days
-                if exit_idx >= len(sorted_dates):
-                    continue
-                exit_date = sorted_dates[exit_idx]
-
-                n_exit_closes = np.array([b.close for b in all_bars[neighbour] if b.timestamp.date() == exit_date])
-                if len(n_exit_closes) == 0:
-                    continue
-
-                S_exit = float(n_exit_closes[0])
-                if option_type == "CALL":
-                    payoff = max(S_exit - K, 0)
-                else:
-                    payoff = max(K - S_exit, 0)
-
-                pnl = (payoff - premium) * 100
-
-                trade = FnOTrade(
-                    trade_id=f"sc_opt_{date}_{neighbour}",
-                    strategy="supply_chain_options",
-                    underlying=neighbour,
-                    instrument=option_type,
-                    direction=direction,
-                    entry_date=date,
-                    exit_date=exit_date,
-                    entry_cost=premium * 100,
-                    exit_value=payoff * 100,
-                    pnl=pnl,
-                    pnl_pct=(pnl / max(premium * 100, 0.01)) * 100,
-                    hold_days=hold_days,
-                    details={
-                        "shock_ticker": shock_ticker, "shock_return": round(daily_ret, 4),
-                        "strike": K, "sigma": round(sigma, 3),
-                        "entry_spot": S, "exit_spot": S_exit,
-                    },
-                )
-                trades.append(trade)
-
-    return _build_fno_result("supply_chain_options", trades)
-
-
-async def run_iron_condor_backtest(
-    tickers: list[str] | None = None,
-    days: int = 60,
-    wing_width_pct: float = 0.05,
-    hold_days: int = 10,
-    max_hurst: float = 0.60,
-) -> FnOBacktestResult:
-    """Strategy C — Iron Condor / Credit Spread Premium Selling.
-
-    On tickers in LOW-TREND regime (Hurst < 0.60), sell iron condors.
-    Collect theta decay while the stock stays range-bound.
-    """
-    from execution_engine.math.options_pricing import iron_condor_price
-
-    if tickers is None:
-        available = sorted(p.stem for p in _DATA_DIR.glob("*.jsonl") if p.stat().st_size > 0)
-        tickers = available[:30] if available else ["AAPL", "MSFT", "NVDA"]
-
-    all_bars: dict[str, list[OHLCVBar]] = {}
-    for ticker in tickers:
-        bars = _load_local_bars(ticker)
-        if bars and len(bars) >= 30:
-            all_bars[ticker] = bars
-
-    trades: list[FnOTrade] = []
-    all_dates: set[dt.date] = set()
-    for bars in all_bars.values():
-        for bar in bars:
-            all_dates.add(bar.timestamp.date())
-    sorted_dates = sorted(all_dates)[-days:]
-
-    for day_idx, date in enumerate(sorted_dates):
-        if day_idx >= len(sorted_dates) - hold_days - 1:
-            break
-
-        for ticker, bars in all_bars.items():
-            closes = np.array([b.close for b in bars if b.timestamp.date() <= date])
-            if len(closes) < 30:
-                continue
-
-            S = float(closes[-1])
-            hurst = _compute_hurst_fast(closes, 15)
-
-            if hurst > max_hurst:
-                continue
-
-            rsi = _compute_rsi_fast(closes, 14)
-            if rsi < 25 or rsi > 75:
-                continue
-
-            rv = _compute_realized_vol(closes, 20)
-            sigma = max(rv * 1.1, 0.10)
-            T = hold_days / 252.0
-            r = 0.05
-
-            put_long_K = S * (1 - 2 * wing_width_pct)
-            put_short_K = S * (1 - wing_width_pct)
-            call_short_K = S * (1 + wing_width_pct)
-            call_long_K = S * (1 + 2 * wing_width_pct)
-
-            ic = iron_condor_price(S, T, r, sigma, put_long_K, put_short_K, call_short_K, call_long_K)
-
-            if ic["net_credit"] < 0.05:
-                continue
-            if ic["risk_reward"] < 0.15:
-                continue
-
-            exit_idx = day_idx + hold_days
-            if exit_idx >= len(sorted_dates):
-                continue
-            exit_date = sorted_dates[exit_idx]
-
-            exit_closes = np.array([b.close for b in bars if b.timestamp.date() == exit_date])
-            if len(exit_closes) == 0:
-                continue
-            S_exit = float(exit_closes[0])
-
-            if put_short_K <= S_exit <= call_short_K:
-                pnl = ic["net_credit"] * 100
-            elif S_exit < put_long_K or S_exit > call_long_K:
-                pnl = -ic["max_loss"] * 100
-            elif S_exit < put_short_K:
-                loss_on_put = put_short_K - max(S_exit, put_long_K)
-                pnl = (ic["net_credit"] - loss_on_put) * 100
-            else:
-                loss_on_call = min(S_exit, call_long_K) - call_short_K
-                pnl = (ic["net_credit"] - loss_on_call) * 100
-
-            trade = FnOTrade(
-                trade_id=f"ic_{date}_{ticker}",
-                strategy="iron_condor",
-                underlying=ticker,
-                instrument="IRON_CONDOR",
-                direction="SHORT",
-                entry_date=date,
-                exit_date=exit_date,
-                entry_cost=ic["max_loss"] * 100,
-                exit_value=max(ic["max_loss"] * 100 + pnl, 0),
-                pnl=pnl,
-                pnl_pct=(pnl / max(ic["max_loss"] * 100, 0.01)) * 100,
-                hold_days=hold_days,
-                details={
-                    "hurst": round(hurst, 3), "rsi": round(rsi, 1),
-                    "net_credit": round(ic["net_credit"], 3),
-                    "max_loss": round(ic["max_loss"], 3),
-                    "put_short_K": round(put_short_K, 2),
-                    "call_short_K": round(call_short_K, 2),
-                    "entry_spot": S, "exit_spot": S_exit,
-                },
-            )
-            trades.append(trade)
-
-    return _build_fno_result("iron_condor", trades)
-
-
-async def run_managed_futures_backtest(
-    symbols: list[str] | None = None,
-    days: int = 60,
-    min_hurst: float = 0.55,
-    hold_days: int = 10,
-    trailing_stop_pct: float = 0.03,
-) -> FnOBacktestResult:
-    """Strategy D — Managed Futures / CTA.
-
-    Trend-following on futures using Hurst exponent and ADX. When Hurst > 0.55,
-    ride momentum with trailing stops. In backtest, we simulate futures using
-    equity proxies (multiplier-adjusted PnL).
-    """
-    if symbols is None:
-        available = sorted(p.stem for p in _DATA_DIR.glob("*.jsonl") if p.stat().st_size > 0)
-        symbols = available[:20] if available else ["AAPL", "MSFT"]
-
-    all_bars: dict[str, list[OHLCVBar]] = {}
-    for sym in symbols:
-        bars = _load_local_bars(sym)
-        if bars and len(bars) >= 30:
-            all_bars[sym] = bars
-
-    trades: list[FnOTrade] = []
-    all_dates: set[dt.date] = set()
-    for bars in all_bars.values():
-        for bar in bars:
-            all_dates.add(bar.timestamp.date())
-    sorted_dates = sorted(all_dates)[-days:]
-
-    open_positions: dict[str, dict] = {}
-
-    for day_idx, date in enumerate(sorted_dates):
-        for sym, bars in all_bars.items():
-            closes = np.array([b.close for b in bars if b.timestamp.date() <= date])
-            if len(closes) < 25:
-                continue
-            current_price = float(closes[-1])
-
-            if sym in open_positions:
-                pos = open_positions[sym]
-                if pos["direction"] == "LONG":
-                    new_trail = current_price * (1 - trailing_stop_pct)
-                    pos["trailing_stop"] = max(pos["trailing_stop"], new_trail)
-                    if current_price <= pos["trailing_stop"] or (date - pos["entry_date"]).days >= hold_days:
-                        pnl = (current_price - pos["entry_price"]) * pos["multiplier"]
-                        trades.append(FnOTrade(
-                            trade_id=f"cta_{pos['entry_date']}_{sym}",
-                            strategy="managed_futures",
-                            underlying=sym,
-                            instrument="FUTURE",
-                            direction="LONG",
-                            entry_date=pos["entry_date"],
-                            exit_date=date,
-                            entry_cost=pos["entry_price"] * pos["multiplier"],
-                            exit_value=current_price * pos["multiplier"],
-                            pnl=pnl,
-                            pnl_pct=(current_price / pos["entry_price"] - 1) * 100,
-                            hold_days=(date - pos["entry_date"]).days,
-                            details={"hurst": pos["hurst"], "multiplier": pos["multiplier"]},
-                        ))
-                        del open_positions[sym]
-                else:
-                    new_trail = current_price * (1 + trailing_stop_pct)
-                    pos["trailing_stop"] = min(pos["trailing_stop"], new_trail)
-                    if current_price >= pos["trailing_stop"] or (date - pos["entry_date"]).days >= hold_days:
-                        pnl = (pos["entry_price"] - current_price) * pos["multiplier"]
-                        trades.append(FnOTrade(
-                            trade_id=f"cta_{pos['entry_date']}_{sym}",
-                            strategy="managed_futures",
-                            underlying=sym,
-                            instrument="FUTURE",
-                            direction="SHORT",
-                            entry_date=pos["entry_date"],
-                            exit_date=date,
-                            entry_cost=pos["entry_price"] * pos["multiplier"],
-                            exit_value=current_price * pos["multiplier"],
-                            pnl=pnl,
-                            pnl_pct=(pos["entry_price"] / current_price - 1) * 100,
-                            hold_days=(date - pos["entry_date"]).days,
-                            details={"hurst": pos["hurst"], "multiplier": pos["multiplier"]},
-                        ))
-                        del open_positions[sym]
-                continue
-
-            if sym in open_positions:
-                continue
-            if day_idx >= len(sorted_dates) - hold_days - 1:
-                continue
-
-            hurst = _compute_hurst_fast(closes, 15)
-            if hurst < min_hurst:
-                continue
-
-            sma_20 = float(np.mean(closes[-20:]))
-            sma_5 = float(np.mean(closes[-5:]))
-
-            multiplier = 50.0
-
-            if sma_5 > sma_20 and current_price > sma_5:
-                open_positions[sym] = {
-                    "entry_price": current_price,
-                    "entry_date": date,
-                    "direction": "LONG",
-                    "trailing_stop": current_price * (1 - trailing_stop_pct),
-                    "hurst": round(hurst, 3),
-                    "multiplier": multiplier,
-                }
-            elif sma_5 < sma_20 and current_price < sma_5:
-                open_positions[sym] = {
-                    "entry_price": current_price,
-                    "entry_date": date,
-                    "direction": "SHORT",
-                    "trailing_stop": current_price * (1 + trailing_stop_pct),
-                    "hurst": round(hurst, 3),
-                    "multiplier": multiplier,
-                }
-
-    return _build_fno_result("managed_futures", trades)
-
-
-def _build_fno_result(strategy: str, trades: list[FnOTrade]) -> FnOBacktestResult:
-    winners = [t for t in trades if t.pnl > 0]
-    pnls = [t.pnl for t in trades]
-    total_pnl = sum(pnls) if pnls else 0
-    avg_pnl = float(np.mean(pnls)) if pnls else 0
-    sharpe = float(np.mean(pnls) / max(np.std(pnls), 1e-10)) if len(pnls) > 1 else 0
-
-    return FnOBacktestResult(
-        strategy=strategy,
-        total_trades=len(trades),
-        winning_trades=len(winners),
-        win_rate=len(winners) / max(len(trades), 1) * 100,
-        total_pnl=total_pnl,
-        avg_pnl=avg_pnl,
-        max_win=max(pnls) if pnls else 0,
-        max_loss=min(pnls) if pnls else 0,
-        sharpe=sharpe,
-        trades=trades,
-    )
-
-
-async def run_full_fno_backtest(
-    tickers: list[str] | None = None,
-    days: int = 60,
-) -> dict[str, Any]:
-    """Run all F&O strategies and return combined results."""
-    vol_arb = await run_volatility_arbitrage_backtest(tickers, days)
-    sc_opts = await run_supply_chain_options_backtest(tickers, days)
-    condors = await run_iron_condor_backtest(tickers, days)
-    cta = await run_managed_futures_backtest(tickers, days)
-
-    strategies = [vol_arb, sc_opts, condors, cta]
-    total_trades = sum(s.total_trades for s in strategies)
-    total_winners = sum(s.winning_trades for s in strategies)
-    total_pnl = sum(s.total_pnl for s in strategies)
-
-    return {
-        "summary": {
-            "total_strategies": 4,
-            "total_trades": total_trades,
-            "total_winners": total_winners,
-            "combined_win_rate": round(total_winners / max(total_trades, 1) * 100, 2),
-            "combined_pnl": round(total_pnl, 2),
-        },
-        "strategies": {s.strategy: s.to_dict() for s in strategies},
-    }
