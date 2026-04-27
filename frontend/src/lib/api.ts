@@ -23,6 +23,7 @@
 // predictable: callers always pass paths starting with `/`.
 const _RAW_BASE = (process.env.NEXT_PUBLIC_API_BASE || "/api/v1").trim();
 const BASE = _RAW_BASE.endsWith("/") ? _RAW_BASE.slice(0, -1) : _RAW_BASE;
+const API_KEY = (process.env.NEXT_PUBLIC_API_KEY || "").trim();
 
 // Conservative defaults. Callers that need different values can
 // override per-request via `init` (AbortSignal) or via the
@@ -141,12 +142,23 @@ export async function getJSON<T>(
   let lastErr: unknown = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
+      const headers: Record<string, string> = { Accept: "application/json" };
+      if (init?.headers) {
+        const merged = new Headers(init.headers);
+        merged.forEach((v, k) => {
+          headers[k] = v;
+        });
+      }
+      if (API_KEY) {
+        headers["X-API-Key"] = API_KEY;
+      }
+
       const res = await _fetchOnce(
         url,
         {
           cache: "no-store",
           ...init,
-          headers: { Accept: "application/json", ...(init?.headers ?? {}) },
+          headers,
         },
         timeoutMs,
       );
