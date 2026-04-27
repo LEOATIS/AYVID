@@ -19,6 +19,8 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+_TEST_API_KEY = "test-manual-key"
+
 # ── Fixtures ─────────────────────────────────────────────────────────
 
 
@@ -34,6 +36,35 @@ def fresh_registry():
     yield sequence_registry
     with sequence_registry._lock:
         sequence_registry._sequences = prev
+
+
+@pytest.fixture(autouse=True)
+def _reset_auth_state():
+    """Keep manual-route tests isolated from global auth mutations.
+
+    Other tests may register API keys in-process, which would make
+    unauthenticated requests return 403 even in dev-mode. These tests
+    exercise routing/sequence behavior, so force the legacy dev auth
+    baseline and clear registered keys for each test.
+    """
+    from backend.core import security as sec
+    from shared.config import settings
+
+    original_require_auth = getattr(settings, "AYVID_REQUIRE_AUTH", False)
+    original_keys = set(sec._VALID_KEYS)
+    try:
+        object.__setattr__(settings, "AYVID_REQUIRE_AUTH", False)
+        sec._VALID_KEYS.clear()
+        sec.register_api_key(_TEST_API_KEY)
+        yield
+    finally:
+        sec._VALID_KEYS.clear()
+        sec._VALID_KEYS.update(original_keys)
+        object.__setattr__(settings, "AYVID_REQUIRE_AUTH", original_require_auth)
+
+
+def _auth_headers() -> dict[str, str]:
+    return {"X-API-Key": _TEST_API_KEY}
 
 
 # ── Layer 1: the allocator ───────────────────────────────────────────
@@ -101,6 +132,7 @@ class TestManualEndpoint:
                 response = client.post(
                     "/api/v1/trade/manual",
                     json={"ticker": "AAPL", "action": "LONG", "confidence": 0.8},
+                    headers=_auth_headers(),
                 )
 
         assert response.status_code == 200, response.text
@@ -146,6 +178,7 @@ class TestManualEndpoint:
                 response = client.post(
                     "/api/v1/trade/manual",
                     json={"ticker": "NVDA", "action": "SHORT", "confidence": 0.75},
+                    headers=_auth_headers(),
                 )
 
         assert response.status_code == 200
@@ -174,6 +207,7 @@ class TestManualEndpoint:
                 response = client.post(
                     "/api/v1/trade/manual",
                     json={"ticker": "MSFT", "action": "LONG"},
+                    headers=_auth_headers(),
                 )
 
         assert response.status_code == 409, response.text
@@ -189,6 +223,7 @@ class TestManualEndpoint:
             response = client.post(
                 "/api/v1/trade/manual",
                 json={"ticker": "AAPL", "action": "WIGGLE"},
+                headers=_auth_headers(),
             )
         assert response.status_code == 422
 
@@ -230,10 +265,12 @@ class TestManualEndpoint:
                 legacy = client.post(
                     "/api/v1/trade/execute",
                     json={"ticker": "TSLA", "action": "LONG"},
+                    headers=_auth_headers(),
                 )
                 new = client.post(
                     "/api/v1/trade/manual",
                     json={"ticker": "TSLA", "action": "LONG"},
+                    headers=_auth_headers(),
                 )
 
         assert legacy.status_code == 200

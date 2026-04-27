@@ -46,6 +46,16 @@ def _clear_pattern_cache():
     _pattern_cache.clear()
 
 
+@pytest.fixture(autouse=True)
+def _enable_pattern_agent_flag():
+    """Pattern classification is feature-gated; tests exercise enabled path."""
+    with patch(
+        "graph_intelligence.agents.pattern.node.settings.PATTERN_AGENT_ENABLED",
+        True,
+    ):
+        yield
+
+
 # ────────────────────────────────────────────────────────────────────
 #  Schema
 # ────────────────────────────────────────────────────────────────────
@@ -73,13 +83,12 @@ class TestSchema:
 #  Chart renderer — deterministic output
 # ────────────────────────────────────────────────────────────────────
 class TestChartRenderer:
-    def test_renders_png_bytes(self):
+    def test_renders_svg_bytes(self):
         series = _synthetic_series(n=60, seed=42)
-        png = render_candlestick_chart(series, lookback=50)
-        assert isinstance(png, bytes)
-        assert len(png) > 1000
-        # PNG magic bytes
-        assert png[:8] == b"\x89PNG\r\n\x1a\n"
+        svg = render_candlestick_chart(series, lookback=50)
+        assert isinstance(svg, bytes)
+        assert len(svg) > 1000
+        assert svg.startswith(b"<svg ")
 
     def test_renderer_deterministic_identical_inputs(self):
         s1 = _synthetic_series(n=60, seed=42)
