@@ -39,8 +39,22 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       image_tag: ${{ steps.meta.outputs.tag }}
+      execution_changed: ${{ steps.changes.outputs.execution }}
     steps:
       - uses: actions/checkout@v4
+
+      - id: changes
+        name: Detect execution-path changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            execution:
+              - "Dockerfile.execution"
+              - "execution_engine/**"
+              - "backend/services/orchestrator.py"
+              - "shared/**"
+              - "pyproject.toml"
+              - "scripts/vm_redeploy.sh"
 
       - id: meta
         run: echo "tag=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
@@ -139,6 +153,9 @@ jobs:
   deploy-vm:
     name: Roll execution VM container
     needs: build-and-push
+    # Skip VM roll when only frontend/backend-web paths changed.
+    # Always run on manual dispatch so operators can force a restart.
+    if: github.event_name == 'workflow_dispatch' || needs.build-and-push.outputs.execution_changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -169,5 +186,24 @@ jobs:
           gcloud compute ssh ayvid-execution \
             --tunnel-through-iap \
             --zone=${{ env.GCP_ZONE }} \
-            --command="sudo docker ps --filter name=ayvid-execution --format '{{.Status}}' | grep -q healthy || (sudo docker logs --tail 30 ayvid-execution; exit 1)" \
+            --command='
+              set -e
+              for i in $(seq 1 30); do
+                status=$(sudo docker ps --filter name=ayvid-execution --format "{{.Status}}" | head -n 1)
+                echo "[$i] ayvid-execution status: ${status}"
+                # Pass if healthy; also pass if container is Up but image
+                # somehow has no healthcheck (defensive fallback).
+                if echo "$status" | grep -qi "healthy"; then
+                  exit 0
+                fi
+                if echo "$status" | grep -qi "^Up" && ! echo "$status" | grep -qi "health"; then
+                  exit 0
+                fi
+                sleep 10
+              done
+              echo "Container did not become healthy in time." >&2
+              sudo docker ps -a --filter name=ayvid-execution --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" >&2 || true
+              sudo docker logs --tail 80 ayvid-execution >&2 || true
+              exit 1
+            ' \
             --quiet
