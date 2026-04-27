@@ -122,7 +122,7 @@ jobs:
           for i in $(seq 1 30); do
             ready=$(gcloud run services describe ayvid-backend \
               --region=${{ env.GCP_REGION }} \
-              --format='value(status.conditions[?type=Ready].status)')
+              --format='json' | python3 -c "import json,sys; d=json.load(sys.stdin); print(next((c.get('status','') for c in d.get('status',{}).get('conditions',[]) if c.get('type')=='Ready'), ''))")
             if [ "$ready" = "True" ]; then
               echo "Cloud Run is Ready."
               gcloud run services describe ayvid-backend --region=${{ env.GCP_REGION }} --format='value(status.url)'
@@ -132,6 +132,8 @@ jobs:
             sleep 10
           done
           echo "Cloud Run revision did not reach Ready within 5 min" >&2
+          echo "Last known service state:" >&2
+          gcloud run services describe ayvid-backend --region=${{ env.GCP_REGION }} --format='yaml(status.conditions,status.latestCreatedRevisionName,status.latestReadyRevisionName,status.url)' >&2 || true
           exit 1
 
   deploy-vm:
