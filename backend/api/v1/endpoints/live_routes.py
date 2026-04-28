@@ -183,6 +183,52 @@ def _count_lines(path: Path) -> int:
     return sum(1 for line in text.splitlines() if line.strip())
 
 
+def _num(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_trade_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Normalize legacy and current trade row shapes for frontend rendering."""
+    qty = (
+        _num(row.get("quantity"))
+        or _num(row.get("qty"))
+        or _num(row.get("shares"))
+        or _num(row.get("filled_qty"))
+        or 0.0
+    )
+    price = (
+        _num(row.get("price"))
+        or _num(row.get("fill_price"))
+        or _num(row.get("avg_fill_price"))
+        or _num(row.get("avg_price"))
+    )
+    notional = _num(row.get("notional"))
+
+    if (notional is None or notional <= 0.0) and price is not None and qty:
+        notional = abs(price * qty)
+    if (price is None or price <= 0.0) and notional is not None and qty:
+        price = abs(notional / qty)
+
+    side = str(row.get("side") or row.get("action") or "").upper() or None
+    status = str(row.get("status") or "").upper() or None
+
+    out = dict(row)
+    out["quantity"] = abs(qty)
+    out["qty"] = abs(qty)
+    out["price"] = price
+    out["notional"] = abs(notional) if notional is not None else None
+    out["side"] = side
+    out["status"] = status
+    if not out.get("ticker") and out.get("symbol"):
+        out["ticker"] = out.get("symbol")
+    return out
+
+
 @router.get("/trades")
 async def trades(
     limit: int = Query(200, ge=1, le=5000),
@@ -192,6 +238,7 @@ async def trades(
     Source: ``live/trades.jsonl`` if present.
     """
     rows = _read_jsonl(LIVE_DIR / "trades.jsonl", limit=limit)
+    rows = [_normalize_trade_row(r) for r in rows if isinstance(r, dict)]
     return {"trades": rows, "count": len(rows)}
 
 
@@ -309,6 +356,7 @@ async def backtests_index() -> dict[str, Any]:
     """List every backtest report on disk with summary metadata."""
     if not BACKTESTS_DIR.exists():
         return {"reports": []}
+    valid_kinds = {"walkforward", "shock_driven", "single_window"}
     reports: list[dict[str, Any]] = []
     for path in sorted(BACKTESTS_DIR.glob("*.json")):
         try:
@@ -316,6 +364,8 @@ async def backtests_index() -> dict[str, Any]:
         except (json.JSONDecodeError, OSError):
             continue
         summary = _summarize_backtest(data)
+        if summary.get("kind") not in valid_kinds:
+            continue
         summary["name"] = path.stem
         summary["filename"] = path.name
         summary["size_bytes"] = path.stat().st_size

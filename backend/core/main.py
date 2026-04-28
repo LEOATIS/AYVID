@@ -125,17 +125,20 @@ async def lifespan(app: FastAPI):
 
     components: dict[str, bool] = {"pipeline": False, "kill_switch": False}
 
-    from data_primitives.pipeline.continuous_worker import start_continuous_pipeline
+    if settings.CONTINUOUS_PIPELINE_ENABLED:
+        from data_primitives.pipeline.continuous_worker import start_continuous_pipeline
 
-    try:
-        _pipeline_task = asyncio.create_task(
-            start_continuous_pipeline(interval_minutes=15),
-            name="continuous_pipeline",
-        )
-        components["pipeline"] = True
-        log.info("Continuous ingestion pipeline started (15min interval)")
-    except Exception as exc:
-        log.error(f"pipeline failed to start: {exc}")
+        try:
+            _pipeline_task = asyncio.create_task(
+                start_continuous_pipeline(interval_minutes=15),
+                name="continuous_pipeline",
+            )
+            components["pipeline"] = True
+            log.info("Continuous ingestion pipeline started (15min interval)")
+        except Exception as exc:
+            log.error(f"pipeline failed to start: {exc}")
+    else:
+        log.info("Continuous ingestion pipeline disabled (CONTINUOUS_PIPELINE_ENABLED=false)")
 
     try:
         from backend.services.orchestrator import (

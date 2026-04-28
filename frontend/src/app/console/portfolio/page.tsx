@@ -28,7 +28,9 @@ interface TradeRow {
   action?: string;
   quantity?: number;
   qty?: number;
+  shares?: number;
   price?: number;
+  fill_price?: number;
   notional?: number;
   status?: string;
 }
@@ -158,7 +160,10 @@ export default function PortfolioPage() {
                 {tradeRows.map((t, i) => {
                   const sym = t.ticker ?? t.symbol ?? "—";
                   const side = (t.side ?? t.action ?? "—").toUpperCase();
-                  const qty = t.quantity ?? t.qty ?? 0;
+                  const qtyRaw = t.quantity ?? t.qty ?? t.shares ?? 0;
+                  const qty = Math.abs(Number(qtyRaw) || 0);
+                  const price = t.price ?? t.fill_price;
+                  const status = (t.status ?? "—").toUpperCase();
                   return (
                     <tr key={`${sym}-${i}`} className="hover:bg-[hsl(var(--bg-sunken))]">
                       <td className="num py-2 pr-4 text-muted">{fmtTime(t.timestamp)}</td>
@@ -167,10 +172,10 @@ export default function PortfolioPage() {
                         <Badge variant={side.includes("BUY") || side === "LONG" ? "pos" : "neg"}>{side}</Badge>
                       </td>
                       <td className="num py-2 pr-4 text-right">{fmtNumber(qty)}</td>
-                      <td className="num py-2 pr-4 text-right">{fmtMoney(t.price)}</td>
+                      <td className="num py-2 pr-4 text-right">{fmtMoney(price)}</td>
                       <td className="num py-2 pr-4 text-right">{fmtMoney(t.notional)}</td>
                       <td className="py-2">
-                        <Badge variant={t.status === "filled" ? "pos" : "info"}>{t.status ?? "—"}</Badge>
+                        <Badge variant={status === "FILLED" ? "pos" : "info"}>{status}</Badge>
                       </td>
                     </tr>
                   );

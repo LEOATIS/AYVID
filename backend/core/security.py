@@ -66,6 +66,12 @@ async def verify_api_key(
             )
         return "dev-mode"
 
+    # Dev posture: keep local workflows running even when an API key is
+    # configured in `.env` by treating missing headers as permissive unless
+    # strict auth is explicitly enabled.
+    if not strict and not api_key:
+        return "dev-mode"
+
     if api_key and api_key in _VALID_KEYS:
         return api_key
 

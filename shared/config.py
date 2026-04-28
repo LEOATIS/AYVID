@@ -208,6 +208,9 @@ class Settings(BaseSettings):
     API_KEY: str | None = None
     LLM_LIVE_ORCHESTRATOR: bool = False
     AUTO_EXECUTE: bool = False
+    # Backend lifespan toggle: when False, API startup skips the continuous
+    # ingestion worker so local dashboard/API requests stay responsive.
+    CONTINUOUS_PIPELINE_ENABLED: bool = False
     # Hard opt-in to real-money (live, non-paper) IB trading. Keep False.
     LIVE_TRADING_CONFIRMED: bool = False
     # Vision-LLM PatternAgent toggle. Default OFF so the hot ingestion

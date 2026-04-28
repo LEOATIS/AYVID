@@ -110,7 +110,7 @@ export function Hero() {
                   <b>Live</b>&nbsp;· IB Paper
                 </span>
                 <span>
-                  <b>+43.6%</b>&nbsp;walk-forward 2018&nbsp;→&nbsp;2025
+                  <b>+36.83%</b>&nbsp;walk-forward 2018&nbsp;→&nbsp;2025
                 </span>
                 <span>
                   <b>Neo4j</b>&nbsp;· causal graph
