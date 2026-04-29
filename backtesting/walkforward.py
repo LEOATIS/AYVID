@@ -86,6 +86,7 @@ class ShockResult:
     cached_indices: int
     shock_type: str = ""
     notes: str = ""
+    trades: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -451,6 +452,42 @@ def _render_markdown(
     return "\n".join(lines)
 
 
+def _build_rationale(
+    trade: Any, graph_role: str, scen: dict, causal_chain: str,
+) -> str:
+    """Construct a human-readable rationale from trade metadata."""
+    # Use thesis_signature if the signal carried one (live pipeline trades).
+    sig = trade.signal
+    if hasattr(sig, "thesis_signature") and sig.thesis_signature:
+        return sig.thesis_signature
+
+    ticker = sig.ticker
+    name = scen.get("name", "")
+    strategy = trade.strategy_name or "graph_intelligence"
+    action = sig.action.value if hasattr(sig.action, "value") else str(sig.action)
+
+    if graph_role == "beneficiary":
+        return (
+            f"Neo4j graph identified {ticker} as a primary beneficiary of the "
+            f"{name} shock via causal path: {causal_chain}. "
+            f"Strategy '{strategy}' entered {action} at conviction {trade.conviction:.0%} "
+            f"based on supply-chain exposure analysis."
+        )
+    elif graph_role == "victim":
+        return (
+            f"Graph intelligence flagged {ticker} as structurally exposed (victim) "
+            f"in the {name} event. Causal chain: {causal_chain}. "
+            f"Strategy '{strategy}' positioned {action} to capture mean-reversion "
+            f"after the initial sell-off, conviction {trade.conviction:.0%}."
+        )
+    else:
+        return (
+            f"LLM-driven analysis identified {ticker} as causally linked to the "
+            f"{name} shock. Strategy '{strategy}' entered {action} at "
+            f"conviction {trade.conviction:.0%} based on multi-hop graph traversal."
+        )
+
+
 # ── Shock-driven aggregator ──────────────────────────────────────
 async def run_shock_driven_walkforward(
     start: str = "2018-01-01",
@@ -569,6 +606,74 @@ async def run_shock_driven_walkforward(
 
         tx = r.extra_stats.get("transaction_costs", {}) or {}
         portfolio_equity *= 1.0 + r.total_return_pct / 100.0
+
+        # Extract per-trade detail for the scenario drill-down page.
+        causal = scen.get("causal_intel", {}) or {}
+        causal_chain = causal.get("causal_chain", "")
+        beneficiaries = set(causal.get("beneficiary_tickers", []))
+        victims = set(causal.get("victim_tickers", []))
+        trade_list: list[dict[str, Any]] = []
+        for t in r.trades:
+            if not t.exit_date:
+                continue
+            ticker = t.signal.ticker
+            graph_role = (
+                "beneficiary" if ticker in beneficiaries
+                else "victim" if ticker in victims
+                else "exposed"
+            )
+            trade_list.append({
+                "ticker": ticker,
+                "instrument": "equity",
+                "side": t.signal.action.value if hasattr(t.signal.action, "value") else str(t.signal.action),
+                "entry_date": t.entry_date.date().isoformat(),
+                "exit_date": t.exit_date.date().isoformat(),
+                "entry_price": round(t.entry_price, 2),
+                "exit_price": round(t.exit_price, 2) if t.exit_price else 0,
+                "shares": t.shares,
+                "notional": round(t.entry_price * t.shares, 2),
+                "pnl": round(t.pnl, 2),
+                "pnl_pct": round(t.pnl_pct, 2),
+                "won": t.pnl > 0,
+                "hold_days": t.hold_days,
+                "exit_reason": t.exit_reason,
+                "strategy": t.strategy_name,
+                "conviction": round(t.conviction, 2),
+                "graph_path": causal_chain,
+                "graph_role": graph_role,
+                "rationale": _build_rationale(t, graph_role, scen, causal_chain),
+            })
+        for ft in r.fno_trade_log:
+            if ft.exit_date is None:
+                continue
+            inst = (
+                "call_option" if "CALL" in ft.instrument
+                else "put_option" if "PUT" in ft.instrument
+                else "futures"
+            )
+            trade_list.append({
+                "ticker": ft.underlying,
+                "instrument": inst,
+                "side": ft.direction,
+                "entry_date": ft.entry_date.isoformat() if hasattr(ft.entry_date, "isoformat") else str(ft.entry_date),
+                "exit_date": ft.exit_date.isoformat() if hasattr(ft.exit_date, "isoformat") else str(ft.exit_date),
+                "entry_price": round(ft.entry_cost, 2),
+                "exit_price": round(ft.exit_value, 2),
+                "shares": 1,
+                "notional": round(abs(ft.entry_cost), 2),
+                "pnl": round(ft.pnl, 2),
+                "pnl_pct": round(ft.pnl_pct, 2),
+                "won": ft.pnl > 0,
+                "hold_days": ft.hold_days,
+                "exit_reason": ft.details.get("exit_reason", ""),
+                "strategy": ft.strategy,
+                "conviction": 0.0,
+                "graph_path": causal_chain,
+                "graph_role": "index",
+                "rationale": f"Index {inst.replace('_', ' ')} on {ft.underlying} — {ft.strategy}",
+            })
+        trade_list.sort(key=lambda x: x["entry_date"])
+
         results.append(
             ShockResult(
                 scenario_id=sid,
@@ -589,7 +694,8 @@ async def run_shock_driven_walkforward(
                 cost_drag_pct=round(tx.get("cost_drag_pct", 0.0), 3),
                 cached_tickers=len(cached_eq),
                 cached_indices=len(cached_idx),
-                shock_type=scen.get("causal_intel", {}).get("shock_type", ""),
+                shock_type=causal.get("shock_type", ""),
+                trades=trade_list,
             )
         )
 

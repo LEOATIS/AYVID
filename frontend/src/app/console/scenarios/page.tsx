@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
-import { Network, Search } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight, Network, Search } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Empty } from "@/components/ui/Empty";
@@ -75,10 +76,18 @@ export default function ScenariosPage() {
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {filtered.map((s) => (
-          <article id={s.id} key={s.id} className="card flex flex-col gap-3 p-5 fade-up">
+          <Link
+            href={`/console/scenarios/${s.id}`}
+            id={s.id}
+            key={s.id}
+            className="card flex flex-col gap-3 p-5 fade-up transition hover:border-strong hover:bg-[hsl(var(--bg-sunken))]"
+          >
             <header className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <div className="text-[14px] font-semibold tracking-tight text-fg">{s.name}</div>
+                <div className="flex items-center gap-1.5 text-[14px] font-semibold tracking-tight text-fg">
+                  {s.name}
+                  <ArrowUpRight className="h-3 w-3 text-muted opacity-0 transition group-hover:opacity-100" />
+                </div>
                 <div className="num mt-0.5 text-[11px] text-muted">
                   {fmtDate(s.start_date)} → {fmtDate(s.end_date)}
                 </div>
@@ -144,7 +153,7 @@ export default function ScenariosPage() {
                 </div>
               </div>
             )}
-          </article>
+          </Link>
         ))}
       </section>
     </div>
