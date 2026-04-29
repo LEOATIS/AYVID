@@ -7,12 +7,9 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Empty } from "@/components/ui/Empty";
 import { fmtNumber, fmtPct } from "@/lib/format";
+import { getJSON } from "@/lib/api";
 
-const fetcher = (url: string) =>
-  fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" }).then((r) => {
-    if (!r.ok) throw new Error(`${r.status}`);
-    return r.json();
-  });
+const fetcher = <T,>(path: string) => getJSON<T>(path);
 
 interface WindowResult {
   window_id?: string;
@@ -63,7 +60,7 @@ interface BacktestDetail {
 export default function BacktestDetailPage({ params }: { params: Promise<{ name: string }> }) {
   const { name } = use(params);
   const { data, error, isLoading } = useSWR<BacktestDetail>(
-    `/api/v1/live/backtests/${encodeURIComponent(name)}`,
+    `/live/backtests/${encodeURIComponent(name)}`,
     fetcher,
   );
 

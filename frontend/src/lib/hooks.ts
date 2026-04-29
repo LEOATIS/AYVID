@@ -1,12 +1,18 @@
 "use client";
 import useSWR from "swr";
-import { api } from "./api";
+import {
+  getJSON,
+  api,
+  type EquityResponse,
+  type RunnerStatus,
+  type Signal,
+  type BacktestSummary,
+  type ShockScenario,
+  type SystemStatus,
+} from "./api";
 
-const fetcher = async (url: string) => {
-  const res = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json();
-};
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const fetcher = (path: string) => getJSON<any>(path);
 
 const REFRESH = {
   fast: 5_000,
@@ -15,27 +21,29 @@ const REFRESH = {
 };
 
 export const useEquity = (limit = 500) =>
-  useSWR(`/api/v1/live/equity?limit=${limit}`, fetcher, { refreshInterval: REFRESH.medium });
+  useSWR<EquityResponse>(`/live/equity?limit=${limit}`, fetcher, { refreshInterval: REFRESH.medium });
 
 export const useRunner = () =>
-  useSWR(`/api/v1/live/runner-status`, fetcher, { refreshInterval: REFRESH.fast });
+  useSWR<RunnerStatus>(`/live/runner-status`, fetcher, { refreshInterval: REFRESH.fast });
 
 export const useSignals = () =>
-  useSWR(`/api/v1/live/signals`, fetcher, { refreshInterval: REFRESH.medium });
+  useSWR<{ signals: Signal[]; count: number }>(`/live/signals`, fetcher, { refreshInterval: REFRESH.medium });
 
 export const usePositions = () =>
-  useSWR(`/api/v1/live/positions`, fetcher, { refreshInterval: REFRESH.medium });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  useSWR<{ positions: any[]; count: number; as_of: string | null }>(`/live/positions`, fetcher, { refreshInterval: REFRESH.medium });
 
 export const useTrades = (limit = 50) =>
-  useSWR(`/api/v1/live/trades?limit=${limit}`, fetcher, { refreshInterval: REFRESH.medium });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  useSWR<{ trades: any[]; count: number }>(`/live/trades?limit=${limit}`, fetcher, { refreshInterval: REFRESH.medium });
 
 export const useBacktests = () =>
-  useSWR(`/api/v1/live/backtests`, fetcher, { refreshInterval: REFRESH.slow });
+  useSWR<{ reports: BacktestSummary[]; count: number }>(`/live/backtests`, fetcher, { refreshInterval: REFRESH.slow });
 
 export const useScenarios = () =>
-  useSWR(`/api/v1/live/scenarios`, fetcher, { refreshInterval: REFRESH.slow });
+  useSWR<{ scenarios: ShockScenario[]; count: number }>(`/live/scenarios`, fetcher, { refreshInterval: REFRESH.slow });
 
 export const useSystemStatus = () =>
-  useSWR(`/api/v1/live/system-status`, fetcher, { refreshInterval: REFRESH.medium });
+  useSWR<SystemStatus>(`/live/system-status`, fetcher, { refreshInterval: REFRESH.medium });
 
 export { api };
