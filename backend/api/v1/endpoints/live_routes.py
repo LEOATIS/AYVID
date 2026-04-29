@@ -333,10 +333,11 @@ async def signals() -> dict[str, Any]:
 
     Source: ``data_store/signal_book.json``.
     """
-    if not SIGNAL_BOOK.exists():
+    text = _read_text_any(SIGNAL_BOOK)
+    if not text:
         return {"signals": [], "count": 0}
     try:
-        data = json.loads(SIGNAL_BOOK.read_text())
+        data = json.loads(text)
     except json.JSONDecodeError:
         return {"signals": [], "count": 0}
     signals_list: list[dict[str, Any]] = []
@@ -351,25 +352,70 @@ async def signals() -> dict[str, Any]:
     return {"signals": signals_list, "count": len(signals_list)}
 
 
+def _list_backtest_files_gcs() -> list[tuple[str, str]]:
+    """List backtest JSON files from GCS. Returns [(blob_name, text), ...]."""
+    if not _GCS_BUCKET:
+        return []
+    global _gcs_client
+    try:
+        if _gcs_client is None:
+            from google.cloud import storage
+            _gcs_client = storage.Client()
+        prefix = f"{_GCS_PREFIX}/document/backtests/" if _GCS_PREFIX else "document/backtests/"
+        blobs = _gcs_client.bucket(_GCS_BUCKET).list_blobs(prefix=prefix)
+        results = []
+        for blob in blobs:
+            if blob.name.endswith(".json"):
+                text = blob.download_as_text()
+                # Extract filename from blob path
+                fname = blob.name.rsplit("/", 1)[-1]
+                results.append((fname, text))
+        return results
+    except Exception as exc:
+        log.warning(f"gcs backtest listing failed: {exc}")
+        return []
+
+
 @router.get("/backtests")
 async def backtests_index() -> dict[str, Any]:
     """List every backtest report on disk with summary metadata."""
-    if not BACKTESTS_DIR.exists():
-        return {"reports": []}
     valid_kinds = {"walkforward", "shock_driven", "single_window"}
     reports: list[dict[str, Any]] = []
-    for path in sorted(BACKTESTS_DIR.glob("*.json")):
-        try:
-            data = json.loads(path.read_text())
-        except (json.JSONDecodeError, OSError):
-            continue
-        summary = _summarize_backtest(data)
-        if summary.get("kind") not in valid_kinds:
-            continue
-        summary["name"] = path.stem
-        summary["filename"] = path.name
-        summary["size_bytes"] = path.stat().st_size
-        reports.append(summary)
+    seen_names: set[str] = set()
+
+    # Try local disk first
+    if BACKTESTS_DIR.exists():
+        for path in sorted(BACKTESTS_DIR.glob("*.json")):
+            try:
+                data = json.loads(path.read_text())
+            except (json.JSONDecodeError, OSError):
+                continue
+            summary = _summarize_backtest(data)
+            if summary.get("kind") not in valid_kinds:
+                continue
+            summary["name"] = path.stem
+            summary["filename"] = path.name
+            summary["size_bytes"] = path.stat().st_size
+            reports.append(summary)
+            seen_names.add(path.name)
+
+    # Fallback / supplement from GCS
+    if not reports or _GCS_BUCKET:
+        for fname, text in _list_backtest_files_gcs():
+            if fname in seen_names:
+                continue
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError:
+                continue
+            summary = _summarize_backtest(data)
+            if summary.get("kind") not in valid_kinds:
+                continue
+            summary["name"] = fname.replace(".json", "")
+            summary["filename"] = fname
+            summary["size_bytes"] = len(text.encode())
+            reports.append(summary)
+
     reports.sort(key=lambda r: r.get("generated_at") or "", reverse=True)
     return {"reports": reports, "count": len(reports)}
 
@@ -428,10 +474,11 @@ async def backtest_detail(name: str) -> dict[str, Any]:
     """Full JSON of a named backtest report."""
     safe_name = name.replace("/", "").replace("..", "")
     path = BACKTESTS_DIR / f"{safe_name}.json"
-    if not path.exists():
+    text = _read_text_any(path)
+    if not text:
         raise HTTPException(status_code=404, detail=f"Backtest '{name}' not found")
     try:
-        return json.loads(path.read_text())
+        return json.loads(text)
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=500, detail=f"Corrupt JSON: {exc}") from exc
 

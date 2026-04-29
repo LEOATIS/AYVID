@@ -107,6 +107,11 @@ def append_backtest_outcomes(
     with outcomes_path.open("a") as f:
         for r in rows:
             f.write(json.dumps(r, default=_iso) + "\n")
+    try:
+        from shared.gcs import sync_artifact
+        sync_artifact(outcomes_path)
+    except Exception:
+        pass
     log.info(f"Appended {len(rows)} closed trades → {outcomes_path} (scenario={scenario_id})")
     return len(rows)
 
@@ -371,6 +376,11 @@ def rebuild_priors_from_outcomes(
     }
     priors_path.parent.mkdir(parents=True, exist_ok=True)
     priors_path.write_text(json.dumps(payload, indent=2, sort_keys=True))
+    try:
+        from shared.gcs import sync_artifact
+        sync_artifact(priors_path)
+    except Exception:
+        pass
     log.info(
         f"Rebuilt priors from {len(rows)} outcomes → {priors_path} "
         f"(cells updated={updated_cells}, +block={newly_blocked}, "

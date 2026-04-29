@@ -1,4 +1,4 @@
-.PHONY: install dev verify status dashboard serve seed watchdog clean demo test backtest backtest-fresh pipeline graph-init scan analyze ingest universe world-scan clean-data lint format
+.PHONY: install dev verify status dashboard serve seed watchdog clean demo test backtest backtest-fresh pipeline graph-init scan analyze ingest universe world-scan clean-data lint format sync
 
 # ── Setup ────────────────────────────────────────────────────
 
@@ -86,6 +86,18 @@ watchdog:
 # into thinking there's a fallback path; removing it keeps the
 # contract honest — there is one canonical kill_switch and it lives
 # under `execution_engine/watchdog/`.
+
+# ── GCS Sync ────────────────────────────────────────────────
+
+sync:
+	AYVID_LIVE_GCS_BUCKET=$${AYVID_LIVE_GCS_BUCKET:-ayvid-production-tfstate} \
+	AYVID_LIVE_GCS_PREFIX=$${AYVID_LIVE_GCS_PREFIX:-live_state} \
+	python -m scripts.gcs_sync
+
+sync-watch:
+	AYVID_LIVE_GCS_BUCKET=$${AYVID_LIVE_GCS_BUCKET:-ayvid-production-tfstate} \
+	AYVID_LIVE_GCS_PREFIX=$${AYVID_LIVE_GCS_PREFIX:-live_state} \
+	python -m scripts.gcs_sync --watch --interval 60
 
 # ── Demo & Test ──────────────────────────────────────────────
 

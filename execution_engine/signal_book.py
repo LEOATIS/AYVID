@@ -414,6 +414,11 @@ class SignalBook:
         tmp.write_text(json.dumps(data, indent=2, default=str))
         tmp.replace(path)
         log.info(f"Signal book saved: {len(data)} signals -> {path}")
+        try:
+            from shared.gcs import sync_artifact
+            sync_artifact(path)
+        except Exception:
+            pass
 
     def load_from_disk(self, path: Path | None = None) -> int:
         """Load signal book from disk. Returns count of loaded signals."""

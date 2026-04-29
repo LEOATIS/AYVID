@@ -525,6 +525,13 @@ def generate_backtest_report(
     txt_path = output_dir / "backtest_report.txt"
     txt_path.write_text(_render_backtest_txt(report_dict))
 
+    try:
+        from shared.gcs import sync_artifact
+        sync_artifact(json_path)
+        sync_artifact(txt_path)
+    except Exception:
+        pass
+
     log.info(f"Backtest report: {json_path}, {txt_path}")
     return {"json": json_path, "txt": txt_path}
 
@@ -1066,6 +1073,13 @@ def generate_yc_report(
 
     md_path = output_dir / "yc_performance_report.md"
     md_path.write_text(_render_markdown(report))
+
+    try:
+        from shared.gcs import sync_artifact
+        sync_artifact(json_path)
+        sync_artifact(md_path)
+    except Exception:
+        pass
 
     log.info(f"YC report generated: {json_path}, {md_path}")
     return {"json": json_path, "markdown": md_path}

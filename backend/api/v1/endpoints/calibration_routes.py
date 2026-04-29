@@ -21,6 +21,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.core.security import verify_api_key
+from shared.config import settings
 from shared.logger import get_logger
 
 log = get_logger("api.calibration")
@@ -32,6 +33,45 @@ PRIORS_PATH = CALIBRATION_DIR / "priors.json"
 REFINED_DAG_PATH = CALIBRATION_DIR / "refined_dag.json"
 EDGE_PROPOSALS_PATH = CALIBRATION_DIR / "edge_proposals.jsonl"
 
+_GCS_BUCKET = (getattr(settings, "AYVID_LIVE_GCS_BUCKET", None) or "").strip()
+_GCS_PREFIX = (getattr(settings, "AYVID_LIVE_GCS_PREFIX", "live_state") or "live_state").strip("/")
+_gcs_client: Any | None = None
+
+
+def _gcs_blob_name(path: Path) -> str:
+    rel = path.relative_to(PROJECT_ROOT).as_posix()
+    return f"{_GCS_PREFIX}/{rel}" if _GCS_PREFIX else rel
+
+
+def _read_text_any(path: Path) -> str | None:
+    """Read from local disk; if absent, fallback to GCS."""
+    if path.exists():
+        try:
+            return path.read_text()
+        except OSError:
+            return None
+    if not _GCS_BUCKET:
+        return None
+    global _gcs_client
+    try:
+        if _gcs_client is None:
+            from google.cloud import storage
+            _gcs_client = storage.Client()
+        blob = _gcs_client.bucket(_GCS_BUCKET).blob(_gcs_blob_name(path))
+        if not blob.exists():
+            return None
+        return blob.download_as_text()
+    except Exception as exc:
+        log.warning(f"gcs read failed for {path}: {exc}")
+        return None
+
+
+def _file_exists_any(path: Path) -> bool:
+    """Check if file exists on disk or in GCS."""
+    if path.exists():
+        return True
+    return _read_text_any(path) is not None
+
 
 @router.get("/priors")
 async def priors_file() -> dict[str, Any]:
@@ -40,13 +80,14 @@ async def priors_file() -> dict[str, Any]:
     Consumed by the console's Priors viewer tile. Returns the raw
     JSON plus a summary counting active vs blocked cells per strategy.
     """
-    if not PRIORS_PATH.exists():
+    text = _read_text_any(PRIORS_PATH)
+    if not text:
         raise HTTPException(
             status_code=404,
             detail="priors.json not found — run `ayvid data calibrate --mode quick`",
         )
     try:
-        payload = json.loads(PRIORS_PATH.read_text())
+        payload = json.loads(text)
     except json.JSONDecodeError as exc:
         raise HTTPException(500, f"priors.json malformed: {exc}")
 
@@ -96,13 +137,14 @@ async def refined_dag() -> dict[str, Any]:
     404 when the refinery has never run (authoritative confidence
     values still live in Neo4j; this artefact is purely for audit).
     """
-    if not REFINED_DAG_PATH.exists():
+    text = _read_text_any(REFINED_DAG_PATH)
+    if not text:
         raise HTTPException(
             status_code=404,
             detail="refined_dag.json not found — run `ayvid graph refine`",
         )
     try:
-        return json.loads(REFINED_DAG_PATH.read_text())
+        return json.loads(text)
     except json.JSONDecodeError as exc:
         raise HTTPException(500, f"refined_dag.json malformed: {exc}")
 
@@ -121,7 +163,8 @@ async def edge_proposals(last_n: int = 100) -> dict[str, Any]:
     seeded — every edge ingested through the proposer path lands here
     with its provenance.
     """
-    if not EDGE_PROPOSALS_PATH.exists():
+    text = _read_text_any(EDGE_PROPOSALS_PATH)
+    if not text:
         return {
             "count": 0,
             "rows": [],
@@ -131,7 +174,7 @@ async def edge_proposals(last_n: int = 100) -> dict[str, Any]:
             ),
         }
     try:
-        lines = EDGE_PROPOSALS_PATH.read_text().splitlines()
+        lines = text.splitlines()
     except OSError as exc:
         raise HTTPException(500, f"edge_proposals.jsonl unreadable: {exc}")
 
@@ -172,18 +215,18 @@ async def roadmap_status() -> dict[str, Any]:
             "description": "Unicode + hidden-HTML sanitisation on every news ingestion path",
         },
         "phase_2_causal_falsification": {
-            "live": REFINED_DAG_PATH.exists(),
+            "live": _file_exists_any(REFINED_DAG_PATH),
             "module": "graph_intelligence.causal_falsification",
             "artefact": str(REFINED_DAG_PATH.relative_to(PROJECT_ROOT))
-            if REFINED_DAG_PATH.exists()
+            if _file_exists_any(REFINED_DAG_PATH)
             else None,
             "description": "Weekly LLM↔falsification loop refines Neo4j edge confidence",
         },
         "phase_2b_edge_proposer": {
-            "live": EDGE_PROPOSALS_PATH.exists(),
+            "live": _file_exists_any(EDGE_PROPOSALS_PATH),
             "module": "data_primitives.extractors.edge_proposer",
             "artefact": str(EDGE_PROPOSALS_PATH.relative_to(PROJECT_ROOT))
-            if EDGE_PROPOSALS_PATH.exists()
+            if _file_exists_any(EDGE_PROPOSALS_PATH)
             else None,
             "description": (
                 "GPT-4o / Claude extracts supplier→customer edges from SEC "
@@ -208,10 +251,10 @@ async def roadmap_status() -> dict[str, Any]:
             "description": "Multimodal 5th specialist classifying candlestick patterns",
         },
         "empirical_priors": {
-            "live": PRIORS_PATH.exists(),
+            "live": _file_exists_any(PRIORS_PATH),
             "module": "backtesting.calibrate",
             "artefact": str(PRIORS_PATH.relative_to(PROJECT_ROOT))
-            if PRIORS_PATH.exists()
+            if _file_exists_any(PRIORS_PATH)
             else None,
             "description": "Supervisor LLM reads calibration/priors.json as Bayesian prior",
         },

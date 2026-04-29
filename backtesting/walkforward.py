@@ -351,6 +351,13 @@ async def run_walk_forward(
     md_path = output_dir / f"{report_filename}.md"
     md_path.write_text(_render_markdown(summary, min_conviction=min_conviction))
 
+    try:
+        from shared.gcs import sync_artifact
+        sync_artifact(json_path)
+        sync_artifact(md_path)
+    except Exception:
+        pass
+
     log.info(
         f"Walk-forward complete: {summary.n_valid_windows}/{summary.n_windows} valid "
         f"windows, avg ret={summary.avg_return_pct:+.2f}%, "
@@ -632,6 +639,13 @@ async def run_shock_driven_walkforward(
 
     md_path = output_dir / f"{report_filename}.md"
     md_path.write_text(_render_shock_markdown(summary, min_conviction=min_conviction))
+
+    try:
+        from shared.gcs import sync_artifact
+        sync_artifact(json_path)
+        sync_artifact(md_path)
+    except Exception:
+        pass
 
     log.info(
         f"Shock-driven complete: {summary.n_valid}/{summary.n_run} valid scenarios, "
