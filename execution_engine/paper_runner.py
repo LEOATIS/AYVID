@@ -596,8 +596,17 @@ async def run(
     shadow: bool = False,
     initial_equity: float = 1_000_000.0,
     interval_seconds: int = 60,
+    with_pipeline: bool = False,
+    pipeline_interval_minutes: int = 15,
 ) -> None:
-    """Start the paper-trading runner. Blocks until SIGINT/SIGTERM."""
+    """Start the paper-trading runner. Blocks until SIGINT/SIGTERM.
+
+    When ``with_pipeline=True``, the continuous ingestion pipeline
+    (news → NER → graph → causal analysis → signal book) runs
+    concurrently alongside the trading loop. This is the production
+    configuration: signals are continuously refreshed from live data
+    and the runner consumes them each cycle.
+    """
     global _stop_event
     _stop_event = asyncio.Event()
     _ensure_dirs()
@@ -612,11 +621,62 @@ async def run(
             pass
 
     log.info(f"Started paper runner ({mode}). Stop with Ctrl-C.")
+
+    tasks: list[asyncio.Task] = []
+
+    if with_pipeline:
+        log.info(
+            f"Starting continuous pipeline (interval={pipeline_interval_minutes}min) "
+            f"alongside paper runner"
+        )
+        tasks.append(
+            asyncio.create_task(
+                _run_pipeline_loop(pipeline_interval_minutes),
+                name="continuous_pipeline",
+            )
+        )
+
     if shadow:
-        await _run_shadow_mode(initial_equity, interval_seconds)
+        tasks.append(
+            asyncio.create_task(
+                _run_shadow_mode(initial_equity, interval_seconds),
+                name="shadow_runner",
+            )
+        )
     else:
-        await _run_ib_mode(interval_seconds)
+        tasks.append(
+            asyncio.create_task(
+                _run_ib_mode(interval_seconds),
+                name="ib_runner",
+            )
+        )
+
+    await asyncio.gather(*tasks)
     log.info("Paper runner stopped.")
+
+
+async def _run_pipeline_loop(interval_minutes: int) -> None:
+    """Run the continuous ingestion pipeline alongside the paper runner."""
+    from data_primitives.pipeline.continuous_worker import run_ingestion_cycle
+
+    while not _stop_event.is_set():
+        try:
+            result = await run_ingestion_cycle(run_analysis=True)
+            log.info(
+                f"Pipeline cycle complete: news={result.get('news_fetched', 0)} "
+                f"events={result.get('events_created', 0)} "
+                f"signals={result.get('signals_generated', 0)} "
+                f"precomputed={result.get('precomputed_signals', 0)}"
+            )
+        except Exception as exc:
+            log.warning(f"Pipeline cycle failed: {exc}")
+
+        try:
+            await asyncio.wait_for(
+                _stop_event.wait(), timeout=interval_minutes * 60
+            )
+        except TimeoutError:
+            continue
 
 
 def render_curve(out_path: Path = Path("live/equity_curve.png")) -> Path:

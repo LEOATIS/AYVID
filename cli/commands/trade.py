@@ -30,6 +30,16 @@ def paper_start(
         "--interval",
         help="Polling interval in seconds (e.g. 60 = once a minute, 86400 = once a day).",
     ),
+    with_pipeline: bool = typer.Option(
+        False,
+        "--with-pipeline",
+        help="Run the continuous ingestion pipeline (news→NER→graph→signals) alongside the runner.",
+    ),
+    pipeline_interval: int = typer.Option(
+        15,
+        "--pipeline-interval",
+        help="Pipeline cycle interval in minutes (default 15).",
+    ),
 ):
     """Start the live paper-trading runner with a daily equity-curve artifact.
 
@@ -41,6 +51,12 @@ def paper_start(
 
     Shadow mode runs without any IB connection — useful while IB credentials
     are being provisioned. It still produces the same artifact format.
+
+    Use --with-pipeline to run the continuous ingestion pipeline alongside
+    the runner. This is the production configuration: the pipeline fetches
+    news, runs NER, updates the Neo4j graph, detects shocks, and pre-computes
+    signals into the signal book every --pipeline-interval minutes. The runner
+    then consumes those signals each cycle.
     """
 
     async def _run():
@@ -48,12 +64,16 @@ def paper_start(
         from shared.exceptions import IBKRDisconnectError
 
         mode = "shadow" if shadow else "ib_paper"
+        pipeline_status = (
+            f"[green]ON[/green] (every {pipeline_interval}min)" if with_pipeline else "[dim]off[/dim]"
+        )
         console.print(
             Panel.fit(
                 f"[bold]AYVID Paper Trader[/bold]\n"
                 f"Mode: [cyan]{mode}[/cyan]\n"
                 f"Interval: {interval}s\n"
-                f"Initial equity: ${equity:,.0f}\n\n"
+                f"Initial equity: ${equity:,.0f}\n"
+                f"Pipeline: {pipeline_status}\n\n"
                 f"Artifacts:\n"
                 f"  live/equity_curve.jsonl\n"
                 f"  live/trades.jsonl\n"
@@ -63,7 +83,13 @@ def paper_start(
             )
         )
         try:
-            await run(shadow=shadow, initial_equity=equity, interval_seconds=interval)
+            await run(
+                shadow=shadow,
+                initial_equity=equity,
+                interval_seconds=interval,
+                with_pipeline=with_pipeline,
+                pipeline_interval_minutes=pipeline_interval,
+            )
         except IBKRDisconnectError as exc:
             console.print(
                 Panel.fit(

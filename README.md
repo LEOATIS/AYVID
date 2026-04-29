@@ -376,7 +376,7 @@ Order of usefulness for a new contributor:
    — YC S26 positioning doc (fund structure, regulatory path, demo).
 4. [`document/backtests/SHOCK_VS_NAIVE_COMPARISON.md`](document/backtests/SHOCK_VS_NAIVE_COMPARISON.md)
    — headline naive-vs-shock comparison methodology.
-5. [`document/backtests/shock_driven_report.md`](document/backtests/shock_driven_report.md)
+5. [`document/backtests/shock_driven_option_c_full.md`](document/backtests/shock_driven_option_c_full.md)
    — the full 20-scenario walkforward the numbers at the top of this
    README come from.
 

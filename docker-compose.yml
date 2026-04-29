@@ -75,6 +75,22 @@ services:
       retries: 5
     restart: unless-stopped
 
+  ib-gateway:
+    image: ghcr.io/gnzsnz/ib-gateway:latest
+    container_name: ayvid-ib-gateway
+    ports:
+      - "7497:7497"
+      - "5900:5900"
+    environment:
+      TWS_USERID: ${IB_GATEWAY_USERNAME}
+      TWS_PASSWORD: ${IB_GATEWAY_PASSWORD}
+      TRADING_MODE: ${IB_GATEWAY_TRADING_MODE:-paper}
+      TWS_ACCEPT_INCOMING: "accept"
+      READ_ONLY_API: "no"
+    restart: unless-stopped
+    profiles:
+      - ib
+
   ayvid-execution:
     build:
       context: .
@@ -87,7 +103,8 @@ services:
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-changeme}
       QUESTDB_HOST: questdb
       QUESTDB_PORT: 9009
-      AYVID_PAPER_MODE: ${AYVID_PAPER_MODE:-shadow}
+      IB_HOST: ${IB_HOST:-ib-gateway}
+      IB_PORT: ${IB_PORT:-7497}
     volumes:
       - live_data:/app/live
     depends_on:
@@ -142,7 +159,7 @@ sys.exit(0 if os.path.exists(p) and (time.time()-os.stat(p).st_mtime)<300 else 1
       neo4j: { condition: service_healthy }
       questdb: { condition: service_healthy }
     profiles:
-      - pipeline
+      - standalone-pipeline
 
 volumes:
   neo4j_data:

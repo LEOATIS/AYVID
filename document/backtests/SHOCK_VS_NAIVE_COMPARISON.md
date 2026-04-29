@@ -35,7 +35,7 @@ named shock, and only on the tickers it would have surfaced."
 
 Reports:
 - Naive: [`walkforward_report_loose.md`](./walkforward_report_loose.md) (32 windows × 9 months, step 3 months)
-- Shock-driven: [`shock_driven_report.md`](./shock_driven_report.md) (20 named historical shocks, 2018–2025)
+- Shock-driven: [`shock_driven_option_c_full.md`](./shock_driven_option_c_full.md) (20 named historical shocks, 2018–2025)
 
 ---
 

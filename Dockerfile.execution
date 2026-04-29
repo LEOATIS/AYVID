@@ -48,6 +48,7 @@ HEALTHCHECK --interval=60s --timeout=10s --start-period=120s --retries=3 \
 import sys; sys.exit(0 if os.path.exists(p) and (time.time() - os.stat(p).st_mtime) < 300 else 1)"
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-# Default: shadow paper-trading. To run against IB Gateway, override CMD and drop --shadow:
-#   docker run --rm ayvid-execution python -m cli.app trade paper-start --equity 1000000
-CMD ["python", "-m", "cli.app", "trade", "paper-start", "--shadow", "--equity", "1000000", "--interval", "60"]
+# Default: shadow paper-trading with continuous pipeline.
+# To run against IB Gateway, override CMD and drop --shadow:
+#   docker run --rm ayvid-execution python -m cli.app trade paper-start --with-pipeline --equity 1000000
+CMD ["python", "-m", "cli.app", "trade", "paper-start", "--shadow", "--with-pipeline", "--equity", "1000000", "--interval", "60"]
