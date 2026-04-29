@@ -107,14 +107,14 @@ export default function Dashboard() {
         <StatTile
           label="Open positions"
           value={fmtNumber(summary?.open_positions ?? 0)}
-          hint={`cycle #${summary?.cycle ?? "—"}`}
+          hint={`${fmtNumber(signals?.count ?? 0)} active signals`}
           icon={<Briefcase className="h-4 w-4" />}
           loading={!summary}
         />
         <StatTile
-          label="Snapshots collected"
-          value={fmtNumber(runner?.snapshots_total)}
-          hint={runner?.uptime_seconds != null ? `up ${fmtUptime(runner.uptime_seconds)}` : ""}
+          label="Runner uptime"
+          value={runner?.uptime_seconds != null ? fmtUptime(runner.uptime_seconds) : "—"}
+          hint={runner?.snapshots_total != null ? `${fmtNumber(runner.snapshots_total)} snapshots` : ""}
           icon={<Activity className="h-4 w-4" />}
           loading={!runner}
         />
@@ -279,7 +279,7 @@ function SystemPanel({
         </span>
       ),
       hint: system?.config?.auto_execute ? "live orders" : "human in loop",
-      status: system?.config?.auto_execute ? "warn" : "ok",
+      status: system?.config?.auto_execute ? "ok" : "warn",
     },
   ];
 
@@ -311,7 +311,7 @@ function BacktestSpotlight({ reports }: { reports?: BacktestSummary[] }) {
     return <Empty icon={<BarChart3 className="h-8 w-8" />} title="No backtests yet" />;
   }
   const naive = reports.find((r) => r.name === "walkforward_report_loose");
-  const shock = reports.find((r) => r.name === "shock_driven_report");
+  const shock = reports.find((r) => r.kind === "shock_driven");
   const headline = shock ?? reports[0];
 
   return (
