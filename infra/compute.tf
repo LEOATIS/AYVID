@@ -155,10 +155,10 @@ resource "google_compute_instance" "execution" {
     docker --config "$DOCKER_CONFIG" pull "$IMAGE"
     docker rm -f ayvid-execution 2>/dev/null || true
 
-    RUNNER_ARGS=(python -m cli.app trade paper-start --equity 1000000 --interval 60)
+    RUNNER_ARGS=(python -m cli.app trade paper-start --with-pipeline --equity 1000000 --interval 60)
     if [ "$ib_ready" != "true" ]; then
         echo "WARN: IB gateway not ready on 127.0.0.1:7497; starting AYVID runner in --shadow mode."
-        RUNNER_ARGS=(python -m cli.app trade paper-start --shadow --equity 1000000 --interval 60)
+        RUNNER_ARGS=(python -m cli.app trade paper-start --shadow --with-pipeline --equity 1000000 --interval 60)
     fi
 
     docker run -d --restart=always --name ayvid-execution \
