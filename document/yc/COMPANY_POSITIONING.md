@@ -27,7 +27,7 @@ Point-by-point mapping:
 | Swarms of agents reading 10-Ks & filings | GPT-4o NER pipeline + SEC EDGAR filing analyzer in `data_primitives/extractors/` |
 | Reading earnings calls | News/transcript ingest + Reddit/StockTwits sentiment in `data_primitives/pipeline/` |
 | Synthesizing analyst ideas | 4-agent LangGraph debate (Strategist → Mapper → Auditor → Supervisor) in `graph_intelligence/agents/` + Bayesian multi-analyst debate with supermajority gating in `graph_intelligence/debate.py` |
-| **Making trades** | IB live/paper integration with bracket orders, C++-grade kill switch at 10 Hz, two-track F&O + equity execution in `execution_engine/` |
+| **Making trades** | IB live/paper integration with bracket orders, C++-grade kill switch at 10 Hz, 6-asset-class execution (equities, F&O, FX, commodities, crypto, ETFs & bonds) in `execution_engine/` |
 | "The next Renaissance / D.E. Shaw" will be built on AI | Graph topology + agent debate + Tier-3 shock override are co-designed with LLMs as first-class primitives; there is no pre-LLM decomposition |
 | Big funds are slow ("couldn't even use ChatGPT") | We skipped the incumbent approval loop and shipped the thing |
 
@@ -60,7 +60,7 @@ We are **not** claiming the reg path is zero-cost; we are claiming we have a con
 | Neo4j supply-chain graph + N-th order causal walk | Shipped | `graph_intelligence/tools/neo4j_tools.py` |
 | GPT-4o NER pipeline + SEC EDGAR filing analyzer | Shipped | `data_primitives/extractors/{ner_pipeline,filing_analyzer,sec_edgar}.py` |
 | Three-tier execution (offline pre-compute → <100ms fast path → ~30s shock override) | Shipped | `data_primitives/pipeline/continuous_worker.py` |
-| Two-track trading (index F&O across 20 markets + equities) | Shipped | `graph_intelligence/agents/strategy_orchestrator.py` |
+| Multi-asset trading (6 asset classes: equities, index F&O, FX, commodities, crypto, ETFs & bonds) | Shipped | `graph_intelligence/agents/strategy_orchestrator.py` |
 | IB integration (paper + live) with bracket orders, recovery, sequence validation | Shipped | `execution_engine/broker/` |
 | C++-grade kill switch w/ seqlock mmap IPC (10 Hz watchdog) | Shipped | `execution_engine/{kill_switch,watchdog}/` |
 | **Full IBKR-Tiered transaction-cost model (commissions + symbol-aware slippage)** | Shipped | `shared/cost_model.py` |
@@ -82,16 +82,16 @@ Every row in the "What's in the box" table is runnable today from a fresh clone.
 Every PnL number in this repo is **post-cost** — IBKR-Tiered commissions + symbol-aware slippage applied at every entry and exit. We publish **two** backtests so nothing is hidden:
 
 1. **Naive walk-forward (negative control).** Rolling 9-month windows stepped 3 months across 2018–2025, trading every cached symbol every day on technicals. No shock context. Result: **−99.98%** compounded, 16,168 trades, 7.4% avg cost drag per window. This is the expected outcome of running any event-blind orchestrator at full universe coverage with real IBKR cost. We publish it as the honest baseline.
-2. **Shock-driven walk-forward (AYVID's actual operating mode).** Iterates 20 named historical shocks 2018–2025 (Q4-2018 selloff, COVID, Suez, China crackdown, 2022 Fed cycle, Russia-Ukraine, ChatGPT, SVB, Red Sea, Yen carry, DeepSeek, etc.), trading **only** the causally-linked tickers the graph would have surfaced. Result: **+24.13%** compounded, 673 trades, 0.50% avg cost drag.
+2. **Shock-driven walk-forward (AYVID's actual operating mode).** Iterates 20 named historical shocks 2018–2025 (Q4-2018 selloff, COVID, Suez, China crackdown, 2022 Fed cycle, Russia-Ukraine, ChatGPT, SVB, Red Sea, Yen carry, DeepSeek, etc.), trading **only** the causally-linked tickers the graph would have surfaced. Result: **+33.43%** compounded, 1,392 trades, 0.55% avg cost drag, 63.7% win rate.
 
 ### The headline number
 
 | Mode | Compounded return 2018→2025 | Trades | Avg cost drag | % Sharpe > 1.0 | Best outcome |
 |---|---:|---:|---:|---:|---:|
 | Naive (trade everything every day) | **−99.98%** | 16,168 | 7.40% | 0.0% | −5.78% (90th pct) |
-| **Shock-driven (graph-surfaced tickers, in-window)** | **+24.13%** | 673 | 0.50% | 25.0% | **+23.83% (SVB crisis)** |
+| **Shock-driven (graph-surfaced tickers, in-window)** | **+33.43%** | 1,392 | 0.55% | 25.0% | **+23.81% (SVB crisis)** |
 
-**The 124 percentage-point swing is entirely the value of the graph layer.** Same engine, same data, same cost model. Full comparison: [`document/backtests/SHOCK_VS_NAIVE_COMPARISON.md`](../backtests/SHOCK_VS_NAIVE_COMPARISON.md).
+**The 133 percentage-point swing is entirely the value of the graph layer.** Same engine, same data, same cost model. Full comparison: [`document/backtests/SHOCK_VS_NAIVE_COMPARISON.md`](../backtests/SHOCK_VS_NAIVE_COMPARISON.md).
 
 ### Strategy Coverage Across All Market Regimes
 
@@ -162,7 +162,7 @@ Honest gaps — things YC will ask about and the answers we'll give:
 3. **Post-cost, walk-forward, with a negative control.** We are the only team that will publish a −99.98% baseline *on purpose*, to prove the graph is doing the work. Quant-literate partners will recognize this instantly as the sign of someone who has actually run backtests.
 4. **Live paper PnL.** Not simulated. IB Paper or shadow-loop against real prices, shipping a JSONL curve and a PNG.
 5. **Executable fund structure.** 3(c)(1) wrapper in batch, RIA at $100M — not hand-waving about "figuring out compliance later".
-6. **Solo founder who shipped.** Every line of this repo is one person's focused work since early April 2026 — the modular-monolith stack (LangGraph 4-agent pipeline, Neo4j supply-chain graph, IBKR-Tiered cost model, C++ kill switch, two-track F&O + equity engine, Next.js 15 marketing + operations console, live paper runner) that a normal team would take 18 months and a seed round to build.
+6. **Solo founder who shipped.** Every line of this repo is one person's focused work since early April 2026 — the modular-monolith stack (LangGraph 4-agent pipeline, Neo4j supply-chain graph, IBKR-Tiered cost model, C++ kill switch, 6-asset-class engine (equities, index F&O, FX, commodities, crypto, ETFs & bonds), Next.js 15 marketing + operations console, live paper runner) that a normal team would take 18 months and a seed round to build.
 
 ---
 

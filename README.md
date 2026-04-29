@@ -6,9 +6,10 @@ Swarms of LLM agents read SEC filings, earnings calls, and global news in
 real time; a Neo4j supply-chain graph traces the N-th-order causal
 consequences of each detected shock; an execution engine sizes orders
 with Half-Kelly and routes bracketed fills into Interactive Brokers —
-end-to-end, no humans in the loop on the trade path. Two tracks run in
-parallel: **index F&O across 20 global venues** and **equity investment
-across 50+ dynamically-screened names**.
+end-to-end, no humans in the loop on the trade path. Six asset classes
+run in parallel: **equities** (~50+ dynamically-screened names), **index
+F&O** (20 global venues), **FX** (34 pairs), **commodities** (17 futures),
+**crypto** (22 assets), and **ETFs & bonds** (37 ETFs + 4 rate futures).
 
 The fund's edge is not an LLM model choice or a clever prompt. It is the
 architectural property that **every trade the system takes has (a) passed
@@ -28,7 +29,7 @@ $1M initial equity per scenario.
 | Mode | Compounded return | Pooled WR | Avg Sharpe | Worst DD | Cost drag |
 |---|---:|---:|---:|---:|---:|
 | Naive (trade every ticker daily) | −99.98% | 34.2% | −2.15 | 98.1% | 7.40% |
-| **Shock-driven (AYVID's mode)** | **+24.13%** | **33.4%** | **−0.09** | **11.91%** | **0.50%** |
+| **Shock-driven (AYVID's mode)** | **+33.43%** | **63.7%** | **0.08** | **7.14%** | **0.55%** |
 
 Same engine. Same data. Same IBKR-Tiered cost model. Full numbers live
 in [`document/backtests/shock_driven_option_c_full.json`](document/backtests/shock_driven_option_c_full.json);
@@ -168,7 +169,7 @@ AYVID/
 │   ├── signal_book.py           Pre-computed signal cache + thesis pins
 │   └── watchdog/                C++ kill switch (seqlock mmap, 10 Hz)
 ├── backtesting/                Historical replay + feedback loop
-│   ├── engine.py                Two-track simulator (F&O + equity)
+│   ├── engine.py                Multi-asset simulator (6 asset classes)
 │   ├── walkforward.py           Rolling-window aggregator
 │   ├── calibrate.py             Offline grid-sweep calibrator
 │   └── trade_outcomes.py        Outcomes logger + priors rebuilder
@@ -194,15 +195,16 @@ priors. These lines are test-guarded.
 
 ---
 
-## Two tracks
+## Six asset classes
 
-| | Track 1 — Index F&O | Track 2 — Equity |
-|---|---|---|
-| Instruments | Futures, options, spreads on 20 global indices | Stocks across a dynamically-screened universe |
-| Venues | ES, NQ, NIFTY, FDAX, FTSE, N225, HSI … | Global, multi-factor-ranked |
-| Sizing | Kelly-futures + options (risk-capital basis) | Kelly-equity (notional basis) |
-| Hold window | Intraday / BTST (horizon-dependent) | 1 day – 42 days (horizon-dependent) |
-| Strategies | trend, MR-oversold, decline-put, spread, shock-directed, crisis, iron_condor, credit_spread, vix_mean_reversion | deep_value, supply_chain_beneficiary, supply_chain_hc, trend, mr_bounce, momentum_equity_long, quality_growth_long, earnings_beat_momentum, earnings_drift_long, positive_shock_beneficiary, cash_secured_put |
+| Asset class | Instruments | Sizing | Hold window |
+|---|---|---|---|
+| **Equities** | Stocks across a dynamically-screened universe | Kelly-equity (notional basis) | 1–42 days |
+| **Index F&O** | Futures, options, spreads on 20 global indices (ES, NQ, NIFTY, FDAX, FTSE, N225, HSI …) | Kelly-futures + options (risk-capital basis) | Intraday / BTST |
+| **FX** | Major & minor currency pairs (EUR/USD, GBP/JPY, AUD/NZD …) | Kelly-FX (pip-risk basis) | 1–5 days |
+| **Commodities** | Crude oil, gold, natural gas, copper, wheat … | Kelly-futures (contract multiplier basis) | 1–10 days |
+| **Crypto** | BTC, ETH, SOL and majors via regulated venues | Kelly-crypto (volatility-adjusted) | 1–7 days |
+| **ETFs & Bonds** | Sector ETFs, rate-futures (ZB, ZN, ZF), credit ETFs | Kelly-fixed-income | 1–21 days |
 
 Every strategy name is a canonical key in
 [`graph_intelligence/agents/strategist/schema.py::CANONICAL_STRATEGIES`](graph_intelligence/agents/strategist/schema.py).

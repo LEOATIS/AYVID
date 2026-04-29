@@ -1,6 +1,6 @@
 """Institutional-grade backtesting engine.
 
-Two-track architecture (mirrors how Citadel / Jane Street operate):
+Multi-asset architecture across 6 asset classes (equities, index F&O, FX, commodities, crypto, ETFs & bonds):
 
 Track 1 — INDEX F&O:
     Trade index futures (ES, NQ, NIFTY, FDAX) and index options across
@@ -1225,7 +1225,7 @@ async def run_backtest(
     strategy_parameters: dict[str, float] | None = None,
     risk_multiplier: float = 1.0,
 ) -> BacktestResult:
-    """Two-track institutional backtest engine.
+    """Multi-asset institutional backtest engine (6 asset classes).
 
     Track 1 — INDEX F&O: Trades index futures & options on global indices
               (ES/S&P, NQ/NASDAQ, NIFTY, FDAX, etc.) with proper contract

@@ -3,7 +3,7 @@ import Link from "next/link";
 export const metadata = {
   title: "Approach",
   description:
-    "How AYVID trades: two-track strategy, three-tier architecture, hard risk discipline, and full cost transparency.",
+    "How AYVID trades: six asset classes, three-tier architecture, hard risk discipline, and full cost transparency.",
 };
 
 export default function ApproachPage() {
@@ -11,8 +11,8 @@ export default function ApproachPage() {
     <>
       <PageHeader
         eyebrow="Approach"
-        title="Two tracks, three tiers, one risk frame."
-        lede="AYVID runs a two-track strategy on a three-tier architecture. The system was designed under the constraint that any subsystem can fail and the rest must degrade gracefully — no single agent, model, or data feed gets to take the firm down."
+        title="Six asset classes, three tiers, one risk frame."
+        lede="AYVID runs a multi-asset strategy on a three-tier architecture. The system was designed under the constraint that any subsystem can fail and the rest must degrade gracefully — no single agent, model, or data feed gets to take the firm down."
       />
 
       <SectionTwoCol
@@ -35,6 +35,17 @@ export default function ApproachPage() {
         ]}
         rightTitle="Hard rules"
         rightBody="No earnings-day positions held into the print. No overnight gap risk on conviction below threshold. No single name above 4% of risk capital. All overrideable by the supervisor agent — and every override is logged."
+      />
+
+      <SectionTwoCol
+        eyebrow="Multi-asset expression"
+        title="One shock, six asset classes."
+        body={[
+          "A single geopolitical event simultaneously routes to equities, index F&O, FX, commodities, crypto, ETFs, and bonds. The graph decides which asset classes are structurally exposed — and the execution engine sizes each expression independently with per-asset-class cost models, slippage assumptions, and exposure caps.",
+          "FX macro trends, commodity supply shocks, crypto momentum, ETF sector rotation, and rate-curve trades all fire from the same causal thesis. Multi-asset expression is how we capture the full consequence surface of every shock the graph detects.",
+        ]}
+        rightTitle="Per-class risk limits"
+        rightBody="Equity 50%, Index 30%, FX 15%, Commodity 15%, Crypto 10%, ETF 25%, Bond 15% of gross exposure. A portfolio-level drawdown circuit breaker and 7-layer pre-trade risk check prevent any single asset class from dominating the book."
       />
 
       <SectionTwoCol

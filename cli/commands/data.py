@@ -20,7 +20,7 @@ console = Console()
 data_app = typer.Typer(
     help=(
         "Market data, universe scanning, backtesting, and pipeline ingestion.\n\n"
-        "Includes two-track institutional backtest (Index F&O + Equity Investment),\n"
+        "Includes multi-asset institutional backtest (6 asset classes),\n"
         "global universe builder, world anomaly scanner, and full ingestion pipeline."
     ),
     no_args_is_help=True,
@@ -794,7 +794,7 @@ def backtest(
         help="Named shock scenario (e.g. suez_canal_2021). Use 'ayvid data scenarios' to list.",
     ),
 ):
-    """Run the two-track institutional backtest (AI-native pipeline).
+    """Run the multi-asset institutional backtest (AI-native pipeline).
 
     Track 1 — INDEX F&O: Trades index futures and options on NIFTY, S&P 500,
     DAX, FTSE, Nikkei, and other world indices with proper multipliers.

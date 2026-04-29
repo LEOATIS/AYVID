@@ -1,12 +1,14 @@
 """AYVID CLI — AI-Native Quantitative Hedge Fund Terminal.
 
-Two-track institutional trading:
-  Track 1: Index F&O — Futures and options on 20 global indices
+Multi-asset institutional trading across 6 asset classes:
+  Equities, Index F&O, FX, Commodities, Crypto, ETFs & Bonds.
+
+  Index F&O — Futures and options on 20 global indices
            (NIFTY, S&P 500, DAX, FTSE, Nikkei, Hang Seng, etc.)
            with real expiry calendars, 2% risk lot sizing, and
            Black-Scholes option pricing.
 
-  Track 2: Equity Investment — Long-term stock positions across
+  Equity Investment — Long-term stock positions across
            50+ global equities, dynamically screened by an AI-native
            multi-factor ranker (momentum, value, quality, volume, volatility).
 
@@ -43,7 +45,7 @@ app = typer.Typer(
     name="ayvid",
     help=(
         "AYVID — AI-Native Quantitative Hedge Fund.\n\n"
-        "Two-track trading: Index F&O (20 world indices) + Equity Investment (50+ stocks).\n"
+        "Multi-asset trading: 6 asset classes (equities, index F&O, FX, commodities, crypto, ETFs & bonds).\n"
         "Supply chain graph intelligence | LangGraph agent swarms | Institutional risk management."
     ),
     no_args_is_help=False,
@@ -85,7 +87,7 @@ _IN_REPL = False
 def main(ctx: typer.Context):
     """AYVID — AI-Native Quantitative Hedge Fund.
 
-    Two-track institutional trading engine with LangGraph agent swarms,
+    Multi-asset institutional trading engine (6 asset classes) with LangGraph agent swarms,
     Neo4j supply chain topology, and N-th order causal arbitrage.
     """
     global _IN_REPL

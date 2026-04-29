@@ -70,9 +70,9 @@ Every PnL number in AYVID is **post-cost** (IBKR-Tiered commissions + symbol-awa
 | Mode | Compounded 2018→2025 | Trades | Avg cost drag | % Sharpe > 1.0 | Best outcome |
 |---|---:|---:|---:|---:|---:|
 | Naive (trade every ticker every day on technicals) | **−99.98%** | 16,168 | 7.40% | 0.0% | −5.78% (90th pct) |
-| **Shock-driven (graph-surfaced tickers, in-window)** | **+24.13%** | 673 | 0.50% | 25.0% | **+23.83% (SVB crisis)** |
+| **Shock-driven (graph-surfaced tickers, in-window)** | **+33.43%** | 1,392 | 0.55% | 25.0% | **+23.81% (SVB crisis)** |
 
-Same engine, same data, same cost model — the **124 percentage-point swing** is the measured value of the causal-graph layer. We publish the −99.98% baseline on purpose: it is the expected result of running an event-blind orchestrator at full IBKR cost, and it falsifies the claim that the alpha is "just a clever orchestrator." Full methodology: [`document/backtests/SHOCK_VS_NAIVE_COMPARISON.md`](https://github.com/LEOATIS/AYVID/blob/main/document/backtests/SHOCK_VS_NAIVE_COMPARISON.md).
+Same engine, same data, same cost model — the **133 percentage-point swing** is the measured value of the causal-graph layer. We publish the −99.98% baseline on purpose: it is the expected result of running an event-blind orchestrator at full IBKR cost, and it falsifies the claim that the alpha is "just a clever orchestrator." Full methodology: [`document/backtests/SHOCK_VS_NAIVE_COMPARISON.md`](https://github.com/LEOATIS/AYVID/blob/main/document/backtests/SHOCK_VS_NAIVE_COMPARISON.md).
 
 Honest weakness: the shock-driven profile is **asymmetric long-vol / crisis-alpha** — strong on SVB (+23.8%), DeepSeek (+20.9%), Yen Carry (+4.0%), ChatGPT (+4.2%), Suez (+0.5%); weak on rally scenarios (NVIDIA blowout −7.1%, Post-COVID −4.9%, China crackdown −4.2%, Semi correction −3.0%). Documented, quantified, on the near-term roadmap.
 

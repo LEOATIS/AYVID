@@ -12,7 +12,7 @@ const NOTES: { date: string; tag: string; title: string; teaser: string }[] = [
     tag: "Method",
     title: "Why naive walk-forward backtests are an indictment of the trader, not the market.",
     teaser:
-      "Trading every ticker every day on technicals lost 99.98% over an 8-year window in our shop. The same engine, restricted to event-conditioned windows surfaced by the graph, returned +43.65% compounded. The full report is in the operations console.",
+      "Trading every ticker every day on technicals lost 99.98% over an 8-year window in our shop. The same engine, restricted to event-conditioned windows surfaced by the graph, returned +33.43% compounded across 20 named shocks with a 63.7% win rate. The full report is in the operations console.",
   },
   {
     date: "2026 · Q2",
