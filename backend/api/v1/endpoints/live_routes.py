@@ -98,7 +98,12 @@ async def equity_curve(
             "summary": None,
             "meta": _read_meta(),
         }
-    initial = float(rows[0].get("equity", 0.0))
+    meta = _read_meta()
+    # Use run_meta.json as authoritative initial equity so partial limit
+    # windows don't misreport the starting value.
+    initial = float(
+        (meta or {}).get("initial_equity", 0) or rows[0].get("equity", 0.0)
+    )
     final = float(rows[-1].get("equity", initial))
     peak = max((float(r.get("equity", 0.0)) for r in rows), default=initial)
     drawdown = (final - peak) / peak * 100 if peak else 0.0
@@ -118,7 +123,7 @@ async def equity_curve(
             "open_positions": rows[-1].get("open_positions", 0),
             "cycle": rows[-1].get("cycle"),
         },
-        "meta": _read_meta(),
+        "meta": meta,
     }
 
 
