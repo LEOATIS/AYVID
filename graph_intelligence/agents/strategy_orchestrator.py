@@ -1285,7 +1285,6 @@ def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
             ctx.vix_level > 35
             and not is_strategy_regime_blocked(ctx, "vix_mean_reversion")
         ):
-            from execution_engine.math.regime import detect_vix_spike_reversal
 
             # Use available VIX data — in backtest this comes from the context
             vix_arr = np.array([ctx.vix_level + 2, ctx.vix_level + 1, ctx.vix_level])
@@ -2276,8 +2275,9 @@ def _commodity_orchestrate(ctx: MarketContext) -> TradeDecision:
 
     # Commodity seasonal — checked via seasonal_calendar
     try:
-        from execution_engine.math.seasonal_calendar import get_active_seasonal_edges
         import datetime as _dt
+
+        from execution_engine.math.seasonal_calendar import get_active_seasonal_edges
 
         edges = get_active_seasonal_edges(_dt.date.today())
         for edge in edges:

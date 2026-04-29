@@ -2553,15 +2553,19 @@ async def run_backtest(
         # These tracks only fire when shock_context provides routing
         # targets for non-equity asset classes.
         if _shock_active and shock_context:
-            from shared.cost_model import (
-                commodity_futures_costs,
-                crypto_costs as _crypto_costs,
-                fx_costs as _fx_costs,
-                rate_futures_costs,
-            )
             from shared.contract_specs import (
                 COMMODITY_CONTRACT_SPECS,
                 RATE_CONTRACT_SPECS,
+            )
+            from shared.cost_model import (
+                commodity_futures_costs,
+                rate_futures_costs,
+            )
+            from shared.cost_model import (
+                crypto_costs as _crypto_costs,
+            )
+            from shared.cost_model import (
+                fx_costs as _fx_costs,
             )
 
             causal = shock_context.get("causal_intel", shock_context)

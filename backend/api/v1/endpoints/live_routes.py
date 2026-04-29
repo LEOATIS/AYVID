@@ -688,8 +688,6 @@ async def get_risk_status():
 @router.get("/agent-activity")
 async def agent_activity_sse():
     """Server-Sent Events stream of agent activity."""
-    import asyncio
-
     from backend.core.agent_event_bus import get_event_bus
 
     bus = get_event_bus()
