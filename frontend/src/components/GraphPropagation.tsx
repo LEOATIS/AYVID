@@ -31,6 +31,7 @@ const RING_RX: Record<GraphNode["ring"], number> = {
   1: 150,
   2: 260,
   3: 360,
+  4: 440,
 };
 const RING_RY_RATIO = 0.78; // ellipses, not circles → faux perspective
 
@@ -158,7 +159,7 @@ export function GraphPropagation({ nodes, edges }: Props) {
 
           {/* ── Perspective rings ─────────────────────────────── */}
           <g className="graph-ring-stroke" fill="none" strokeDasharray="3 6">
-            {[1, 2, 3].map((r) => (
+            {[1, 2, 3, 4].map((r) => (
               <ellipse
                 key={r}
                 cx={0}
@@ -404,12 +405,12 @@ function Orb({ node }: { node: Positioned }) {
 type Positioned = GraphNode & { x: number; y: number };
 
 function placeNodes(nodes: GraphNode[]): Positioned[] {
-  const groups: Record<number, GraphNode[]> = { 0: [], 1: [], 2: [], 3: [] };
-  for (const n of nodes) groups[n.ring].push(n);
+  const groups: Record<number, GraphNode[]> = { 0: [], 1: [], 2: [], 3: [], 4: [] };
+  for (const n of nodes) groups[n.ring] ??= [], groups[n.ring].push(n);
 
   const out: Positioned[] = [];
   for (const ringStr of Object.keys(groups)) {
-    const ring = Number(ringStr) as 0 | 1 | 2 | 3;
+    const ring = Number(ringStr) as 0 | 1 | 2 | 3 | 4;
     const arr = groups[ring];
     if (ring === 0) {
       arr.forEach((n) => out.push({ ...n, x: 0, y: 0 }));

@@ -48,10 +48,25 @@ def _d1d2(
     the contract match the implementation; a future vectorised
     version would need a separate function that stays array-native.
     """
-    sqrt_T = np.sqrt(max(float(T), 1e-12))
-    sig_f = float(sigma)
-    d1 = (np.log(float(S) / float(K)) + (r + 0.5 * sig_f**2) * float(T)) / (sig_f * sqrt_T)
+    import math
+
+    S_f, K_f, T_f, sig_f = float(S), float(K), max(float(T), 1e-12), float(sigma)
+    # Guard: non-finite or non-positive inputs → return neutral (0, 0)
+    if not (math.isfinite(S_f) and math.isfinite(K_f) and math.isfinite(sig_f)):
+        return 0.0, 0.0
+    if S_f <= 0 or K_f <= 0:
+        return 0.0, 0.0
+    # Volatility clamp: prevent degenerate 0-vol or extreme vol
+    sig_f = max(sig_f, 1e-6)
+    sig_f = min(sig_f, 10.0)  # 1000% vol cap
+
+    sqrt_T = np.sqrt(T_f)
+    d1 = (np.log(S_f / K_f) + (r + 0.5 * sig_f**2) * T_f) / (sig_f * sqrt_T)
     d2 = d1 - sig_f * sqrt_T
+
+    # Final NaN guard
+    if not (math.isfinite(d1) and math.isfinite(d2)):
+        return 0.0, 0.0
     return d1, d2
 
 
@@ -73,15 +88,23 @@ def black_scholes(
         sigma: Volatility (annualised)
         option_type: "CALL" or "PUT"
     """
-    if T <= 0:
-        return max(S - K, 0.0) if option_type == "CALL" else max(K - S, 0.0)
+    import math
 
-    d1, d2 = _d1d2(S, K, T, r, sigma)
+    S_f, K_f = float(S), float(K)
+    if not (math.isfinite(S_f) and math.isfinite(K_f)):
+        return 0.0
+
+    if T <= 0:
+        return max(S_f - K_f, 0.0) if option_type == "CALL" else max(K_f - S_f, 0.0)
+
+    sigma_f = max(float(sigma), 1e-6)
+    d1, d2 = _d1d2(S_f, K_f, T, r, sigma_f)
     if option_type == "CALL":
-        price = S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+        price = S_f * norm.cdf(d1) - K_f * np.exp(-r * T) * norm.cdf(d2)
     else:
-        price = K * np.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
-    return float(np.maximum(price, 0.0))
+        price = K_f * np.exp(-r * T) * norm.cdf(-d2) - S_f * norm.cdf(-d1)
+    result = float(np.maximum(price, 0.0))
+    return result if math.isfinite(result) else 0.0
 
 
 # ── Greeks ────────────────────────────────────────────────────
@@ -221,6 +244,71 @@ def iron_condor_price(
         "breakeven_high": call_short_K + net_credit,
         "risk_reward": net_credit / max(max_loss, 0.01),
     }
+
+
+def select_condor_strikes(
+    spot: float,
+    sigma: float,
+    T: float,
+    short_delta: float = 0.20,
+    wing_delta: float = 0.10,
+) -> tuple[float, float, float, float]:
+    """Select iron condor strikes from delta targets.
+
+    Returns (short_call_K, long_call_K, short_put_K, long_put_K).
+    Uses the BSM inverse-delta approximation: K ≈ S * exp(z * sigma * sqrt(T))
+    where z is the standard normal quantile for the target delta.
+    """
+    from scipy.stats import norm as _norm
+
+    sqrt_T = np.sqrt(max(T, 1e-12))
+    sig = max(sigma, 1e-6)
+
+    # Call side: short at delta=0.20 (OTM), long at delta=0.10 (further OTM)
+    z_short_call = _norm.ppf(1.0 - short_delta)  # ~0.84
+    z_long_call = _norm.ppf(1.0 - wing_delta)  # ~1.28
+    short_call_K = round(spot * np.exp(z_short_call * sig * sqrt_T), 2)
+    long_call_K = round(spot * np.exp(z_long_call * sig * sqrt_T), 2)
+
+    # Put side: short at delta=-0.20 (OTM), long at delta=-0.10 (further OTM)
+    z_short_put = _norm.ppf(short_delta)  # ~-0.84
+    z_long_put = _norm.ppf(wing_delta)  # ~-1.28
+    short_put_K = round(spot * np.exp(z_short_put * sig * sqrt_T), 2)
+    long_put_K = round(spot * np.exp(z_long_put * sig * sqrt_T), 2)
+
+    return short_call_K, long_call_K, short_put_K, long_put_K
+
+
+def select_credit_spread_strikes(
+    spot: float,
+    sigma: float,
+    T: float,
+    direction: str = "BULLISH",
+    short_delta: float = 0.30,
+    wing_delta: float = 0.15,
+) -> tuple[float, float]:
+    """Select credit spread strikes (short_strike, long_strike).
+
+    BULLISH → sell put spread (sell higher put, buy lower put).
+    BEARISH → sell call spread (sell lower call, buy higher call).
+    """
+    from scipy.stats import norm as _norm
+
+    sqrt_T = np.sqrt(max(T, 1e-12))
+    sig = max(sigma, 1e-6)
+
+    if direction == "BULLISH":
+        z_short = _norm.ppf(short_delta)
+        z_long = _norm.ppf(wing_delta)
+        short_strike = round(spot * np.exp(z_short * sig * sqrt_T), 2)
+        long_strike = round(spot * np.exp(z_long * sig * sqrt_T), 2)
+    else:
+        z_short = _norm.ppf(1.0 - short_delta)
+        z_long = _norm.ppf(1.0 - wing_delta)
+        short_strike = round(spot * np.exp(z_short * sig * sqrt_T), 2)
+        long_strike = round(spot * np.exp(z_long * sig * sqrt_T), 2)
+
+    return short_strike, long_strike
 
 
 def straddle_price(

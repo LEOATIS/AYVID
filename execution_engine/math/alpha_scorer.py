@@ -179,6 +179,21 @@ def _factor_causal(ctx: Any, direction: TradeAction) -> tuple[bool, float]:
     return False, max(1.0 - conv, 0.2)
 
 
+def _factor_uoa(ctx: Any, direction: TradeAction) -> tuple[bool, float]:
+    """Unusual options activity alignment with trade direction."""
+    uoa = getattr(ctx, "uoa_signal", None)
+    if uoa is None or not getattr(uoa, "is_unusual", False):
+        return False, 1.0
+    uoa_dir = getattr(uoa, "direction", "NEUTRAL").upper()
+    uoa_conf = max(0.0, min(getattr(uoa, "confidence", 0.0), 1.0))
+    aligned = (direction == TradeAction.LONG and uoa_dir == "BULLISH") or (
+        direction == TradeAction.SHORT and uoa_dir == "BEARISH"
+    )
+    if aligned:
+        return True, 1.0 + uoa_conf * 1.5  # max LR boost of 2.5
+    return False, 1.0
+
+
 _FACTORS = {
     "zscore": _factor_zscore,
     "rsi": _factor_rsi,
@@ -189,6 +204,7 @@ _FACTORS = {
     "vrp": _factor_vrp,
     "macro": _factor_macro,
     "causal": _factor_causal,
+    "uoa": _factor_uoa,
 }
 
 
@@ -303,14 +319,23 @@ def score(ctx: Any) -> AlphaScore:
     confirmations: list[bool] = []
     likelihood_ratios: list[tuple[float, float]] = []
     factor_breakdown: dict[str, float] = {}
+    active_factor_count = 0
 
     for name, fn in _FACTORS.items():
         confirmed, lr = fn(ctx, direction)
         confirmations.append(confirmed)
         likelihood_ratios.append((lr, 1.0))
         factor_breakdown[name] = round(lr, 4)
+        # UOA factor only counts toward the denominator when UOA data
+        # is actually available. Without data it's a no-op, not a penalty.
+        if name == "uoa":
+            uoa = getattr(ctx, "uoa_signal", None)
+            if uoa is not None and getattr(uoa, "is_unusual", False):
+                active_factor_count += 1
+        else:
+            active_factor_count += 1
 
-    factor_score = sum(1 for c in confirmations if c) / max(len(confirmations), 1)
+    factor_score = sum(1 for c in confirmations if c) / max(active_factor_count, 1)
     bayesian = bayesian_conviction_update(0.5, likelihood_ratios)
 
     # Unified conviction scales down by Strategist / Supervisor risk
@@ -346,16 +371,31 @@ def score(ctx: Any) -> AlphaScore:
     )
 
 
-def passes_trade_gate(alpha: AlphaScore) -> bool:
+def _resolve_factor_floor(strategy_type: str | None = None) -> float:
+    """Resolve the correct MIN_FACTOR_SCORE floor for the strategy type."""
+    if strategy_type == "premium":
+        return settings.MIN_FACTOR_SCORE_PREMIUM
+    if strategy_type == "shock_driven":
+        return settings.MIN_FACTOR_SCORE_SHOCK
+    if strategy_type == "directional":
+        return settings.MIN_FACTOR_SCORE_DIRECTIONAL
+    return settings.MIN_FACTOR_SCORE
+
+
+def passes_trade_gate(alpha: AlphaScore, strategy_type: str | None = None) -> bool:
     """Single-line gate check used by the orchestrator before emitting an
     EXECUTE intent. Aligns every downstream gate against the ONE conviction
     floor (`MIN_CONVICTION_TRADE`) instead of the previous ladder of
-    incompatible numbers."""
+    incompatible numbers.
+
+    strategy_type: "shock_driven", "premium", "directional", or None (uses global default).
+    """
     if alpha.direction == TradeAction.HOLD:
         return False
     if alpha.unified_conviction < settings.MIN_CONVICTION_TRADE:
         return False
-    if alpha.factor_score < settings.MIN_FACTOR_SCORE:
+    factor_floor = _resolve_factor_floor(strategy_type)
+    if alpha.factor_score < factor_floor:
         return False
     if alpha.expected_r < alpha.min_r:
         return False
@@ -365,4 +405,5 @@ def passes_trade_gate(alpha: AlphaScore) -> bool:
 __all__ = [
     "score",
     "passes_trade_gate",
+    "_resolve_factor_floor",
 ]

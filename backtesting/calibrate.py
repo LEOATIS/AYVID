@@ -611,6 +611,28 @@ def aggregate_priors(
                 "best_sharpe_seen": round(max((sh for _, sh in cell_configs), default=0.0), 3),
             }
 
+    # ── Win rate floor auto-block ──
+    # Block strategy×regime cells where win_rate < 0.40 AND n >= 15.
+    # Prevents low-WR cells from dragging down blended metrics.
+    for strategy in all_strategies:
+        for regime in all_regimes:
+            cell = priors.get(strategy, {}).get(regime, {})
+            if cell.get("blocked_by_regime"):
+                continue
+            cell_pnls = []
+            for (s, r_, _), pnls in buckets.items():
+                if s == strategy and r_ == regime:
+                    cell_pnls.extend(pnls)
+            if len(cell_pnls) >= 15:
+                wins = sum(1 for p in cell_pnls if p > 0)
+                wr = wins / len(cell_pnls)
+                if wr < 0.40:
+                    priors.setdefault(strategy, {})[regime] = {
+                        "blocked_by_regime": True,
+                        "n": len(cell_pnls),
+                        "_block_reason": f"auto-blocked: win_rate={wr:.2f} < 0.40 floor (n={len(cell_pnls)})",
+                    }
+
     return priors
 
 

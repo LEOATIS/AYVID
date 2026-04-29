@@ -290,6 +290,7 @@ export interface Signal {
   ticker: string;
   direction: "LONG" | "SHORT" | string;
   instrument_type: string;
+  asset_class: string;
   conviction: number;
   strategy_name: string;
   strike?: number | null;

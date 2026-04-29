@@ -81,6 +81,21 @@ _STRATEGY_KEYWORD_MAP: list[tuple[str, str]] = [
     ("crisis capitulation", "crisis_capitulation_bounce"),
     ("bull call spread", "idx_bull_spread"),
     ("bear put spread", "idx_bear_spread"),
+    # Multi-asset strategies
+    ("fx macro", "fx_macro_trend"),
+    ("fx carry", "fx_carry_trade"),
+    ("fx mean rev", "fx_mean_reversion"),
+    ("commodity supply", "commodity_supply_shock"),
+    ("commodity momentum", "commodity_momentum"),
+    ("commodity season", "commodity_seasonal"),
+    ("crypto momentum", "crypto_momentum"),
+    ("crypto supply", "crypto_supply_chain"),
+    ("rates macro", "rates_macro"),
+    ("rates steep", "rates_steepener_flattener"),
+    ("rates flatten", "rates_steepener_flattener"),
+    ("sector rotation", "sector_rotation_etf"),
+    ("factor etf", "factor_etf_momentum"),
+    ("etf supply chain", "etf_supply_chain_expression"),
 ]
 
 

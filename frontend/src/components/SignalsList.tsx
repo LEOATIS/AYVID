@@ -6,6 +6,11 @@ const INSTRUMENT_TINT: Record<Signal["instrument"], string> = {
   INDEX_CALL: "bg-emerald-500/15 text-emerald-300 ring-emerald-400/30",
   INDEX_SPREAD: "bg-purple-500/15 text-purple-300 ring-purple-400/30",
   INDEX_FUTURE: "bg-amber-500/15 text-amber-300 ring-amber-400/30",
+  FX: "bg-cyan-500/15 text-cyan-300 ring-cyan-400/30",
+  COMMODITY_FUTURE: "bg-orange-500/15 text-orange-300 ring-orange-400/30",
+  CRYPTO: "bg-violet-500/15 text-violet-300 ring-violet-400/30",
+  ETF: "bg-teal-500/15 text-teal-300 ring-teal-400/30",
+  RATE_FUTURE: "bg-yellow-500/15 text-yellow-300 ring-yellow-400/30",
 };
 
 export function SignalsList({ signals }: { signals: Signal[] }) {

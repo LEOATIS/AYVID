@@ -41,6 +41,9 @@ class EdgeProposal(BaseModel):
     dst: str
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     rationale: str = ""
+    # Multi-asset: track what kind of instrument each node is
+    src_asset_class: str = "EQUITY"  # EQUITY|FX|COMMODITY|CRYPTO|ETF|BOND
+    dst_asset_class: str = "EQUITY"
 
 
 class RefinementDecision(BaseModel):

@@ -20,15 +20,15 @@ Trading the same universe blindly destroys capital.
 |----------------------------------------------|-----------------------:|------------------------------:|
 | Span                                         | 2018-01-01 → 2025-12-31| 2018-01-01 → 2025-12-31       |
 | Trade-decision logic                         | Trade every ticker every day on technicals (no shock context) | Trade only inside named historical shock windows, only on graph-surfaced causally-linked tickers |
-| Pooled trades                                | **16,168**             | **1,343**                     |
-| Avg cost drag per window/scenario            | **7.40%**              | **1.93%**                     |
-| Compounded return (chained)                  | **−99.98%**            | **+43.65%**                   |
-| CAGR                                         | **−66.26%**            | **+4.63%**                    |
-| Avg Sharpe                                   | −2.39                  | −1.13                         |
-| % Sharpe > 1.0                               | **0.0%**               | **30.0%**                     |
-| Best individual window                       | −5.78% (90th pct)      | **+98.86%** (COVID-19)        |
+| Pooled trades                                | **16,168**             | **673**                       |
+| Avg cost drag per window/scenario            | **7.40%**              | **0.50%**                     |
+| Compounded return (chained)                  | **−99.98%**            | **+24.13%**                   |
+| CAGR                                         | **−66.26%**            | **+2.63%**                    |
+| Avg Sharpe                                   | −2.39                  | −0.09                         |
+| % Sharpe > 1.0                               | **0.0%**               | **25.0%**                     |
+| Best individual window                       | −5.78% (90th pct)      | **+23.83%** (SVB crisis)      |
 
-**A 144-percentage-point swing on identical data**, driven entirely by
+**A 124-percentage-point swing on identical data**, driven entirely by
 moving from "let the orchestrator trade everything every day on bar
 features" to "only trigger when the causal graph would have surfaced a
 named shock, and only on the tickers it would have surfaced."
@@ -83,36 +83,36 @@ SVB, Hamas-Israel, Red Sea, NVIDIA blowout, Yen carry unwind, Trump
 2024, DeepSeek, etc.), trading **only** graph-surfaced tickers, with
 identical IBKR cost model:
 
-- **+43.65% compounded across 8 years** (CAGR +4.63%)
-- **30% of scenarios with Sharpe > 1.0**
-- **35% positive scenarios** but the wins are *large* (COVID +99%,
-  Q4-2018 +71%, SVB +29%, DeepSeek +24%, Russia +10%)
+- **+24.13% compounded across 8 years** (CAGR +2.63%)
+- **25% of scenarios with Sharpe > 1.0**
+- **40% positive scenarios** but the wins are *large* (SVB +23.8%,
+  DeepSeek +20.9%, ChatGPT +4.2%, Yen Carry +4.0%, US-China +1.3%)
 
 ---
 
 ## Honest weaknesses (what we will not hide from YC)
 
-1. **Asymmetric performance.** The system clearly works on
-   **crisis / vol-long** scenarios (COVID +99%, Q4-2018 +71%,
-   DeepSeek +24%, SVB +29%, Russia +10%, Suez +2%) and **loses money
-   on rally / vol-short scenarios** (Post-COVID rally −2.4%, NVIDIA
-   blowout −5.9%, ChatGPT rally −7.7%, Trump rally −9.7%). The
+1. **Asymmetric performance.** The system works best on
+   **crisis / supply-disruption** scenarios (SVB +23.8%, DeepSeek +20.9%,
+   Yen Carry +4.0%, Suez +0.5%) and **loses money
+   on rally / vol-short scenarios** (NVIDIA blowout −7.1%, Post-COVID
+   rally −4.9%, China crackdown −4.2%, Semi correction −3.0%). The
    bullish branches in the orchestrator emit too many trades and
    the cost drag eats the upside.
 
-2. **Median return per scenario is still negative (−4.97%).** The
+2. **Median return per scenario is still negative (−0.07%).** The
    strategy is *positive in expectation* and *positive when chained*,
    but a typical scenario loses a small amount and a few crisis
    scenarios make it all back. That is a long-vol profile —
    defensible, but not what a long-only manager would buy.
 
-3. **Pooled win rate 34.0%.** Below the conventional 45–50% bar.
+3. **Pooled win rate 33.4%.** Below the conventional 45–50% bar.
    Compensated by the asymmetric R-multiple distribution (median
    trade = −1R stop, winners average +3R+).
 
 4. **The conviction filter has only second-order impact.** Going from
    `min_conviction=0.55` to `0.70` improved the compounded number from
-   +43.65% to +45.03%. The asymmetry is structural in the orchestrator's
+   +24.13% to +25.50%. The asymmetry is structural in the orchestrator's
    bullish branches, not a tuning artifact.
 
 5. **The graph layer here is operating from the static `causal_intel`
@@ -129,7 +129,7 @@ identical IBKR cost model:
 
 - **The architecture is right.** Selective, event-driven trading on
   graph-surfaced causally-linked tickers turns a −99.98% naive backtest
-  into a +43.65% selective one on the same engine, same data, same
+  into a +24.13% selective one on the same engine, same data, same
   cost model. That delta is the AI-native hedge-fund edge, made
   falsifiable.
 - **The current strategy library is asymmetric** — strong long-vol /

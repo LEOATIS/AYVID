@@ -233,37 +233,45 @@ async def map_entities_to_graph(entities: list[dict[str, Any]]) -> int:
     if not companies and not products:
         return 0
 
-    driver = await get_driver()
+    try:
+        driver = await get_driver()
+    except Exception as exc:
+        log.warning(f"Neo4j unavailable for entity mapping: {exc}")
+        return 0
+
     upserted = 0
 
-    async with driver.session(**_session_kwargs()) as session:
-        for company in companies:
-            node = CompanyNode(
-                ticker=company["ticker"],
-                name=company.get("entity"),
-            )
-            await session.run(
-                """
-                MERGE (c:Company {ticker: $ticker})
-                SET c.name = COALESCE($name, c.name),
-                    c.last_updated = datetime()
-                """,
-                ticker=node.ticker,
-                name=node.name,
-            )
-            upserted += 1
+    try:
+        async with driver.session(**_session_kwargs()) as session:
+            for company in companies:
+                node = CompanyNode(
+                    ticker=company["ticker"],
+                    name=company.get("entity"),
+                )
+                await session.run(
+                    """
+                    MERGE (c:Company {ticker: $ticker})
+                    SET c.name = COALESCE($name, c.name),
+                        c.last_updated = datetime()
+                    """,
+                    ticker=node.ticker,
+                    name=node.name,
+                )
+                upserted += 1
 
-        for product in products:
-            await session.run(
-                """
-                MERGE (p:Product {name: $name})
-                SET p.category = $category,
-                    p.last_updated = datetime()
-                """,
-                name=product["entity"],
-                category=product.get("category", "unknown"),
-            )
-            upserted += 1
+            for product in products:
+                await session.run(
+                    """
+                    MERGE (p:Product {name: $name})
+                    SET p.category = $category,
+                        p.last_updated = datetime()
+                    """,
+                    name=product["entity"],
+                    category=product.get("category", "unknown"),
+                )
+                upserted += 1
+    except Exception as exc:
+        log.warning(f"Neo4j entity upsert failed after {upserted} ops: {exc}")
 
     log.info(
         f"Upserted {upserted} entities to Neo4j ({len(companies)} companies, {len(products)} products)"
@@ -581,6 +589,93 @@ def _ticker_frequency(news_items: list[NewsItem]) -> dict[str, int]:
     return freq
 
 
+_SHOCK_GEOGRAPHY_KEYWORDS: dict[str, list[str]] = {
+    "europe": ["russia", "ukraine", "ecb", "eu sanctions", "eurozone", "nato", "brexit", "germany", "france"],
+    "asia_pacific": ["china", "taiwan", "japan", "korea", "semiconductor", "tsmc", "samsung", "xi jinping", "boj"],
+    "middle_east": ["iran", "opec", "red sea", "houthi", "saudi", "strait of hormuz", "israel", "gaza"],
+    "north_america": ["fed", "fomc", "silicon valley bank", "tariff", "us china", "canada", "mexico"],
+    "global": ["covid", "pandemic", "global recession", "world trade", "imf", "world bank"],
+}
+
+
+# ── Multi-asset shock routing tables ──────────────────────────
+# When a shock is detected, these tables map shock types to instruments
+# across ALL asset classes — not just equities. This is the core of the
+# multi-asset wiring: a single shock simultaneously routes to FX, commodities,
+# crypto, ETFs, and bonds.
+
+FX_SHOCK_ROUTING: dict[str, list[str]] = {
+    "central_bank_fed": ["EURUSD", "USDJPY", "GBPUSD", "AUDUSD", "USDCHF"],
+    "central_bank_boj": ["USDJPY", "EURJPY", "AUDJPY", "GBPJPY"],
+    "central_bank_ecb": ["EURUSD", "EURGBP", "EURJPY", "EURCHF"],
+    "china_shock": ["USDCNY", "USDHKD", "AUDUSD", "USDKRW"],
+    "em_crisis": ["USDMXN", "USDBRL", "USDINR", "USDZAR", "USDTRY"],
+    "oil_shock": ["USDCAD", "USDNOK"],
+    "risk_off": ["USDJPY", "USDCHF"],
+    "geopolitical_war": ["USDJPY", "USDCHF", "EURUSD"],
+    "sanctions_tariffs": ["EURUSD", "USDCNY", "USDMXN"],
+}
+
+SHOCK_TO_COMMODITY: dict[str, list[str]] = {
+    "oil_supply": ["CL", "BZ"],
+    "gas_supply": ["NG"],
+    "food_supply": ["ZC", "ZS", "ZW"],
+    "metal_supply": ["GC", "SI", "HG"],
+    "energy_general": ["CL", "NG"],
+    "geopolitical_war": ["NG", "ZW", "ZC", "GC"],
+    "middle_east": ["CL", "BZ", "GC"],
+    "china_shock": ["HG", "ZC", "ZS"],
+    "commodity_shock": ["CL", "GC", "HG"],
+    "supply_chain": ["CL", "HG", "GC"],
+}
+
+SHOCK_TO_CRYPTO: dict[str, list[str]] = {
+    "exchange_hack": ["BTC"],
+    "regulatory_crypto": ["BTC", "ETH"],
+    "defi_exploit": ["ETH", "LINK"],
+    "ai_narrative": ["SOL", "ETH", "LINK", "FIL"],
+    "risk_on_macro": ["BTC", "ETH", "SOL"],
+}
+
+SHOCK_TO_ETF: dict[str, list[str]] = {
+    "semiconductor_shortage": ["SMH", "SOXX"],
+    "energy_shock": ["XLE", "USO", "UNG"],
+    "financial_stress": ["XLF"],
+    "tech_rally": ["QQQ", "XLK", "ARKK"],
+    "safe_haven": ["GLD", "SLV", "TLT", "IEF"],
+    "china_shock": ["FXI", "KWEB", "EEM"],
+    "commodity_shock": ["USO", "UNG", "GLD"],
+    "geopolitical_war": ["GLD", "XLE", "TLT"],
+}
+
+SHOCK_TO_RATES: dict[str, list[str]] = {
+    "central_bank_fed": ["ZB", "ZN", "ZF"],
+    "central_bank_ecb": ["ZN"],
+    "risk_off": ["ZB", "ZN"],
+    "geopolitical_war": ["ZB"],
+    "recovery": ["ZF"],
+}
+
+
+def _classify_shock_geography(
+    news_items: list[NewsItem],
+    families: dict[str, int],
+) -> list[str]:
+    """Tag a shock with geographic regions for index routing."""
+    text_blob = " ".join(
+        (item.title or "").lower() + " " + (item.text or "")[:200].lower()
+        for item in news_items[:20]
+    )
+    geo_hits: list[str] = []
+    for region, keywords in _SHOCK_GEOGRAPHY_KEYWORDS.items():
+        if any(kw in text_blob for kw in keywords):
+            geo_hits.append(region)
+    # If no specific region detected, mark as global
+    if not geo_hits:
+        geo_hits = ["global"]
+    return geo_hits
+
+
 def detect_live_shock(
     news_items: list[NewsItem],
     *,
@@ -679,6 +774,30 @@ def detect_live_shock(
         f"Top tickers mentioned: {', '.join(mentioned[:5]) or 'none'}."
     )
 
+    # Geographic shock routing — tag shock with geographic regions
+    # so the orchestrator can select the right index futures to express through.
+    shock_geography = _classify_shock_geography(news_items, families)
+
+    # Multi-asset routing: determine which instruments across all asset
+    # classes should be activated for this shock type.
+    fx_targets: list[str] = []
+    commodity_targets: list[str] = []
+    crypto_targets: list[str] = []
+    etf_targets: list[str] = []
+    rates_targets: list[str] = []
+    for family_name in families:
+        fx_targets.extend(FX_SHOCK_ROUTING.get(family_name, []))
+        commodity_targets.extend(SHOCK_TO_COMMODITY.get(family_name, []))
+        crypto_targets.extend(SHOCK_TO_CRYPTO.get(family_name, []))
+        etf_targets.extend(SHOCK_TO_ETF.get(family_name, []))
+        rates_targets.extend(SHOCK_TO_RATES.get(family_name, []))
+    # Also route by shock_type
+    fx_targets.extend(FX_SHOCK_ROUTING.get(shock_type, []))
+    commodity_targets.extend(SHOCK_TO_COMMODITY.get(shock_type, []))
+    crypto_targets.extend(SHOCK_TO_CRYPTO.get(shock_type, []))
+    etf_targets.extend(SHOCK_TO_ETF.get(shock_type, []))
+    rates_targets.extend(SHOCK_TO_RATES.get(shock_type, []))
+
     return {
         "shock_type": shock_type,
         "shock_families": families,
@@ -690,6 +809,13 @@ def detect_live_shock(
         "headline_sample": sample,
         "causal_chain": causal_chain,
         "auto_detected": True,
+        "shock_geography": shock_geography,
+        # Multi-asset routing targets
+        "fx_targets": sorted(set(fx_targets)),
+        "commodity_targets": sorted(set(commodity_targets)),
+        "crypto_targets": sorted(set(crypto_targets)),
+        "etf_targets": sorted(set(etf_targets)),
+        "rates_targets": sorted(set(rates_targets)),
         "sanitisation": {
             "hostile_items_in_window": hostile_items,
             "hostile_ratio": round(hostile_ratio, 3),

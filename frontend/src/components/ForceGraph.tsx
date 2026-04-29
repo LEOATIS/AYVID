@@ -360,7 +360,7 @@ function simulatePositions(
   }));
 
   // Concentric target radii per ring; shock anchored to origin.
-  const ringRadius: Record<number, number> = { 0: 0, 1: 170, 2: 300, 3: 420 };
+  const ringRadius: Record<number, number> = { 0: 0, 1: 170, 2: 300, 3: 420, 4: 520 };
 
   const sim = forceSimulation<SimNode>(simNodes)
     .force("link",

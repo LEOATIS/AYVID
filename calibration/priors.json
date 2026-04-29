@@ -553,6 +553,465 @@
         "blocked_by_regime": true,
         "n": 0
       }
+    },
+    "premium_iron_condor": {
+      "CHOPPY__NORMAL": {
+        "blocked_by_regime": false,
+        "min_iv_percentile": 65.0,
+        "min_net_credit_pct": 0.015,
+        "n": 0,
+        "_note": "new \u2014 populate from first walkforward"
+      },
+      "CHOPPY__LOW_VOL": {
+        "blocked_by_regime": false,
+        "min_iv_percentile": 60.0,
+        "n": 0
+      },
+      "MEAN_REVERTING__NORMAL": {
+        "blocked_by_regime": false,
+        "min_iv_percentile": 60.0,
+        "n": 0
+      },
+      "MEAN_REVERTING__HIGH_VOL": {
+        "blocked_by_regime": false,
+        "min_iv_percentile": 55.0,
+        "n": 0
+      },
+      "STRONG_TREND_UP__LOW_VOL": {
+        "blocked_by_regime": true,
+        "_block_reason": "trend bleeds condors"
+      },
+      "STRONG_TREND_DOWN__CRISIS": {
+        "blocked_by_regime": true,
+        "_block_reason": "unlimited risk in gap moves"
+      },
+      "WEAK_TREND_UP__LOW_VOL": {
+        "blocked_by_regime": true,
+        "_block_reason": "trend bleeds condors"
+      }
+    },
+    "premium_credit_spread": {
+      "STRONG_TREND_UP__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "STRONG_TREND_DOWN__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "WEAK_TREND_UP__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "WEAK_TREND_DOWN__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "MEAN_REVERTING__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "MEAN_REVERTING__HIGH_VOL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "CHOPPY__NORMAL": {
+        "blocked_by_regime": true,
+        "_block_reason": "no directional edge in chop"
+      },
+      "STRONG_TREND_DOWN__CRISIS": {
+        "blocked_by_regime": true,
+        "_block_reason": "gap risk"
+      }
+    },
+    "premium_cash_secured_put": {
+      "STRONG_TREND_UP__LOW_VOL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "WEAK_TREND_UP__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "MEAN_REVERTING__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "CHOPPY__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "STRONG_TREND_DOWN__CRISIS": {
+        "blocked_by_regime": true,
+        "_block_reason": "assignment risk in crash"
+      }
+    },
+    "earnings_drift_long": {
+      "STRONG_TREND_UP__LOW_VOL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "STRONG_TREND_UP__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "WEAK_TREND_UP__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "MEAN_REVERTING__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "STRONG_TREND_DOWN__CRISIS": {
+        "blocked_by_regime": true,
+        "_block_reason": "earnings mean nothing in panic"
+      }
+    },
+    "vix_mean_reversion": {
+      "STRONG_TREND_DOWN__CRISIS": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "active only in CRISIS->TRENDING transition"
+      },
+      "WEAK_TREND_DOWN__CRISIS": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "CHOPPY__NORMAL": {
+        "blocked_by_regime": true,
+        "_block_reason": "no VIX spike in calm"
+      },
+      "STRONG_TREND_UP__LOW_VOL": {
+        "blocked_by_regime": true,
+        "_block_reason": "no VIX spike in calm trend"
+      }
+    },
+    "supply_chain_hc": {
+      "CHOPPY__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "CHOPPY__LOW_VOL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "MEAN_REVERTING__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "WEAK_TREND_UP__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "WEAK_TREND_DOWN__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "STRONG_TREND_UP__LOW_VOL": {
+        "blocked_by_regime": false,
+        "n": 0
+      },
+      "STRONG_TREND_DOWN__CRISIS": {
+        "blocked_by_regime": true,
+        "_block_reason": "even high-confidence edges unreliable in crisis"
+      }
+    },
+    "fx_macro_trend": {
+      "STRONG_TREND__HIGH_VOL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "new \u2014 populate from first walkforward run"
+      },
+      "STRONG_TREND__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "new"
+      },
+      "WEAK_TREND__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "new"
+      },
+      "CHOPPY__LOW_VOL": {
+        "blocked_by_regime": true,
+        "n": 0,
+        "_block_reason": "FX macro trend needs directional clarity"
+      },
+      "MEAN_REVERTING__NORMAL": {
+        "blocked_by_regime": true,
+        "n": 0,
+        "_block_reason": "MR regime contradicts trend strategy"
+      }
+    },
+    "fx_carry_trade": {
+      "STRONG_TREND__LOW_VOL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "ideal carry environment"
+      },
+      "WEAK_TREND__LOW_VOL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "acceptable for carry"
+      },
+      "CHOPPY__LOW_VOL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "carry works in low vol"
+      },
+      "STRONG_TREND__HIGH_VOL": {
+        "blocked_by_regime": true,
+        "n": 0,
+        "_block_reason": "carry unwinds in high vol"
+      },
+      "CRISIS__HIGH_VOL": {
+        "blocked_by_regime": true,
+        "n": 0,
+        "_block_reason": "carry crashes in crisis"
+      }
+    },
+    "fx_mean_reversion": {
+      "MEAN_REVERTING__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "ideal MR environment"
+      },
+      "CHOPPY__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "MR works in choppy"
+      },
+      "CHOPPY__LOW_VOL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "MR works in low vol"
+      },
+      "STRONG_TREND__HIGH_VOL": {
+        "blocked_by_regime": true,
+        "n": 0,
+        "_block_reason": "trends crush MR"
+      }
+    },
+    "commodity_supply_shock": {
+      "STRONG_TREND__HIGH_VOL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "shocks create trends"
+      },
+      "WEAK_TREND__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "acceptable"
+      },
+      "CHOPPY__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "shock overrides regime"
+      },
+      "MEAN_REVERTING__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "shock overrides MR"
+      }
+    },
+    "commodity_momentum": {
+      "STRONG_TREND__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "ideal for CTA trend-following"
+      },
+      "STRONG_TREND__HIGH_VOL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "acceptable with wider stops"
+      },
+      "WEAK_TREND__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "marginal but allowed"
+      },
+      "CHOPPY__LOW_VOL": {
+        "blocked_by_regime": true,
+        "n": 0,
+        "_block_reason": "no trend to follow"
+      },
+      "MEAN_REVERTING__NORMAL": {
+        "blocked_by_regime": true,
+        "n": 0,
+        "_block_reason": "MR kills momentum"
+      }
+    },
+    "commodity_seasonal": {
+      "STRONG_TREND__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "seasonal + trend = high WR"
+      },
+      "WEAK_TREND__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "seasonal works across regimes"
+      },
+      "CHOPPY__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "calendar-driven, regime-neutral"
+      },
+      "MEAN_REVERTING__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "seasonal is independent"
+      },
+      "CRISIS__HIGH_VOL": {
+        "blocked_by_regime": true,
+        "n": 0,
+        "_block_reason": "crisis overrides seasonal patterns"
+      }
+    },
+    "crypto_momentum": {
+      "STRONG_TREND__HIGH_VOL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "crypto trends hard in high vol"
+      },
+      "STRONG_TREND__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "ideal crypto momentum"
+      },
+      "CHOPPY__LOW_VOL": {
+        "blocked_by_regime": true,
+        "n": 0,
+        "_block_reason": "no momentum in choppy"
+      },
+      "CRISIS__HIGH_VOL": {
+        "blocked_by_regime": true,
+        "n": 0,
+        "_block_reason": "crypto crashes in macro crisis"
+      }
+    },
+    "crypto_supply_chain": {
+      "STRONG_TREND__HIGH_VOL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "shock-driven crypto"
+      },
+      "WEAK_TREND__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "acceptable"
+      },
+      "CHOPPY__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "shock overrides regime"
+      }
+    },
+    "sector_rotation_etf": {
+      "STRONG_TREND__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "rotation works in trends"
+      },
+      "WEAK_TREND__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "rotation is always active"
+      },
+      "CHOPPY__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "relative strength works in choppy"
+      },
+      "CRISIS__HIGH_VOL": {
+        "blocked_by_regime": true,
+        "n": 0,
+        "_block_reason": "correlations spike in crisis"
+      }
+    },
+    "factor_etf_momentum": {
+      "STRONG_TREND__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "ideal for factor momentum"
+      },
+      "STRONG_TREND__HIGH_VOL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "acceptable"
+      },
+      "CHOPPY__LOW_VOL": {
+        "blocked_by_regime": true,
+        "n": 0,
+        "_block_reason": "no momentum signal"
+      }
+    },
+    "etf_supply_chain_expression": {
+      "STRONG_TREND__HIGH_VOL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "sector ETFs for shock expression"
+      },
+      "WEAK_TREND__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "acceptable"
+      },
+      "CHOPPY__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "shock overrides"
+      },
+      "MEAN_REVERTING__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "shock overrides MR"
+      }
+    },
+    "rates_macro": {
+      "STRONG_TREND__HIGH_VOL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "macro shocks move bonds"
+      },
+      "STRONG_TREND__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "rate trends are strong"
+      },
+      "WEAK_TREND__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "acceptable"
+      },
+      "CHOPPY__LOW_VOL": {
+        "blocked_by_regime": true,
+        "n": 0,
+        "_block_reason": "no directional signal"
+      }
+    },
+    "rates_steepener_flattener": {
+      "STRONG_TREND__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "curve trades in trends"
+      },
+      "WEAK_TREND__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "curve trades work broadly"
+      },
+      "MEAN_REVERTING__NORMAL": {
+        "blocked_by_regime": false,
+        "n": 0,
+        "_note": "MR on curve is valid"
+      },
+      "CRISIS__HIGH_VOL": {
+        "blocked_by_regime": true,
+        "n": 0,
+        "_block_reason": "curve dynamics break in crisis"
+      }
     }
   }
 }

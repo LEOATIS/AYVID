@@ -30,6 +30,7 @@ export default function HomePage() {
       <Capabilities />
       <Comparison />
       <Numbers />
+      <AssetClasses />
       <Voices />
       <Faq />
       <Engage />
@@ -56,12 +57,12 @@ function Identity() {
   const tags = [
     "Causal AI",
     "Agent swarms",
-    "LangGraph",
+    "6 asset classes",
     "Neo4j",
-    "FastAPI",
+    "300+ instruments",
     "Interactive Brokers",
     "Walk-forward backtests",
-    "Risk-limited execution",
+    "Multi-asset execution",
   ];
   const timeline = [
     { role: "AYVID founded", org: "Engine v0 · modular monolith", year: "Apr 2026" },
@@ -122,30 +123,34 @@ function Identity() {
 }
 
 /* ─────────────────────────────────────────────────────────────────
-   Process — 4 numbered cards.  Polo's "How it works" → AYVID's
-   "How alpha is generated".
+   Process — Five-Layer Alpha Architecture.
    ───────────────────────────────────────────────────────────────── */
 function Process() {
   const steps = [
     {
       n: "01",
-      title: "Ingest the world",
-      body: "Live SEC filings, earnings calls, central-bank prints, OPEC headlines, social-media noise. NER + embedding indexes everything in seconds.",
+      title: "Supply-Chain Intelligence",
+      body: "A live Neo4j graph of 12,000+ supplier/customer relationships, dynamically enriched from SEC EDGAR filings. Graph centrality identifies the critical nodes that move markets.",
     },
     {
       n: "02",
-      title: "Map the consequence",
-      body: "A live Neo4j graph of suppliers, customers, indices, and shared inputs propagates each shock N hops outward to find the unobvious beneficiaries and victims.",
+      title: "Shock Detection & Routing",
+      body: "NER pipelines ingest every 10-K, earnings call, and central-bank print in real time. Each shock is classified, geotagged, and routed across 6 asset classes — equities, FX, commodities, crypto, ETFs, and bonds.",
     },
     {
       n: "03",
-      title: "Decide with a swarm",
-      body: "Four LLM specialists — Strategist, Mapper, Auditor, Supervisor — debate every signal. Bayesian reconciliation across them is how we estimate conviction.",
+      title: "Multi-Agent Debate",
+      body: "Four LLM specialists — Strategist, Mapper, Auditor, Supervisor — debate every signal. Bayesian reconciliation across agents is how we estimate conviction. Disagreement itself is a signal.",
     },
     {
       n: "04",
-      title: "Execute end-to-end",
-      body: "Sized, hedged, risk-limited orders route to Interactive Brokers in under 100 ms. A C++ kill-switch watchdog can flatten the book in milliseconds.",
+      title: "Premium Harvest",
+      body: "Signals route to 300+ instruments across 30 exchanges. Sized, hedged, risk-limited orders execute via Interactive Brokers in under 100 ms. Multi-asset cost model with realistic slippage.",
+    },
+    {
+      n: "05",
+      title: "Kill Switch",
+      body: "An independent C++ watchdog runs in its own process. Position-level VaR, drawdown, and concentration limits enforced pre-trade. Can flatten the entire book in milliseconds.",
     },
   ];
   return (
@@ -153,13 +158,13 @@ function Process() {
       <div className="container-page section-y">
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div>
-            <p className="section-label">How it works</p>
+            <p className="section-label">Five-layer alpha architecture</p>
             <h2 className="font-display display-2 mt-4 max-w-2xl text-fg">
-              Process is <em className="not-italic text-brand">everything</em>.
+              From language to <em className="not-italic text-brand">execution</em>.
             </h2>
             <p className="prose-body mt-5 max-w-xl">
-              A simple, four-stage pipeline that turns unstructured language
-              into structured, sized, risk-limited orders.
+              Five layers turn unstructured language into sized, risk-limited
+              orders across every major asset class — fully autonomous.
             </p>
           </div>
           <Link href="/approach" className="pill pill-ghost !text-fg">
@@ -167,13 +172,13 @@ function Process() {
           </Link>
         </div>
 
-        <div className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {steps.map((s) => (
             <article key={s.n} className="process-card">
               <div className="flex items-center gap-4">
                 <span className="process-num num">{s.n}</span>
                 <span className="text-[11px] uppercase tracking-[0.16em] text-subtle">
-                  Step {s.n}
+                  Layer {s.n}
                 </span>
               </div>
               <h3 className="font-display mt-5 text-[22px] leading-tight text-fg">
@@ -248,10 +253,10 @@ function Capabilities() {
           {[
             "Walk-forward backtests",
             "Live shock catalog · 20 events",
-            "Multi-broker adapter",
+            "6 asset classes · 300+ instruments",
+            "Multi-asset cost model",
             "Real-time PnL attribution",
             "Operations console",
-            "Research notes",
           ].map((t) => (
             <span key={t} className="pill pill-ghost">
               {t}
@@ -326,10 +331,10 @@ function Comparison() {
    ───────────────────────────────────────────────────────────────── */
 function Numbers() {
   const stats = [
-    { v: "20",   l: "Named historical shocks",  s: "studied 2018 → 2025" },
-    { v: "4",    l: "Specialist agents",        s: "per signal decision" },
-    { v: "<100", l: "ms tier-1 execution",      s: "to interactive brokers" },
-    { v: "8 yr", l: "Out-of-sample span",       s: "walk-forward, no peeking" },
+    { v: "300+", l: "Instruments",              s: "across 6 asset classes" },
+    { v: "30",   l: "Exchanges worldwide",      s: "US, EU, Asia, EM" },
+    { v: "6",    l: "Asset classes live",        s: "equities · FX · commodities · crypto · ETFs · bonds" },
+    { v: "0",    l: "Human traders",             s: "fully autonomous" },
   ];
   return (
     <section className="border-b border-app">
@@ -354,6 +359,87 @@ function Numbers() {
                 <div className="mt-2 text-[13px] font-medium text-fg">{s.l}</div>
                 <div className="text-[11px] uppercase tracking-[0.14em] text-subtle">{s.s}</div>
               </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Asset Classes — six cards showing what AYVID trades.
+   ───────────────────────────────────────────────────────────────── */
+function AssetClasses() {
+  const classes = [
+    {
+      name: "Equities",
+      instruments: "~50 names",
+      strategies: "Shock-driven long/short, causal beneficiaries",
+      color: "hsl(217 70% 55%)",
+    },
+    {
+      name: "Index F&O",
+      instruments: "20 global indices",
+      strategies: "Hedged macro, straddles, verticals",
+      color: "hsl(262 60% 55%)",
+    },
+    {
+      name: "FX",
+      instruments: "34 pairs",
+      strategies: "Macro trend, carry trade, mean reversion",
+      color: "hsl(150 55% 45%)",
+    },
+    {
+      name: "Commodities",
+      instruments: "17 futures",
+      strategies: "Supply shock, momentum, seasonal edges",
+      color: "hsl(35 80% 50%)",
+    },
+    {
+      name: "Crypto",
+      instruments: "22 assets",
+      strategies: "Momentum, supply-chain expression",
+      color: "hsl(340 65% 55%)",
+    },
+    {
+      name: "ETFs & Bonds",
+      instruments: "37 ETFs + 4 rate futures",
+      strategies: "Sector rotation, factor momentum, rate curve",
+      color: "hsl(190 60% 45%)",
+    },
+  ];
+  return (
+    <section className="border-b border-app bg-[hsl(var(--bg-elev))]">
+      <div className="container-page section-y">
+        <div className="max-w-2xl">
+          <p className="section-label">Asset classes we trade</p>
+          <h2 className="font-display display-2 mt-4 text-fg">
+            One shock. <em className="not-italic text-brand">Six expressions.</em>
+          </h2>
+          <p className="prose-body mt-5">
+            A single geopolitical event simultaneously routes to equities, FX,
+            commodities, crypto, ETFs, and bonds. Multi-asset expression is how
+            we capture the full consequence surface.
+          </p>
+        </div>
+
+        <ul className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {classes.map((c) => (
+            <li key={c.name} className="tile">
+              <div
+                className="h-1.5 w-10 rounded-full"
+                style={{ backgroundColor: c.color }}
+              />
+              <h3 className="font-display mt-5 text-[20px] leading-tight text-fg">
+                {c.name}
+              </h3>
+              <p className="mt-1 text-[12px] font-medium uppercase tracking-[0.12em] text-subtle">
+                {c.instruments}
+              </p>
+              <p className="mt-3 text-[13.5px] leading-relaxed text-muted">
+                {c.strategies}
+              </p>
             </li>
           ))}
         </ul>
@@ -432,7 +518,7 @@ function Faq() {
   const items = [
     {
       q: "What does AYVID actually trade?",
-      a: "Two tracks. (1) Equities across a dynamically screened universe of ~50 names — long/short via shock-driven, causal beneficiaries. (2) Index F&O across ~20 global indices for hedged macro exposure. The operations console shows live positions and signal sources.",
+      a: "Six asset classes across 300+ instruments on 30 exchanges: (1) Equities — long/short via shock-driven causal beneficiaries. (2) Index F&O — hedged macro exposure across 20 global indices. (3) FX — 34 pairs via macro-trend, carry, and mean-reversion. (4) Commodity futures — supply-shock, momentum, and seasonal edges. (5) Crypto — momentum and supply-chain expression on 22 assets. (6) ETFs & bonds — sector rotation, factor momentum, and rate curve trades. The operations console shows live positions and signal sources.",
     },
     {
       q: "Where does the alpha come from?",
@@ -448,7 +534,7 @@ function Faq() {
     },
     {
       q: "What stage are you at?",
-      a: "Production engine, IB Paper-traded, walk-forward backtested 2018→2025 across 20 named historical shocks. We are running paper for the seed round and intend to convert to a regulated structure with first allocator capital.",
+      a: "Production engine trading 6 asset classes, IB Paper-traded, walk-forward backtested 2018→2025 across 20 named historical shocks. 300+ instruments on 30 exchanges, fully autonomous. We are running paper for the seed round and intend to convert to a regulated structure with first allocator capital.",
     },
     {
       q: "How can an allocator engage?",

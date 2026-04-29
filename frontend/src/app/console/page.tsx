@@ -86,7 +86,7 @@ export default function Dashboard() {
       </section>
 
       {/* ── KPIs ─────────────────────────────────────────────── */}
-      <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
         <StatTile
           label="Equity"
           value={fmtMoneyAdaptive(final)}
@@ -117,6 +117,12 @@ export default function Dashboard() {
           hint={runner?.snapshots_total != null ? `${fmtNumber(runner.snapshots_total)} snapshots` : ""}
           icon={<Activity className="h-4 w-4" />}
           loading={!runner}
+        />
+        <StatTile
+          label="Asset classes"
+          value="6"
+          hint="equities · FX · commodities · crypto · ETFs · bonds"
+          icon={<BarChart3 className="h-4 w-4" />}
         />
       </section>
 
@@ -406,8 +412,14 @@ function SignalsList({ signals }: { signals: Signal[] }) {
                   {s.ticker}
                 </span>
                 <Badge variant={long ? "pos" : "neg"}>{s.direction}</Badge>
-                <span className="text-[10px] uppercase tracking-wider text-subtle">
-                  {s.instrument_type}
+                <span className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${
+                  s.instrument_type === "EQUITY" ? "bg-blue-500/20 text-blue-400" :
+                  s.instrument_type === "FX" ? "bg-green-500/20 text-green-400" :
+                  s.instrument_type === "CRYPTO" ? "bg-pink-500/20 text-pink-400" :
+                  s.instrument_type === "ETF" ? "bg-cyan-500/20 text-cyan-400" :
+                  "bg-amber-500/20 text-amber-400"
+                }`}>
+                  {s.instrument_type || "EQUITY"}
                 </span>
               </div>
               {s.rationale && (
@@ -464,6 +476,7 @@ function QuickLinks({ headline }: { headline?: BacktestSummary }) {
     { href: "/console/signals", label: "Signal book", icon: <LineChart className="h-4 w-4" /> },
     { href: "/console/backtests", label: "Backtest reports", icon: <BarChart3 className="h-4 w-4" />, hint: headline ? `latest: ${fmtPct(headline.compounded_return_pct ?? headline.total_return_pct ?? 0)}` : undefined },
     { href: "/console/scenarios", label: "Shock catalog", icon: <Network className="h-4 w-4" /> },
+    { href: "/console/portfolio", label: "Multi-Asset Allocation", icon: <BarChart3 className="h-4 w-4" /> },
   ];
   return (
     <ul className="space-y-1">

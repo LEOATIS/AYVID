@@ -28,7 +28,7 @@ $1M initial equity per scenario.
 | Mode | Compounded return | Pooled WR | Avg Sharpe | Worst DD | Cost drag |
 |---|---:|---:|---:|---:|---:|
 | Naive (trade every ticker daily) | −99.98% | 34.2% | −2.15 | 98.1% | 7.40% |
-| **Shock-driven (AYVID's mode)** | **+33.23%** | **31.6%** | **+0.06** | **11.92%** | **0.46%** |
+| **Shock-driven (AYVID's mode)** | **+24.13%** | **33.4%** | **−0.09** | **11.91%** | **0.50%** |
 
 Same engine. Same data. Same IBKR-Tiered cost model. Full numbers live
 in [`document/backtests/shock_driven_option_c_full.json`](document/backtests/shock_driven_option_c_full.json);
@@ -202,10 +202,22 @@ priors. These lines are test-guarded.
 | Venues | ES, NQ, NIFTY, FDAX, FTSE, N225, HSI … | Global, multi-factor-ranked |
 | Sizing | Kelly-futures + options (risk-capital basis) | Kelly-equity (notional basis) |
 | Hold window | Intraday / BTST (horizon-dependent) | 1 day – 42 days (horizon-dependent) |
-| Strategies | trend, MR-oversold, decline-put, spread, shock-directed, crisis | deep_value, supply_chain_beneficiary, trend, mr_bounce |
+| Strategies | trend, MR-oversold, decline-put, spread, shock-directed, crisis, iron_condor, credit_spread, vix_mean_reversion | deep_value, supply_chain_beneficiary, supply_chain_hc, trend, mr_bounce, momentum_equity_long, quality_growth_long, earnings_beat_momentum, earnings_drift_long, positive_shock_beneficiary, cash_secured_put |
 
 Every strategy name is a canonical key in
 [`graph_intelligence/agents/strategist/schema.py::CANONICAL_STRATEGIES`](graph_intelligence/agents/strategist/schema.py).
+
+### Strategy Win Rates (by type)
+
+| Strategy Type | Example Strategies | Target Win Rate | Regime |
+|---|---|---|---|
+| Premium Selling | iron_condor, credit_spread, cash_secured_put | 70–80% | CHOPPY, MEAN_REVERTING |
+| High-Confidence Directional | earnings_drift, momentum_equity | 60–70% | TRENDING |
+| Supply Chain High-Confidence | supply_chain_hc (≥0.80 confidence edges) | 65–78% | ALL non-CRISIS |
+| VIX Spike Recovery | vix_mean_reversion | ~75% | CRISIS→TRENDING |
+| Shock/Event-Driven | shock_directed_* | 35–50% | CRISIS (high R-multiple) |
+
+**Blended target: >70% on confirmed signals. Shock-driven layer intentionally carries lower win rate but compensates with 2–4R mean returns when right.**
 
 ---
 

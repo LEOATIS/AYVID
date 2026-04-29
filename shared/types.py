@@ -360,6 +360,11 @@ class InstrumentChoice(str, Enum):
     INDEX_CALL = "INDEX_CALL"
     INDEX_PUT = "INDEX_PUT"
     INDEX_SPREAD = "INDEX_SPREAD"
+    FX = "FX"
+    COMMODITY_FUTURE = "COMMODITY_FUTURE"
+    CRYPTO = "CRYPTO"
+    ETF = "ETF"
+    RATE_FUTURE = "RATE_FUTURE"
 
 
 class SizingMethod(str, Enum):

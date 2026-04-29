@@ -106,6 +106,7 @@ def _update_kill_switch() -> None:
             portfolio_equity=_portfolio.total_equity,
             peak_equity=_portfolio.peak_equity,
             max_drawdown_pct=settings.MAX_DRAWDOWN_PCT,
+            max_var_pct=settings.MAX_VAR_PCT,
         )
     except Exception as exc:
         log.debug(f"Kill switch mmap update failed: {exc}")
@@ -242,11 +243,15 @@ async def run_shock_analysis(shock_ticker: str) -> TradeSignal | None:
     max_seq = max((e.sequence_id or 0 for e in events), default=0)
     sequence_registry.register_write("pipeline", max_seq)
 
-    signal = await run_causal_analysis(
-        shock_ticker=shock_ticker,
-        timeline=events,
-        sequence_id=max_seq,
-    )
+    try:
+        signal = await run_causal_analysis(
+            shock_ticker=shock_ticker,
+            timeline=events,
+            sequence_id=max_seq,
+        )
+    except Exception as exc:
+        log.error(f"Causal analysis failed (Neo4j/LLM): {exc}")
+        signal = None
 
     if signal:
         signal = await _apply_strategy_orchestrator(signal, shock_ticker)
@@ -736,12 +741,36 @@ async def execute_signal(
         # conviction so a 0.62 signal gets materially less size than
         # a 0.95 signal even when both clear the supervisor floor.
         conviction=float(signal.confidence),
+        asset_class=signal.asset_class.value,
     )
 
     if shares == 0:
         signal.status = SignalStatus.CANCELLED
         log.info(f"Signal cancelled — Kelly allocation too small for {signal.ticker}")
         return signal
+
+    # Portfolio-level risk check before routing to broker
+    from execution_engine.math.portfolio_risk import get_portfolio_risk_manager
+
+    risk_mgr = get_portfolio_risk_manager()
+    risk_mgr.update_portfolio_state(
+        positions=_portfolio.positions,
+        total_equity=_portfolio.total_equity,
+        peak_equity=_portfolio.peak_equity,
+        daily_pnl_pct=_portfolio.daily_pnl / max(_portfolio.total_equity, 1) * 100,
+    )
+    risk_check = risk_mgr.check_risk(
+        ticker=signal.ticker,
+        asset_class=signal.asset_class.value,
+        proposed_notional=shares * price,
+    )
+    if not risk_check.allowed:
+        signal.status = SignalStatus.CANCELLED
+        log.info(f"[RISK-GATE] {signal.ticker} blocked: {risk_check.reason}")
+        return signal
+    if risk_check.size_reduction < 1.0:
+        shares = max(1, int(shares * risk_check.size_reduction))
+        log.info(f"[RISK-GATE] {signal.ticker} size reduced: {risk_check.reason}")
 
     result = await submit_signal(signal, _portfolio.total_equity, price, shares)
 

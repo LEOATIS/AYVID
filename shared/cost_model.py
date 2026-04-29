@@ -164,13 +164,88 @@ def equity_costs(
     )
 
 
+def fx_costs(
+    pair: str,
+    lot_size: float,
+    holding_days: float = 0,
+) -> TradeCosts:
+    """Round-trip cost for an FX position.
+
+    Uses the spread/cost model from contract_specs.
+    """
+    from shared.contract_specs import FX_SPREAD_PIPS, fx_pip_size
+
+    spread = FX_SPREAD_PIPS.get(pair, 2.0)
+    pip_sz = fx_pip_size(pair)
+    notional = lot_size * 100_000
+    spread_cost_per_side = spread * pip_sz * notional
+    swap_cost = holding_days * 0.00005 * notional
+    return TradeCosts(
+        commission=0.0,  # FX has no separate commission — cost is in spread
+        slippage_entry=spread_cost_per_side,
+        slippage_exit=spread_cost_per_side + swap_cost,
+    )
+
+
+def commodity_futures_costs(
+    symbol: str,
+    entry_price: float,
+    exit_price: float,
+    lots: int,
+) -> TradeCosts:
+    """Round-trip cost for a commodity futures position."""
+    from shared.contract_specs import COMMODITY_CONTRACT_SPECS
+
+    spec = COMMODITY_CONTRACT_SPECS.get(symbol)
+    if spec is None:
+        return TradeCosts(commission=lots * 5.0, slippage_entry=0, slippage_exit=0)
+    commission = lots * 5.0  # $2.50/side × 2
+    slippage_entry = spec.tick_value * 1.0 * lots
+    slippage_exit = spec.tick_value * 1.0 * lots
+    return TradeCosts(
+        commission=commission,
+        slippage_entry=slippage_entry,
+        slippage_exit=slippage_exit,
+    )
+
+
+def crypto_costs(notional: float) -> TradeCosts:
+    """Round-trip cost for a crypto position."""
+    fee_per_side = notional * 0.001  # 0.1% taker
+    spread_per_side = notional * 0.0005  # 0.05% slippage
+    return TradeCosts(
+        commission=fee_per_side * 2,
+        slippage_entry=spread_per_side,
+        slippage_exit=spread_per_side,
+    )
+
+
+def rate_futures_costs(symbol: str, lots: int) -> TradeCosts:
+    """Round-trip cost for a rate/bond futures position."""
+    from shared.contract_specs import RATE_CONTRACT_SPECS
+
+    spec = RATE_CONTRACT_SPECS.get(symbol)
+    tick_val = spec.tick_value if spec else 15.625
+    commission = lots * 5.0
+    slippage = tick_val * 1.0 * lots
+    return TradeCosts(
+        commission=commission,
+        slippage_entry=slippage,
+        slippage_exit=slippage,
+    )
+
+
 COST_DISCLOSURE = """\
 Transaction cost model (IBKR Tiered, conservative):
   - Index options: $0.65/contract per side + 1.5% premium slippage per side
   - Vertical spreads: $0.65/contract per leg per side + 2.25% slippage
   - Index futures (US): $0.85/contract per side + 2bps slippage
   - Index futures (non-US): $1.20/contract per side + 2bps slippage
-  - Equities: $0.0035/share, $0.35 min, capped at 1% notional + 5bps slippage
+  - Equities/ETFs: $0.0035/share, $0.35 min, capped at 1% notional + 5bps slippage
+  - FX: spread-based (0.5-8 pips depending on pair) + overnight swap
+  - Commodity futures: $2.50/contract per side + 1 tick slippage per side
+  - Crypto: 0.1% taker fee per side + 0.05% slippage per side
+  - Rate/bond futures: $2.50/contract per side + 1 tick slippage per side
   - Illiquid indices (HSI, CSI 300, TAIEX, STI, ASX, Bovespa): 2x slippage
 All PnL, Sharpe, win rate, and R-multiple metrics in this report are
 post-cost.

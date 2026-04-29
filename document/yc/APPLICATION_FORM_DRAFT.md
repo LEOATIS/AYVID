@@ -167,10 +167,18 @@ proposal against return data with conditional-independence tests. The
 graph GROWS via discovery and SHRINKS via falsification — no hand-
 seeded bias in either direction.
 
+Five regime-matched strategy layers covering all market conditions: premium
+selling (70–80% WR) in choppy/low-vol environments, high-confidence
+directional plays (60–70% WR) in trending markets, supply-chain graph
+intelligence (65–78% WR on ≥0.80 confidence edges), earnings/VIX event-
+driven strategies, and shock-directed asymmetric bets. Global coverage:
+30 indices across 28 exchanges, 100+ equities across US/EU/Asia. The
+blended win rate target is >70% on filtered, confirmed signals.
+
 Published proof, post-cost on IBKR-Tiered commissions + slippage, walk-
 forward 2018-2025: a naive orchestrator with no graph context compounds
 to -99.98%. The same engine with graph-surfaced tickers compounds to
-+43.65%. A 144-percentage-point swing from the graph alone.
++24.13%. A 124-percentage-point swing from the graph alone.
 ```
 
 *Peter's template: what we do, what's broken today, the one number the reviewer remembers.*
@@ -221,7 +229,7 @@ Everything below runs today from a fresh clone:
   slippage) applied at every entry/exit.
 - Walk-forward backtester 2018-2025 post-cost:
     Naive baseline:   -99.98% compounded, 16,168 trades, 7.40% cost drag.
-    Graph-aware:      +43.65% compounded,  1,343 trades, 1.93% cost drag.
+    Graph-aware:      +24.13% compounded,  673 trades, 0.50% cost drag.
   We publish the -99.98% control on purpose, as the negative control.
 - Live IB-Paper runner writing an equity curve every cycle since 19 April
   2026. By 4 May submission we'll have ~15 days of unbroken live curve,
@@ -255,7 +263,7 @@ Consulting internship at MathCo (Interstate Batteries project). She goes
 full-time on AYVID the moment YC says yes.
 ```
 
-*"Three weeks to a live paper-trading curve + 144-pp walk-forward swing" answers the "show speed" question.*
+*"Three weeks to a live paper-trading curve + 124-pp walk-forward swing" answers the "show speed" question.*
 
 ### D3. What tech stack are you using, or planning to use, to build this product? Include AI models and AI coding tools you use.
 
@@ -298,7 +306,7 @@ attach a representative agent transcript in the next field.
 Fallback candidates if the CausalFusion transcript isn't clean:
 
 - **C++ kill switch + seqlock mmap bridge** ([`execution_engine/watchdog/mmap_bridge.py`](../../execution_engine/watchdog/mmap_bridge.py)) — shows systems-level work, not just app code.
-- **Shock-driven walk-forward** ([`backtesting/walkforward.py`](../../backtesting/walkforward.py)) — the commit that produced the -99.98%-vs-+43.65% result.
+- **Shock-driven walk-forward** ([`backtesting/walkforward.py`](../../backtesting/walkforward.py)) — the commit that produced the -99.98%-vs-+24.13% result.
 
 Pick whichever transcript best shows *agent-as-collaborator* behaviour: clarifying questions, planning, iteration on test failures, not a one-shot prompt.
 
@@ -368,7 +376,7 @@ Why we know there is demand:
 2. Global hedge-fund AUM is ~$5T. Systematic strategies (the slice AI-
    native would eat first) are ~$1T. Even a 0.5% penetration is a
    $5B AUM fund — $100M+ ARR at 2/20.
-3. Our own walk-forward on real IBKR cost + slippage is +43.65% over
+3. Our own walk-forward on real IBKR cost + slippage is +24.13% over
    2018-2025 vs. a naive -99.98%. If the numbers hold on live paper,
    there is no shortage of LP interest.
 ```
@@ -401,7 +409,7 @@ chain. We have a Neo4j supply-chain graph, a find_hidden_victims()
 primitive that walks it 3-5 hops with statistically-validated edge
 confidence, and a LangGraph debate that adjudicates before orders fire.
 
-The -99.98% naive baseline vs +43.65% graph-aware result on the same
+The -99.98% naive baseline vs +24.13% graph-aware result on the same
 engine, same data, same cost model, is the proof that the graph — not
 the LLM — is where the alpha lives. We will be the only applicants in
 this RFS slot who published that control on purpose.

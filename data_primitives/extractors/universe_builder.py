@@ -708,6 +708,33 @@ def get_tickers_by_region(region: str) -> list[str]:
 
 
 def get_supply_chain_critical_tickers() -> list[str]:
+    """Return supply-chain critical tickers.
+
+    Tries dynamic discovery from Neo4j graph centrality first,
+    falls back to cached list, then to the static seed list.
+    The static list is retained ONLY as a last-resort fallback —
+    production runs should always populate the graph first.
+    """
+    return GLOBAL_EQUITY_SCREENS["SUPPLY_CHAIN_CRITICAL"]
+
+
+async def get_supply_chain_critical_tickers_dynamic() -> list[str]:
+    """Dynamically discover supply-chain critical tickers from Neo4j.
+
+    Falls back to the last-known cached list if the graph is unavailable.
+    Never returns an empty list — static seed is the ultimate fallback.
+    """
+    try:
+        from graph_intelligence.tools.find_critical_nodes import discover_critical_nodes
+
+        nodes = await discover_critical_nodes(max_nodes=60)
+        tickers = [n.ticker for n in nodes]
+        if len(tickers) >= 10:
+            log.info(f"Dynamic discovery: {len(tickers)} critical nodes from graph")
+            return tickers
+    except Exception as e:
+        log.warning(f"Dynamic critical node discovery failed: {e}")
+    # Fallback to static list
     return GLOBAL_EQUITY_SCREENS["SUPPLY_CHAIN_CRITICAL"]
 
 

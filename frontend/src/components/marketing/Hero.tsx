@@ -47,9 +47,11 @@ export function Hero() {
               className="wordmark-polo"
               style={{ marginTop: "var(--s-5)" }}
             >
-              <span className="tone-bright">Intelligent</span>
+              <span className="tone-bright">The First Fully</span>
               <br />
-              <span className="tone-mute">Decisions.</span>
+              <span className="tone-bright">Autonomous</span>
+              <br />
+              <span className="tone-mute">AI Hedge Fund.</span>
             </h1>
           </Reveal>
 
@@ -74,11 +76,12 @@ export function Hero() {
                 lineHeight: "var(--lh-body)",
               }}
             >
-              An AI-native hedge fund. Swarms of LLM agents read every 10-K,
-              earnings call, and SEC filing in real time, trace the
-              consequences through a live causal graph of the global economy,
-              and size, hedge, and route the trades —{" "}
-              <strong className="text-fg">end-to-end, no humans on the trade path</strong>.
+              Six asset classes. 300+ instruments. Zero human traders. LLM agent
+              swarms read every 10-K, earnings call, and central-bank print,
+              trace consequences through a live causal graph of the global
+              economy, and route sized, hedged orders across equities, FX,
+              commodities, crypto, ETFs, and bonds —{" "}
+              <strong className="text-fg">end-to-end, fully autonomous</strong>.
             </p>
           </Reveal>
 
@@ -110,10 +113,10 @@ export function Hero() {
                   <b>Live</b>&nbsp;· IB Paper
                 </span>
                 <span>
-                  <b>+36.83%</b>&nbsp;walk-forward 2018&nbsp;→&nbsp;2025
+                  <b>6 asset classes</b>&nbsp;· fully wired
                 </span>
                 <span>
-                  <b>Neo4j</b>&nbsp;· causal graph
+                  <b>Neo4j</b>&nbsp;· causal graph &nbsp;·&nbsp; <b>30 exchanges</b>
                 </span>
               </div>
             </div>

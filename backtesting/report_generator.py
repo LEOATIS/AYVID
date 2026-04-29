@@ -78,6 +78,30 @@ def _format_fno_trade(ft: Any) -> dict[str, Any]:
         base["margin_per_lot"] = d.get("margin_per_lot")
         base["expiry_date"] = d.get("expiry_date")
         base["dte_at_entry"] = d.get("dte_at_entry")
+    elif ft.instrument == "FX":
+        base["pair"] = d.get("pair", ft.underlying)
+        base["entry_rate"] = d.get("entry_rate")
+        base["exit_rate"] = d.get("exit_rate")
+        base["lot_size"] = d.get("lot_size")
+    elif ft.instrument == "COMMODITY_FUTURE":
+        base["contract"] = d.get("contract", ft.underlying)
+        base["entry_price"] = d.get("entry_price")
+        base["exit_price"] = d.get("exit_price")
+        base["tick_value"] = d.get("tick_value")
+    elif ft.instrument == "CRYPTO":
+        base["asset"] = d.get("asset", ft.underlying)
+        base["entry_price"] = d.get("entry_price")
+        base["exit_price"] = d.get("exit_price")
+        base["notional"] = d.get("notional")
+    elif ft.instrument == "ETF":
+        base["ticker"] = d.get("ticker", ft.underlying)
+        base["entry_price"] = d.get("entry_price")
+        base["exit_price"] = d.get("exit_price")
+        base["shares"] = d.get("shares")
+    elif ft.instrument == "RATE_FUTURE":
+        base["contract"] = d.get("contract", ft.underlying)
+        base["tick_value"] = d.get("tick_value")
+        base["margin_per_lot"] = d.get("margin_per_lot")
     return base
 
 
@@ -257,6 +281,62 @@ def _per_index_summary(result: BacktestResult) -> list[dict[str, Any]]:
                 "losses": data["losses"],
                 "win_rate": _safe_round(wr, 1),
                 "roi_pct": _safe_round(roi, 1),
+                "cost": _safe_round(data["cost"]),
+            }
+        )
+    return rows
+
+
+# ── Per-Asset-Class Attribution ────────────────────────────────
+
+
+def _per_asset_class_summary(result: BacktestResult) -> list[dict[str, Any]]:
+    """Aggregate PnL by asset class across all trades."""
+    ASSET_CLASS_MAP = {
+        "INDEX_CALL": "Index F&O",
+        "INDEX_PUT": "Index F&O",
+        "INDEX_SPREAD": "Index F&O",
+        "INDEX_FUTURE": "Index F&O",
+        "FX": "FX",
+        "COMMODITY_FUTURE": "Commodities",
+        "CRYPTO": "Crypto",
+        "ETF": "ETFs",
+        "RATE_FUTURE": "Bonds",
+    }
+    buckets: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {"pnl": 0.0, "trades": 0, "wins": 0, "cost": 0.0}
+    )
+
+    # Equity trades
+    for t in result.trades:
+        b = buckets["Equities"]
+        b["pnl"] += t.pnl
+        b["trades"] += 1
+        if t.pnl > 0:
+            b["wins"] += 1
+
+    # F&O and multi-asset trades
+    for ft in result.fno_trade_log:
+        if ft.exit_date is None:
+            continue
+        cls = ASSET_CLASS_MAP.get(ft.instrument, "Other")
+        b = buckets[cls]
+        b["pnl"] += ft.pnl
+        b["trades"] += 1
+        b["cost"] += ft.entry_cost
+        if ft.pnl > 0:
+            b["wins"] += 1
+
+    rows = []
+    for cls, data in sorted(buckets.items(), key=lambda x: x[1]["pnl"], reverse=True):
+        wr = data["wins"] / data["trades"] * 100 if data["trades"] else 0
+        rows.append(
+            {
+                "asset_class": cls,
+                "pnl": _safe_round(data["pnl"]),
+                "trades": data["trades"],
+                "wins": data["wins"],
+                "win_rate": _safe_round(wr, 1),
                 "cost": _safe_round(data["cost"]),
             }
         )
@@ -478,6 +558,7 @@ def generate_backtest_report(
     report_dict["r_distribution"] = r_dist
     report_dict["strategy_attribution"] = strat_attr
     report_dict["per_index_fno"] = idx_summary
+    report_dict["per_asset_class"] = _per_asset_class_summary(result)
 
     tx_costs = result.extra_stats.get("transaction_costs", {})
     if tx_costs:
@@ -641,6 +722,18 @@ def _render_backtest_txt(report: dict[str, Any]) -> str:
             name = st["strategy"][:35]
             lines.append(
                 f"  {name:<35} ${st['pnl']:>+10,.0f} {st['trades']:>7} {st['win_rate']:>5.0f}%"
+            )
+
+    ac_rows = report.get("per_asset_class", [])
+    if ac_rows:
+        lines.append(f"\n{'─' * w}")
+        lines.append("  PER-ASSET-CLASS ATTRIBUTION")
+        lines.append(f"{'─' * w}")
+        lines.append(f"  {'Asset Class':<20} {'PnL':>12} {'Trades':>7} {'WR%':>6}")
+        lines.append(f"  {'─' * 20} {'─' * 12} {'─' * 7} {'─' * 6}")
+        for ac in ac_rows:
+            lines.append(
+                f"  {ac['asset_class']:<20} ${ac['pnl']:>+10,.0f} {ac['trades']:>7} {ac['win_rate']:>5.0f}%"
             )
 
     idx_rows = report.get("per_index_fno", [])
@@ -1281,3 +1374,108 @@ def _render_markdown(report: dict[str, Any]) -> str:
     lines.append(f"*{report.get('engine', 'AYVID')} — v{report.get('version', '2.0')}*")
     lines.append("")
     return "\n".join(lines)
+
+
+# ── Strategy Win Rate Report ────────────────────────────────
+
+
+_STRATEGY_TYPE_MAP: dict[str, str] = {
+    "shock_directed": "shock_driven",
+    "supply_chain_beneficiary": "shock_driven",
+    "supply_chain_oversold_dip": "shock_driven",
+    "supply_chain_hc": "shock_driven",
+    "premium_iron_condor": "premium",
+    "premium_credit_spread": "premium",
+    "premium_cash_secured_put": "premium",
+    "momentum_equity_long": "directional",
+    "quality_growth_long": "directional",
+    "earnings_beat_momentum": "directional",
+    "earnings_drift_long": "directional",
+    "positive_shock_beneficiary": "directional",
+    "deep_value_investment": "directional",
+    "trend_investment": "directional",
+    "mr_equity_bounce": "directional",
+    "vix_mean_reversion": "directional",
+}
+
+
+def classify_strategy_type(strategy_name: str) -> str:
+    """Classify a strategy name into its type tier."""
+    for prefix, stype in _STRATEGY_TYPE_MAP.items():
+        if strategy_name.startswith(prefix):
+            return stype
+    if strategy_name.startswith("idx_"):
+        return "directional"
+    if strategy_name.startswith("crisis_"):
+        return "shock_driven"
+    return "directional"
+
+
+def strategy_win_rate_report(result: BacktestResult) -> dict[str, Any]:
+    """Produce a per-strategy win rate report sorted by win rate.
+
+    Returns a dict with:
+    - strategies: list of per-strategy rows
+    - blended_win_rate: overall
+    - premium_win_rate, directional_win_rate, shock_win_rate: per-tier
+    """
+    buckets: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {"trades": 0, "wins": 0, "pnl": 0.0, "total_r": 0.0, "r_count": 0}
+    )
+
+    # F&O trades
+    for ft in result.fno_trade_log:
+        name = ft.strategy or "fno_other"
+        b = buckets[name]
+        b["trades"] += 1
+        if ft.pnl > 0:
+            b["wins"] += 1
+        b["pnl"] += ft.pnl
+        r = (ft.details or {}).get("realized_r")
+        if r is not None:
+            b["total_r"] += float(r)
+            b["r_count"] += 1
+
+    # Equity trades
+    for trade in result.trades:
+        name = getattr(trade.signal, "strategy_name", "equity_other") if hasattr(trade, "signal") else "equity_other"
+        b = buckets[name]
+        b["trades"] += 1
+        if trade.pnl > 0:
+            b["wins"] += 1
+        b["pnl"] += trade.pnl
+
+    # Build per-strategy rows
+    rows = []
+    tier_totals: dict[str, dict[str, int]] = defaultdict(lambda: {"trades": 0, "wins": 0})
+    for name, data in sorted(buckets.items(), key=lambda x: (-x[1]["wins"] / max(x[1]["trades"], 1), -x[1]["pnl"])):
+        wr = data["wins"] / data["trades"] * 100 if data["trades"] else 0.0
+        avg_r = data["total_r"] / data["r_count"] if data["r_count"] else None
+        stype = classify_strategy_type(name)
+        tier_totals[stype]["trades"] += data["trades"]
+        tier_totals[stype]["wins"] += data["wins"]
+        rows.append({
+            "strategy": name,
+            "type": stype,
+            "win_rate": round(wr, 1),
+            "mean_r": round(avg_r, 2) if avg_r else None,
+            "trades": data["trades"],
+            "pnl": round(data["pnl"], 2),
+        })
+
+    total_trades = sum(d["trades"] for d in buckets.values())
+    total_wins = sum(d["wins"] for d in buckets.values())
+
+    def _tier_wr(tier: str) -> float:
+        t = tier_totals.get(tier, {"trades": 0, "wins": 0})
+        return round(t["wins"] / max(t["trades"], 1) * 100, 1)
+
+    return {
+        "strategies": rows,
+        "blended_win_rate": round(total_wins / max(total_trades, 1) * 100, 1),
+        "premium_win_rate": _tier_wr("premium"),
+        "directional_win_rate": _tier_wr("directional"),
+        "shock_win_rate": _tier_wr("shock_driven"),
+        "total_trades": total_trades,
+    }
+

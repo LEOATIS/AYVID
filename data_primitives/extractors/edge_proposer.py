@@ -81,6 +81,9 @@ class EdgeProposalCandidate(BaseModel):
     source_filing_url: str = ""
     form_type: str = "10-K"
     proposer_confidence: float = Field(default=0.2, ge=0.0, le=1.0)
+    # Multi-asset extension: asset class for each side of the edge
+    src_asset_class: str = "EQUITY"  # EQUITY|FX|COMMODITY|CRYPTO|ETF|BOND
+    dst_asset_class: str = "EQUITY"
 
 
 class CompetitorProposal(BaseModel):

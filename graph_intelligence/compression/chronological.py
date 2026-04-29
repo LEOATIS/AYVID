@@ -74,9 +74,11 @@ async def compress_daily_batch(
     if not news_items:
         return []
 
+    from data_primitives.security.text_sanitizer import sanitize_news_text
+
     news_block = "\n---\n".join(
-        f"[{item.timestamp.strftime('%H:%M')}] {item.title}"
-        + (f"\n{item.text[:500]}" if item.text else "")
+        f"[{item.timestamp.strftime('%H:%M')}] {sanitize_news_text(item.title or '').clean}"
+        + (f"\n{sanitize_news_text(item.text[:500]).clean}" if item.text else "")
         for item in news_items[:50]
     )
 

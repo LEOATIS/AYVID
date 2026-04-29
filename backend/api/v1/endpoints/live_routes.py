@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 
 from backend.core.security import verify_api_key
 from shared.config import settings
@@ -602,3 +603,112 @@ async def system_status() -> dict[str, Any]:
             "auto_execute": auto_exec,
         },
     }
+
+
+# ── Multi-Asset Allocation ──────────────────────────────────────────
+
+
+@router.get("/allocation")
+async def get_allocation():
+    """Current asset-class allocation breakdown."""
+    positions = {}
+    pos_path = LIVE_DIR / "positions.json"
+    raw = await _read_text_any(pos_path)
+    if raw:
+        positions = json.loads(raw)
+
+    # Bucket positions by asset class
+    allocation: dict[str, dict] = {}
+    items = positions.values() if isinstance(positions, dict) else positions
+    for pos in items:
+        ac = str(pos.get("instrument_type", pos.get("asset_class", "EQUITY"))).upper()
+        if ac not in allocation:
+            allocation[ac] = {"count": 0, "notional": 0.0}
+        allocation[ac]["count"] += 1
+        price = float(pos.get("entry_price", 0) or 0)
+        shares = abs(int(pos.get("shares", pos.get("qty", 1)) or 1))
+        allocation[ac]["notional"] += price * shares
+
+    return {
+        "asset_classes": [
+            {"name": k, "positions": v["count"], "notional": round(v["notional"], 2)}
+            for k, v in sorted(allocation.items())
+        ],
+        "total_positions": sum(v["count"] for v in allocation.values()),
+    }
+
+
+# ── Win Rates by Strategy ──────────────────────────────────────────
+
+
+@router.get("/win-rates")
+async def get_win_rates():
+    """Win rates per strategy from the latest backtest report."""
+    latest_bt = None
+    for bt_dir in sorted(BACKTESTS_DIR.glob("*"), reverse=True):
+        rpt = bt_dir / "backtest_report.json"
+        if rpt.exists():
+            latest_bt = rpt
+            break
+    if not latest_bt:
+        return {"strategies": [], "source": "none"}
+
+    raw = latest_bt.read_text()
+    report = json.loads(raw)
+    strats = report.get("strategy_attribution", [])
+    return {
+        "strategies": [
+            {
+                "name": s["strategy"],
+                "win_rate": s.get("win_rate", 0),
+                "trades": s.get("trades", 0),
+                "pnl": s.get("pnl", 0),
+            }
+            for s in strats
+        ],
+        "source": str(latest_bt.name),
+    }
+
+
+# ── Portfolio Risk Status ───────────────────────────────────────────
+
+
+@router.get("/risk-status")
+async def get_risk_status():
+    """Portfolio-level risk snapshot: exposure, drawdown, per-asset-class limits."""
+    from execution_engine.math.portfolio_risk import get_portfolio_risk_manager
+
+    mgr = get_portfolio_risk_manager()
+    return mgr.get_stats()
+
+
+# ── SSE Agent Activity Feed ─────────────────────────────────────────
+
+
+@router.get("/agent-activity")
+async def agent_activity_sse():
+    """Server-Sent Events stream of agent activity."""
+    import asyncio
+
+    from backend.core.agent_event_bus import get_event_bus
+
+    bus = get_event_bus()
+
+    async def event_generator():
+        # Send recent history first
+        for evt in bus.recent(20):
+            yield f"data: {json.dumps(evt.to_dict())}\n\n"
+
+        # Then stream live events
+        async for evt in bus.subscribe():
+            yield f"data: {json.dumps(evt.to_dict())}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

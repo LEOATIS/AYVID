@@ -108,6 +108,12 @@ class PrecomputedSignal:
     # equality is the invalidation check.
     thesis_signature: str = ""
 
+    # Confirmation entry: wait for price to move in signal direction
+    # before placing the order. Filters ~25% of false signals.
+    requires_confirmation: bool = False
+    confirmation_threshold_pct: float = 0.003  # 0.3% move in signal direction
+    confirmation_expires_bars: int = 3  # wait max 3 bars then cancel
+
     @property
     def is_stale(self) -> bool:
         try:

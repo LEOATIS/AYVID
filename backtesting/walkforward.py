@@ -113,6 +113,8 @@ class ShockDrivenSummary:
     aggregate_compounded_return_pct: float
     aggregate_cagr_pct: float
     avg_trades_per_scenario: float
+    active_period_sharpe: float = 0.0
+    calmar_ratio: float = 0.0
     scenarios: list[ShockResult] = field(default_factory=list)
     generated_at: str = ""
 
@@ -710,6 +712,26 @@ async def run_shock_driven_walkforward(
     aggregate_compounded = (portfolio_equity / initial_equity - 1.0) * 100.0
     cagr = ((portfolio_equity / initial_equity) ** (1.0 / span_years) - 1.0) * 100.0
 
+    # C1: Active-period Sharpe — annualised Sharpe using only the active
+    # trading days across all scenarios (not the dead time between shocks).
+    total_active_days = sum(
+        max((dt.date.fromisoformat(s.end_date) - dt.date.fromisoformat(s.start_date)).days, 1)
+        for s in valid
+    )
+    active_years = max(total_active_days / 252.0, 1e-6)
+    if rets and len(rets) > 1:
+        ret_mean = statistics.mean(rets) / 100.0
+        ret_std = statistics.stdev(rets) / 100.0
+        active_sharpe = round(
+            (ret_mean / max(ret_std, 1e-8)) * np.sqrt(len(valid) / active_years), 2
+        )
+    else:
+        active_sharpe = 0.0
+
+    # C3: Calmar Ratio — CAGR / max drawdown
+    worst_dd = max(dds) if dds else 0.0
+    calmar = round(cagr / max(worst_dd, 1e-6), 2) if worst_dd > 0 else 0.0
+
     summary = ShockDrivenSummary(
         catalog_size=len(SHOCK_SCENARIOS),
         n_run=len(results),
@@ -735,6 +757,8 @@ async def run_shock_driven_walkforward(
         aggregate_compounded_return_pct=round(aggregate_compounded, 2),
         aggregate_cagr_pct=round(cagr, 2),
         avg_trades_per_scenario=round(n_total_trades / max(len(valid), 1), 1),
+        active_period_sharpe=active_sharpe,
+        calmar_ratio=calmar,
         scenarios=results,
         generated_at=dt.datetime.now(dt.UTC).strftime("%Y-%m-%d %H:%M UTC"),
     )

@@ -371,6 +371,19 @@ async def pre_compute_signals(equity_tickers: list[str] | None = None) -> int:
     if equity_tickers:
         all_tickers.extend((t, "EQUITY") for t in equity_tickers[:50])
 
+    # Multi-asset universe: FX, commodity, crypto, ETFs
+    from data_primitives.extractors.universe_builder import (
+        CRYPTO_ASSETS,
+        GLOBAL_EQUITY_SCREENS,
+        MAJOR_FX_PAIRS,
+    )
+    from shared.contract_specs import COMMODITY_CONTRACT_SPECS
+
+    all_tickers.extend((pair[0], "FX") for pair in MAJOR_FX_PAIRS[:20])
+    all_tickers.extend((sym, "COMMODITY") for sym in list(COMMODITY_CONTRACT_SPECS.keys())[:12])
+    all_tickers.extend((sym, "CRYPTO") for sym in CRYPTO_ASSETS[:15])
+    all_tickers.extend((sym, "ETF") for sym in GLOBAL_EQUITY_SCREENS.get("MAJOR_ETFS", [])[:20])
+
     for ticker, asset_class in all_tickers:
         try:
             from data_primitives.extractors.openbb_client import fetch_ohlcv
@@ -786,7 +799,17 @@ async def _emergency_recompute_single(
     # Wire the shock event metadata into MarketContext so the orchestrator's
     # shock-specific paths fire correctly, even when trailing price indicators
     # still show pre-shock equilibrium.
-    asset_class = "INDEX" if ticker.startswith("^") else "EQUITY"
+    # Detect asset class from ticker format
+    _fx_pairs = {"EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD", "USD", "NOK", "SEK", "SGD", "HKD", "MXN", "ZAR", "TRY", "CNH", "INR", "BRL", "KRW", "PLN"}
+    _crypto = {"BTC", "ETH", "SOL", "BNB", "ADA", "XRP", "DOGE", "DOT", "AVAX", "MATIC", "LINK", "UNI", "AAVE", "LTC", "ATOM", "NEAR", "ARB", "OP", "APT", "SUI", "FIL", "INJ"}
+    if ticker.startswith("^"):
+        asset_class = "INDEX"
+    elif len(ticker) == 6 and ticker[:3] in _fx_pairs and ticker[3:] in _fx_pairs:
+        asset_class = "FX"
+    elif ticker in _crypto or ticker.endswith("USD") and ticker[:-3] in _crypto:
+        asset_class = "CRYPTO"
+    else:
+        asset_class = "EQUITY"
     ctx = MarketContext(
         ticker=ticker,
         current_price=price,
@@ -975,7 +998,40 @@ async def start_continuous_pipeline(
         except Exception as exc:
             log.error(f"Pipeline cycle failed: {exc}")
 
+        # Weekly critical-node discovery refresh
+        try:
+            await _maybe_refresh_critical_nodes(_cycle_count)
+        except Exception as exc:
+            log.warning(f"Critical-node refresh failed: {exc}")
+
         await asyncio.sleep(interval_minutes * 60)
+
+
+_WEEKLY_DISCOVERY_INTERVAL = 7 * 24  # cycles between critical node refresh
+_last_discovery_cycle = 0
+
+
+async def _maybe_refresh_critical_nodes(cycle_id: int) -> None:
+    """Run weekly critical-node discovery via graph centrality + SEC EDGAR."""
+    global _last_discovery_cycle
+    if cycle_id - _last_discovery_cycle < _WEEKLY_DISCOVERY_INTERVAL:
+        return
+    _last_discovery_cycle = cycle_id
+    log.info(f"[Cycle {cycle_id}] Weekly critical-node discovery starting")
+    try:
+        from graph_intelligence.tools.find_critical_nodes import get_finder
+
+        finder = get_finder()
+        nodes = await finder.discover_critical_nodes(max_nodes=60)
+        log.info(f"[Cycle {cycle_id}] Discovered {len(nodes)} critical nodes")
+
+        # Update the universe builder's supply-chain-critical list
+        from data_primitives.extractors.universe_builder import GLOBAL_EQUITY_SCREENS
+
+        GLOBAL_EQUITY_SCREENS["SUPPLY_CHAIN_CRITICAL"] = [n.ticker for n in nodes]
+        log.info(f"[Cycle {cycle_id}] Updated SUPPLY_CHAIN_CRITICAL with {len(nodes)} tickers")
+    except Exception as exc:
+        log.warning(f"[Cycle {cycle_id}] Critical-node discovery failed: {exc}")
 
 
 def stop_continuous_pipeline() -> None:

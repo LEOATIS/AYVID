@@ -111,6 +111,10 @@ class Settings(BaseSettings):
     MAX_DRAWDOWN_PCT: float = 3.0
     KELLY_FRACTION: float = 0.5
     MAX_POSITION_PCT: float = 5.0
+    MAX_PORTFOLIO_RISK_PCT: float = 0.30  # total F&O / leveraged capital cap
+    DAILY_PNL_HALT_PCT: float = -2.0  # halt new trades when daily PnL <= this
+    MAX_VAR_PCT: float = 5.0  # VaR kill-switch threshold
+    MAX_GROSS_EXPOSURE: float = 1.5  # max total notional / equity (>1 = leverage)
     PRE_MARKET_DELAY_MINUTES: int = 15
     # Stop-loss / take-profit percentages applied by the bracket-order
     # builder in execution_engine/broker/orders.py. Take-profit is
@@ -157,13 +161,16 @@ class Settings(BaseSettings):
     # trade path.
     SUPERVISOR_MIN_CONFIDENCE: float = 0.55  # LangGraph should_continue retry gate
     SUPERVISOR_MAX_ITERATIONS: int = 4  # P2-30: hard cap on retry loops (was a magic const)
-    BACKTEST_MIN_CONVICTION: float = 0.55  # run_backtest / walk-forward default
-    MIN_CONVICTION_TRADE: float = 0.62  # orchestrator unanimous trade
+    BACKTEST_MIN_CONVICTION: float = 0.60  # run_backtest / walk-forward default (raised from 0.55)
+    MIN_CONVICTION_TRADE: float = 0.65  # orchestrator unanimous trade (raised from 0.62)
     MIN_CONVICTION_AUDITOR: float = 0.72  # auditor approval floor
     MIN_CONVICTION_SUPERMAJORITY: float = 0.78  # 3-of-4 analyst supermajority
     MIN_CONVICTION_CAUSAL_OVERRIDE: float = 0.90  # long-vol / grind-up override
 
-    MIN_FACTOR_SCORE: float = 0.30  # independent-factor confirmation
+    MIN_FACTOR_SCORE: float = 0.30  # independent-factor confirmation (legacy/shock)
+    MIN_FACTOR_SCORE_DIRECTIONAL: float = 0.60  # 6/10 factors for non-shock directional
+    MIN_FACTOR_SCORE_SHOCK: float = 0.30  # keep existing for shock-driven
+    MIN_FACTOR_SCORE_PREMIUM: float = 0.22  # premium strategies only need regime check
     MIN_R_GLOBAL: float = 1.5  # minimum expected reward-to-risk
     EPISTEMIC_DIVERGENCE_THRESHOLD: float = 0.25  # JSD gate on analyst debate
     VRP_RICH_THRESHOLD: float = 0.06  # IV-RV "rich premium" block

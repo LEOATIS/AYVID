@@ -70,11 +70,11 @@ Every PnL number in AYVID is **post-cost** (IBKR-Tiered commissions + symbol-awa
 | Mode | Compounded 2018→2025 | Trades | Avg cost drag | % Sharpe > 1.0 | Best outcome |
 |---|---:|---:|---:|---:|---:|
 | Naive (trade every ticker every day on technicals) | **−99.98%** | 16,168 | 7.40% | 0.0% | −5.78% (90th pct) |
-| **Shock-driven (graph-surfaced tickers, in-window)** | **+43.65%** | 1,343 | 1.93% | 30.0% | **+98.86% (COVID-19)** |
+| **Shock-driven (graph-surfaced tickers, in-window)** | **+24.13%** | 673 | 0.50% | 25.0% | **+23.83% (SVB crisis)** |
 
-Same engine, same data, same cost model — the **144 percentage-point swing** is the measured value of the causal-graph layer. We publish the −99.98% baseline on purpose: it is the expected result of running an event-blind orchestrator at full IBKR cost, and it falsifies the claim that the alpha is "just a clever orchestrator." Full methodology: [`document/backtests/SHOCK_VS_NAIVE_COMPARISON.md`](https://github.com/LEOATIS/AYVID/blob/main/document/backtests/SHOCK_VS_NAIVE_COMPARISON.md).
+Same engine, same data, same cost model — the **124 percentage-point swing** is the measured value of the causal-graph layer. We publish the −99.98% baseline on purpose: it is the expected result of running an event-blind orchestrator at full IBKR cost, and it falsifies the claim that the alpha is "just a clever orchestrator." Full methodology: [`document/backtests/SHOCK_VS_NAIVE_COMPARISON.md`](https://github.com/LEOATIS/AYVID/blob/main/document/backtests/SHOCK_VS_NAIVE_COMPARISON.md).
 
-Honest weakness: the shock-driven profile is **asymmetric long-vol / crisis-alpha** — strong on COVID (+99%), Q4-2018 selloff (+71%), SVB (+29%), DeepSeek (+24%), Russia (+10%), Suez (+2%); weak on rally scenarios (post-COVID −2%, NVIDIA blowout −6%, ChatGPT rally −8%, Trump rally −10%). Documented, quantified, on the near-term roadmap.
+Honest weakness: the shock-driven profile is **asymmetric long-vol / crisis-alpha** — strong on SVB (+23.8%), DeepSeek (+20.9%), Yen Carry (+4.0%), ChatGPT (+4.2%), Suez (+0.5%); weak on rally scenarios (NVIDIA blowout −7.1%, Post-COVID −4.9%, China crackdown −4.2%, Semi correction −3.0%). Documented, quantified, on the near-term roadmap.
 
 ### Also shipped
 

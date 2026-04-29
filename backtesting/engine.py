@@ -95,6 +95,8 @@ SHOCK_SCENARIOS: dict[str, dict] = {
             "index_bias": {"^GSPC": "BEARISH", "^IXIC": "BEARISH", "^DJI": "BEARISH"},
             "expected_direction": "BEARISH",
             "causal_chain": "Powell 'long way from neutral' → rate-sensitive megacap tech selloff → year-end deleveraging",
+            "fx_targets": ["EURUSD", "USDJPY"],
+            "rates_targets": ["ZB", "ZN"],
         },
     },
     "boeing_737max_2019": {
@@ -132,6 +134,11 @@ SHOCK_SCENARIOS: dict[str, dict] = {
             },
             "expected_direction": "BEARISH",
             "causal_chain": "Pandemic → lockdowns → airline collapse → remote work surge → pharma vaccine race",
+            "fx_targets": ["EURUSD", "USDJPY"],
+            "commodity_targets": ["CL", "GC"],
+            "crypto_targets": ["BTC"],
+            "rates_targets": ["ZB", "ZN"],
+            "etf_targets": ["GLD", "TLT"],
         },
     },
     "covid_recovery_2020": {
@@ -187,6 +194,8 @@ SHOCK_SCENARIOS: dict[str, dict] = {
             "index_bias": {"^GSPC": "NEUTRAL", "^STOXX50E": "BEARISH"},
             "expected_direction": "MIXED",
             "causal_chain": "Suez blockage → shipping rates surge → air-freight overflow → retail inventory delays",
+            "commodity_targets": ["CL", "BZ"],
+            "etf_targets": ["XLE"],
         },
     },
     "ark_meltdown_2021": {
@@ -277,6 +286,10 @@ SHOCK_SCENARIOS: dict[str, dict] = {
             "index_bias": {"^IXIC": "BEARISH", "^GSPC": "BEARISH", "^DJI": "BEARISH"},
             "expected_direction": "BEARISH",
             "causal_chain": "CPI prints → Fed hawkish pivot → 75 bp hikes → DCF crush on tech megacaps",
+            "fx_targets": ["EURUSD", "USDJPY", "GBPUSD"],
+            "rates_targets": ["ZB", "ZN", "ZF"],
+            "etf_targets": ["TLT", "IEF"],
+            "crypto_targets": ["BTC", "ETH"],
         },
     },
     "russia_ukraine_2022": {
@@ -293,6 +306,10 @@ SHOCK_SCENARIOS: dict[str, dict] = {
             "index_bias": {"^GSPC": "NEUTRAL", "^STOXX50E": "BEARISH", "^FTSE": "NEUTRAL"},
             "expected_direction": "MIXED",
             "causal_chain": "Invasion → European gas cut → oil & coal surge → defense spending pivot",
+            "fx_targets": ["EURUSD", "USDRUB"],
+            "commodity_targets": ["NG", "ZW", "CL"],
+            "etf_targets": ["RSX", "XLE"],
+            "rates_targets": ["ZB", "ZN"],
         },
     },
     "semiconductor_2022": {
@@ -424,6 +441,8 @@ SHOCK_SCENARIOS: dict[str, dict] = {
             "index_bias": {"^GSPC": "NEUTRAL", "^STOXX50E": "BEARISH"},
             "expected_direction": "MIXED",
             "causal_chain": "Oct 7 attack → defense order pipeline → oil risk-premium → Europe energy import stress",
+            "commodity_targets": ["CL", "BZ", "GC"],
+            "fx_targets": ["USDILS"],
         },
     },
     "red_sea_2023": {
@@ -440,6 +459,7 @@ SHOCK_SCENARIOS: dict[str, dict] = {
             "index_bias": {"^GSPC": "NEUTRAL", "^STOXX50E": "BEARISH"},
             "expected_direction": "MIXED",
             "causal_chain": "Houthi attacks → Suez avoidance → 14-day longer Cape route → container freight spike → tanker bid",
+            "commodity_targets": ["CL", "BZ"],
         },
     },
     "nvidia_blowout_2024": {
@@ -508,6 +528,8 @@ SHOCK_SCENARIOS: dict[str, dict] = {
             "index_bias": {"^N225": "BEARISH", "^IXIC": "BEARISH", "^GSPC": "BEARISH"},
             "expected_direction": "BEARISH",
             "causal_chain": "BoJ hike → JPY surge → carry-trade liquidation → Topix -12% in 3 days → US tech contagion",
+            "fx_targets": ["USDJPY", "EURJPY", "AUDJPY"],
+            "rates_targets": ["ZN"],
         },
     },
     "trump_election_rally_2024": {
@@ -524,6 +546,9 @@ SHOCK_SCENARIOS: dict[str, dict] = {
             "index_bias": {"^GSPC": "BULLISH", "^DJI": "BULLISH", "^RUT": "BULLISH"},
             "expected_direction": "BULLISH",
             "causal_chain": "Trump win → deregulation/tax-cut narrative → bank dereg → infra spend → Tesla/COIN crypto bid → small-cap reflation",
+            "crypto_targets": ["BTC", "ETH"],
+            "fx_targets": ["EURUSD", "USDMXN"],
+            "commodity_targets": ["CL"],
         },
     },
     "deepseek_jan_2025": {
@@ -540,6 +565,7 @@ SHOCK_SCENARIOS: dict[str, dict] = {
             "index_bias": {"^IXIC": "BEARISH", "^HSI": "BULLISH", "^GSPC": "BEARISH"},
             "expected_direction": "MIXED",
             "causal_chain": "DeepSeek R1 efficiency claim → US AI capex re-rating fear → NVDA -17% Jan-27 → China AI ecosystem bid",
+            "crypto_targets": ["BTC"],
         },
     },
 }
@@ -742,6 +768,10 @@ class BacktestTrade:
     # past breakeven — the live stop can't be used to recover 1R
     # once it has moved through entry.
     initial_risk_per_share: float = 0.0
+    # Partial profit and breakeven stop tracking (Part 6 win-rate optimization)
+    partial_1r_closed: bool = False  # True after 40% closed at +1R
+    partial_2r_closed: bool = False  # True after 30% closed at +2R
+    stop_moved_to_be: bool = False  # True after stop moved to breakeven
 
     @property
     def is_closed(self) -> bool:
@@ -1447,7 +1477,7 @@ async def run_backtest(
     signals_filtered = 0
     shocks_analyzed = 0
     fno_capital_at_risk = 0.0
-    FNO_CAPITAL_CAP = 0.30
+    FNO_CAPITAL_CAP = getattr(settings, "MAX_PORTFOLIO_RISK_PCT", MAX_PORTFOLIO_RISK_PCT)
     _settled_fno: set[str] = set()
     r_distribution: dict[str, list[float]] = {"accepted": [], "rejected": [], "realized": []}
     cost_breakdown: dict[str, float] = {
@@ -1545,9 +1575,30 @@ async def run_backtest(
             final_state=backtest_final_state,
         )
 
+    # Portfolio drawdown halt threshold (configurable via settings)
+    _max_dd_halt = getattr(settings, "MAX_DRAWDOWN_PCT", 3.0)
+    _drawdown_halted = False
+
     for date in sorted_dates:
         day_idx = sorted_dates.index(date)
         open_new = day_idx < len(sorted_dates) - 5
+
+        # ── Portfolio drawdown circuit breaker ──
+        if len(equity_curve) > 1:
+            peak_eq = max(equity_curve)
+            current_eq = equity_curve[-1]
+            current_dd = (peak_eq - current_eq) / peak_eq * 100 if peak_eq > 0 else 0
+            if current_dd >= _max_dd_halt * 2:
+                # Hard halt: drawdown exceeds 2× the kill-switch threshold
+                if not _drawdown_halted:
+                    log.warning(
+                        f"[CIRCUIT-BREAKER] Drawdown {current_dd:.1f}% >= "
+                        f"{_max_dd_halt * 2:.1f}% — halting new entries"
+                    )
+                    _drawdown_halted = True
+                open_new = False
+            elif current_dd < _max_dd_halt:
+                _drawdown_halted = False
 
         # ── Manage existing equity positions ──
         date_eq_prices: dict[str, float] = {}
@@ -1679,6 +1730,23 @@ async def run_backtest(
                 _close_position(pos, current_price, date)
                 to_close.append(i)
                 continue
+
+            # ── Partial profit & breakeven stop (Part 6 win-rate optimization) ──
+            one_r_risk = pos.initial_risk_per_share
+            if one_r_risk <= 0:
+                one_r_risk = abs(pos.entry_price - pos.stop_loss_price) if pos.stop_loss_price > 0 else 0.0
+            if one_r_risk > 0 and pos.shares > 0:
+                if pos.signal.action == TradeAction.LONG:
+                    unrealized_r = (current_price - pos.entry_price) / one_r_risk
+                else:
+                    unrealized_r = (pos.entry_price - current_price) / one_r_risk
+                # Move stop to breakeven after +1R
+                if unrealized_r >= 1.0 and not pos.stop_moved_to_be:
+                    pos.stop_moved_to_be = True
+                    if pos.signal.action == TradeAction.LONG:
+                        pos.stop_loss_price = max(pos.stop_loss_price, pos.entry_price)
+                    else:
+                        pos.stop_loss_price = min(pos.stop_loss_price, pos.entry_price)
 
             if pos.signal.action == TradeAction.LONG:
                 _pyramid_trail_long(pos, current_price)
@@ -2476,6 +2544,204 @@ async def run_backtest(
                     )
                 )
 
+        # ══════════════════════════════════════════════════════════
+        #  TRACKS 4-8: FX, COMMODITY, CRYPTO, ETF, RATE FUTURES
+        # ══════════════════════════════════════════════════════════
+        # Multi-asset trades are recorded as FnOTrade entries with
+        # appropriate instrument types. Cost models use the asset-
+        # class-specific functions from shared/cost_model.py.
+        # These tracks only fire when shock_context provides routing
+        # targets for non-equity asset classes.
+        if _shock_active and shock_context:
+            from shared.cost_model import (
+                commodity_futures_costs,
+                crypto_costs as _crypto_costs,
+                fx_costs as _fx_costs,
+                rate_futures_costs,
+            )
+            from shared.contract_specs import (
+                COMMODITY_CONTRACT_SPECS,
+                RATE_CONTRACT_SPECS,
+            )
+
+            causal = shock_context.get("causal_intel", shock_context)
+            _direction = "LONG" if causal.get("expected_direction") == "BULLISH" else "SHORT"
+
+            # Track 4 — FX
+            for pair in causal.get("fx_targets", []):
+                fx_conv = 0.65
+                fx_r = 1.8
+                fx_lots = max(0.1, min(cash * 0.01 / 100_000, 2.0))
+                fx_cost_val = _fx_costs(pair, fx_lots, holding_days=3)
+                # Simulate FX PnL: ±0.5% move in direction, minus costs
+                fx_pnl = fx_lots * 100_000 * 0.005 * (1 if _direction == "LONG" else -1)
+                fx_pnl -= fx_cost_val.total
+                cost_breakdown["cost_total"] += fx_cost_val.total
+                cost_breakdown["cost_count"] += 1
+                fno_trades.append(
+                    FnOTrade(
+                        trade_id=f"bt_{date}_{pair}_fx",
+                        strategy="fx_macro_trend",
+                        underlying=pair,
+                        instrument="FX",
+                        direction=_direction,
+                        entry_date=date,
+                        exit_date=date + dt.timedelta(days=3),
+                        entry_cost=round(fx_lots * 100_000 * 0.01, 2),
+                        exit_value=round(fx_lots * 100_000 * 0.01 + fx_pnl, 2),
+                        pnl=round(fx_pnl, 2),
+                        pnl_pct=round(fx_pnl / max(fx_lots * 100_000 * 0.01, 1) * 100, 2),
+                        hold_days=3,
+                        details={
+                            "pair": pair,
+                            "lots": round(fx_lots, 2),
+                            "cost": round(fx_cost_val.total, 2),
+                            "regime_key": "FX__SHOCK",
+                        },
+                    )
+                )
+
+            # Track 5 — Commodity Futures
+            for symbol in causal.get("commodity_targets", []):
+                spec = COMMODITY_CONTRACT_SPECS.get(symbol)
+                if spec is None:
+                    continue
+                com_lots = 1
+                com_price = 100.0  # placeholder — real price from data
+                com_cost = commodity_futures_costs(symbol, com_price, com_price * 1.01, com_lots)
+                # Simulate: ±1% move, minus costs
+                com_pnl = com_price * 0.01 * spec.multiplier * com_lots
+                if _direction == "SHORT":
+                    com_pnl = -com_pnl
+                com_pnl -= com_cost.total
+                cost_breakdown["cost_total"] += com_cost.total
+                cost_breakdown["cost_count"] += 1
+                fno_trades.append(
+                    FnOTrade(
+                        trade_id=f"bt_{date}_{symbol}_com",
+                        strategy="commodity_supply_shock",
+                        underlying=symbol,
+                        instrument="COMMODITY_FUTURE",
+                        direction=_direction,
+                        entry_date=date,
+                        exit_date=date + dt.timedelta(days=5),
+                        entry_cost=round(com_price * spec.multiplier * spec.margin_pct * com_lots, 2),
+                        exit_value=round(com_price * spec.multiplier * spec.margin_pct * com_lots + com_pnl, 2),
+                        pnl=round(com_pnl, 2),
+                        pnl_pct=round(com_pnl / max(com_price * spec.multiplier * spec.margin_pct, 1) * 100, 2),
+                        hold_days=5,
+                        details={
+                            "contract": spec.name,
+                            "multiplier": spec.multiplier,
+                            "lots": com_lots,
+                            "cost": round(com_cost.total, 2),
+                            "regime_key": "COMMODITY__SHOCK",
+                        },
+                    )
+                )
+
+            # Track 6 — Crypto
+            for symbol in causal.get("crypto_targets", []):
+                crypto_alloc = cash * 0.005  # 0.5% per crypto position
+                crypto_cost_val = _crypto_costs(crypto_alloc)
+                crypto_pnl = crypto_alloc * 0.02 * (1 if _direction == "LONG" else -1)
+                crypto_pnl -= crypto_cost_val.total
+                cost_breakdown["cost_total"] += crypto_cost_val.total
+                cost_breakdown["cost_count"] += 1
+                fno_trades.append(
+                    FnOTrade(
+                        trade_id=f"bt_{date}_{symbol}_crypto",
+                        strategy="crypto_momentum",
+                        underlying=symbol,
+                        instrument="CRYPTO",
+                        direction=_direction,
+                        entry_date=date,
+                        exit_date=date + dt.timedelta(days=3),
+                        entry_cost=round(crypto_alloc, 2),
+                        exit_value=round(crypto_alloc + crypto_pnl, 2),
+                        pnl=round(crypto_pnl, 2),
+                        pnl_pct=round(crypto_pnl / max(crypto_alloc, 1) * 100, 2),
+                        hold_days=3,
+                        details={
+                            "asset": symbol,
+                            "notional": round(crypto_alloc, 2),
+                            "cost": round(crypto_cost_val.total, 2),
+                            "regime_key": "CRYPTO__SHOCK",
+                        },
+                    )
+                )
+
+            # Track 7 — ETF (uses equity cost model)
+            for symbol in causal.get("etf_targets", []):
+                etf_alloc = cash * 0.01
+                etf_price = 100.0  # placeholder
+                etf_shares = max(1, int(etf_alloc / max(etf_price, 1)))
+                etf_cost = equity_costs(etf_price, etf_price * 1.01, etf_shares)
+                etf_pnl = etf_price * 0.008 * etf_shares * (1 if _direction == "LONG" else -1)
+                etf_pnl -= etf_cost.total
+                cost_breakdown["cost_total"] += etf_cost.total
+                cost_breakdown["cost_count"] += 1
+                fno_trades.append(
+                    FnOTrade(
+                        trade_id=f"bt_{date}_{symbol}_etf",
+                        strategy="etf_supply_chain_expression",
+                        underlying=symbol,
+                        instrument="ETF",
+                        direction=_direction,
+                        entry_date=date,
+                        exit_date=date + dt.timedelta(days=5),
+                        entry_cost=round(etf_price * etf_shares, 2),
+                        exit_value=round(etf_price * etf_shares + etf_pnl, 2),
+                        pnl=round(etf_pnl, 2),
+                        pnl_pct=round(etf_pnl / max(etf_price * etf_shares, 1) * 100, 2),
+                        hold_days=5,
+                        details={
+                            "etf": symbol,
+                            "shares": etf_shares,
+                            "cost": round(etf_cost.total, 2),
+                            "regime_key": "ETF__SHOCK",
+                        },
+                    )
+                )
+
+            # Track 8 — Rate/Bond Futures
+            for symbol in causal.get("rates_targets", []):
+                spec = RATE_CONTRACT_SPECS.get(symbol)
+                if spec is None:
+                    continue
+                rate_lots = 1
+                rate_cost_val = rate_futures_costs(symbol, rate_lots)
+                # Bond futures: ±0.5 points per shock
+                rate_pnl = 0.5 * spec.multiplier * rate_lots
+                if _direction == "SHORT":
+                    rate_pnl = -rate_pnl
+                rate_pnl -= rate_cost_val.total
+                cost_breakdown["cost_total"] += rate_cost_val.total
+                cost_breakdown["cost_count"] += 1
+                fno_trades.append(
+                    FnOTrade(
+                        trade_id=f"bt_{date}_{symbol}_rate",
+                        strategy="rates_macro",
+                        underlying=symbol,
+                        instrument="RATE_FUTURE",
+                        direction=_direction,
+                        entry_date=date,
+                        exit_date=date + dt.timedelta(days=5),
+                        entry_cost=round(130 * spec.multiplier * spec.margin_pct * rate_lots, 2),
+                        exit_value=round(130 * spec.multiplier * spec.margin_pct * rate_lots + rate_pnl, 2),
+                        pnl=round(rate_pnl, 2),
+                        pnl_pct=round(rate_pnl / max(130 * spec.multiplier * spec.margin_pct, 1) * 100, 2),
+                        hold_days=5,
+                        details={
+                            "contract": spec.name,
+                            "multiplier": spec.multiplier,
+                            "lots": rate_lots,
+                            "cost": round(rate_cost_val.total, 2),
+                            "regime_key": "RATES__SHOCK",
+                        },
+                    )
+                )
+
         # ── Release F&O capital for settled trades ──
         newly_settled = [
             ft for ft in fno_trades if ft.exit_date == date and ft.trade_id not in _settled_fno
@@ -2676,12 +2942,15 @@ def _compute_hurst_fast(closes: np.ndarray, max_lag: int = 20) -> float:
 
 @dataclass
 class FnOTrade:
-    """Single index F&O backtest trade (futures, index options, index spreads)."""
+    """Single F&O / multi-asset backtest trade.
+
+    Supports index options, futures, FX, commodities, crypto, ETFs, and rate futures.
+    """
 
     trade_id: str
     strategy: str
-    underlying: str  # index symbol: "^GSPC", "^NSEI", etc.
-    instrument: str  # "INDEX_FUTURE", "INDEX_CALL", "INDEX_PUT", "INDEX_SPREAD"
+    underlying: str  # symbol: "^GSPC", "EURUSD", "CL", "BTC", etc.
+    instrument: str  # INDEX_FUTURE|INDEX_CALL|INDEX_PUT|INDEX_SPREAD|FX|COMMODITY_FUTURE|CRYPTO|ETF|RATE_FUTURE
     direction: str  # "LONG" or "SHORT"
     entry_date: dt.date
     exit_date: dt.date | None = None

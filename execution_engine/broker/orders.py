@@ -372,6 +372,20 @@ async def _execute_now(
         stop_loss_price=stop_loss,
     )
 
+    # IBKR Paper tradeable gate — crypto is signal-only (IBKR Paper
+    # doesn't support Paxos). FX, futures, equities, ETFs are all
+    # supported on IBKR Paper.
+    _IBKR_PAPER_UNSUPPORTED = {AssetClass.CRYPTO}
+    if settings.PAPER_TRADING and signal.asset_class in _IBKR_PAPER_UNSUPPORTED:
+        signal.status = SignalStatus.FILLED
+        log.info(
+            f"[SIGNAL-ONLY] {ib_action} {quantity} {signal.ticker} "
+            f"({signal.asset_class.value}) @ ${price:.2f} | "
+            f"IBKR Paper does not support {signal.asset_class.value} — "
+            f"recording signal for tracking only"
+        )
+        return signal
+
     if settings.PAPER_TRADING:
         signal.status = SignalStatus.FILLED
         log.info(
@@ -768,6 +782,7 @@ async def process_queued_orders(portfolio_equity: float) -> list[TradeSignal]:
                 # resubmission path too, so a 0.62 signal doesn't get
                 # full size simply because it was deferred past RTH.
                 conviction=float(signal.confidence),
+                asset_class=signal.asset_class.value,
             )
             if shares == 0:
                 signal.status = SignalStatus.CANCELLED

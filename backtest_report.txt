@@ -1,140 +1,157 @@
 ======================================================================
   AYVID — AI-Native Quantitative Hedge Fund
   Institutional Backtest Report
-  Generated: 2026-04-22 21:56 UTC
+  Generated: 2026-04-29 21:28 UTC
 ======================================================================
+
+  Scenario: Russia-Ukraine Invasion
+  Invasion → energy/commodity surge, defense bid
 
 ──────────────────────────────────────────────────────────────────────
   EXECUTIVE SUMMARY
 ──────────────────────────────────────────────────────────────────────
-  Period:              2026-01-27 → 2026-04-20
+  Period:              2022-02-21 → 2022-05-31
   Initial Equity:      $1,000,000
-  Final Equity:        $966,672.10
-  Total Return:        -3.33%
-  Annualized Return:   +0.00%
-  Sharpe Ratio:        0.00
-  Max Drawdown:        0.0%
-  Win Rate:            29.4%
-  Profit Factor:       0.33
-  Total Trades:        17 (F&O: 17, Equity: 0)
-  Avg Hold Days:       1.0
+  Final Equity:        $354,581.53
+  Total Return:        -64.54%
+  Annualized Return:   -99.82%
+  Sharpe Ratio:        -15.34
+  Max Drawdown:        64.5%
+  Win Rate:            0.7%
+  Profit Factor:       0.00
+  Total Trades:        600 (F&O: 594, Equity: 6)
+  Avg Hold Days:       4.5
 
 ──────────────────────────────────────────────────────────────────────
   RISK METRICS
 ──────────────────────────────────────────────────────────────────────
-  Sortino Ratio:       -2.91
-  Calmar Ratio:        0.00
-  Max Consec. Losses:  4
-  Max Consec. Wins:    2
-  VaR (5% daily):      -0.558%
-  Best Day:            +0.92%
-  Worst Day:           -1.10%
+  Sortino Ratio:       -15.39
+  Calmar Ratio:        -1.55
+  Max Consec. Losses:  594
+  Max Consec. Wins:    3
+  VaR (5% daily):      -4.005%
+  Best Day:            +0.12%
+  Worst Day:           -4.64%
 
 ──────────────────────────────────────────────────────────────────────
   TRANSACTION COSTS (post-cost PnL)
 ──────────────────────────────────────────────────────────────────────
   Model:               IBKR Tiered (post-cost)
-  F&O Commission:      $858
-  F&O Slippage:        $7,147
-  F&O Total:           $8,005
-  Equity Total:        $0
-  All-In Costs:        $8,005
-  Cost Drag:           0.800% of initial equity
-  Round-trips:         17
+  F&O Commission:      $0
+  F&O Slippage:        $0
+  F&O Total:           $13,666
+  Equity Total:        $264
+  All-In Costs:        $13,930
+  Cost Drag:           1.393% of initial equity
+  Round-trips:         600
 
 ──────────────────────────────────────────────────────────────────────
   ALPHA DECOMPOSITION
 ──────────────────────────────────────────────────────────────────────
-  Equity PnL:          $+0  (+0.00%)
-  F&O PnL:             $-33,328  (-3.33%)
-  Total PnL:           $-33,328
-  Contribution:        Equity -0% / F&O 100%
-  Graph Intelligence:  $+0  (+0.00%)
+  Equity PnL:          $-1,191  (-0.12%)
+  F&O PnL:             $-1,149,578  (-114.96%)
+  Total PnL:           $-1,150,769
+  Contribution:        Equity 0% / F&O 100%
+  Graph Intelligence:  $-9,514  (-0.95%)
 
 ──────────────────────────────────────────────────────────────────────
   R-MULTIPLE DISTRIBUTION
 ──────────────────────────────────────────────────────────────────────
-  Trades:              17
-  Mean R:              -0.32
-  Median R:            -0.62
-  25th / 75th:         -1.00 / 0.24
-  % Positive R:        29.4%
+  Trades:              594
+  Mean R:              0.00
+  Median R:            0.00
+  25th / 75th:         0.00 / 0.00
+  % Positive R:        0.0%
 
 ──────────────────────────────────────────────────────────────────────
   STRATEGY ATTRIBUTION
 ──────────────────────────────────────────────────────────────────────
   Strategy                                     PnL  Trades    WR%
   ─────────────────────────────────── ──────────── ─────── ──────
-  idx_bear_spread_fce                 $    +6,337       5    60%
-  idx_bear_spread_sgx_nk              $    -3,318       3    33%
-  idx_decline_put_es                  $    -5,411       1     0%
-  idx_bear_spread_ap                  $    -9,880       2     0%
-  idx_bear_spread_z                   $   -10,368       4    25%
-  idx_bear_spread_smi                 $   -10,688       2     0%
+  supply_chain_beneficiary            $    -1,191       6    67%
+  fx_macro_trend                      $    -7,128     132     0%
+  etf_supply_chain_expression         $    -8,323     132     0%
+  rates_macro                         $   -72,848     132     0%
+  commodity_supply_shock              $-1,061,280     198     0%
+
+──────────────────────────────────────────────────────────────────────
+  PER-ASSET-CLASS ATTRIBUTION
+──────────────────────────────────────────────────────────────────────
+  Asset Class                   PnL  Trades    WR%
+  ──────────────────── ──────────── ─────── ──────
+  Equities             $    -1,191       6    67%
+  FX                   $    -7,128     132     0%
+  ETFs                 $    -8,323     132     0%
+  Bonds                $   -72,848     132     0%
+  Commodities          $-1,061,280     198     0%
 
 ──────────────────────────────────────────────────────────────────────
   PER-INDEX F&O SUMMARY
 ──────────────────────────────────────────────────────────────────────
   Index        Name                            PnL     W/L    WR%
   ──────────── ────────────────────── ──────────── ─────── ──────
-  ^FCHI        CAC 40 Future          $    +6,337     3/2    60%
-  ^STI         SGX Nifty / STI Future $    -3,318     1/2    33%
-  ^GSPC        E-mini S&P 500         $    -5,411     0/1     0%
-  ^AXJO        S&P/ASX 200 Future     $    -9,880     0/2     0%
-  ^FTSE        FTSE 100 Future        $   -10,368     1/3    25%
-  ^SSMI        Swiss Market Future    $   -10,688     0/2     0%
+  EURUSD       EURUSD                 $    -3,465    0/66     0%
+  USDRUB       USDRUB                 $    -3,663    0/66     0%
+  RSX          RSX                    $    -4,161    0/66     0%
+  XLE          XLE                    $    -4,161    0/66     0%
+  ZN           ZN                     $   -35,392    0/66     0%
+  ZB           ZB                     $   -37,455    0/66     0%
+  CL           CL                     $   -67,650    0/66     0%
+  ZW           ZW                     $  -331,980    0/66     0%
+  NG           NG                     $  -661,650    0/66     0%
 
 ──────────────────────────────────────────────────────────────────────
   TOP F&O TRADES (by |PnL|)
 ──────────────────────────────────────────────────────────────────────
-  ^FCHI      INDEX_SPREAD   LONG   [INTRADAY]
-    Spot: 8,580.75 → 8,394.32 | 8,598/8,483 PE Spread | Width: 115
-    Debit: 46.46 (Long: 109.39, Short: 62.93) → Exit: 114.86 | Lots: 18
-    PnL: $+8,833 (+97.8%) | R=+1.63 | 1R=$5,419 | eod_close | conv=0.74
+  NG         COMMODITY_FUTURE SHORT  [INTRADAY]
+    PnL: $-10,025 (-16.7%) |  |  |  | 
 
-  ^FTSE      INDEX_SPREAD   LONG   [INTRADAY]
-    Spot: 10,806.40 → 10,846.70 | 10,828/10,674 PE Spread | Width: 154
-    Debit: 61.54 (Long: 142.63, Short: 81.09) → Exit: 0.00 | Lots: 12
-    PnL: $-5,627 (-60.0%) | R=-1.00 | 1R=$5,627 | eod_close | conv=0.76
+  NG         COMMODITY_FUTURE SHORT  [INTRADAY]
+    PnL: $-10,025 (-16.7%) |  |  |  | 
 
-  ^AXJO      INDEX_SPREAD   LONG   [INTRADAY]
-    Spot: 8,933.90 → 8,966.10 | 8,952/8,854 PE Spread | Width: 98
-    Debit: 40.87 (Long: 117.92, Short: 77.05) → Exit: 0.00 | Lots: 14
-    PnL: $-5,578 (-60.0%) | R=-1.00 | 1R=$5,578 | eod_close | conv=0.73
+  NG         COMMODITY_FUTURE SHORT  [INTRADAY]
+    PnL: $-10,025 (-16.7%) |  |  |  | 
 
-  ^GSPC      INDEX_PUT      LONG   [INTRADAY]
-    Spot: 6,506.48 → 6,581.00 | Strike: 6,572 PE | IV: 13.3% | DTE: 7
-    Premium: 90.19 → 0.00 | Lots: 2 | Expiry: 2026-03-27
-    PnL: $-5,411 (-60.0%) | R=-1.00 | 1R=$5,411 | eod_close | conv=0.78
+  NG         COMMODITY_FUTURE SHORT  [INTRADAY]
+    PnL: $-10,025 (-16.7%) |  |  |  | 
 
-  ^SSMI      INDEX_SPREAD   LONG   [INTRADAY]
-    Spot: 13,859.76 → 13,871.06 | 13,887/13,704 PE Spread | Width: 184
-    Debit: 74.50 (Long: 197.03, Short: 122.53) → Exit: 16.42 | Lots: 11
-    PnL: $-5,409 (-60.0%) | R=-1.00 | 1R=$5,409 | eod_close | conv=0.73
+  NG         COMMODITY_FUTURE SHORT  [INTRADAY]
+    PnL: $-10,025 (-16.7%) |  |  |  | 
 
-  ^STI       INDEX_SPREAD   LONG   [INTRADAY]
-    Spot: 4,909.34 → 4,930.03 | 4,919/4,862 PE Spread | Width: 57
-    Debit: 23.69 (Long: 64.80, Short: 41.11) → Exit: 0.00 | Lots: 51
-    PnL: $-5,365 (-60.0%) | R=-1.00 | 1R=$5,365 | eod_close | conv=0.70
+  NG         COMMODITY_FUTURE SHORT  [INTRADAY]
+    PnL: $-10,025 (-16.7%) |  |  |  | 
 
-  ^FTSE      INDEX_SPREAD   LONG   [INTRADAY]
-    Spot: 10,627.00 → 10,686.90 | 10,648/10,469 PE Spread | Width: 179
-    Debit: 69.46 (Long: 153.06, Short: 83.59) → Exit: 0.00 | Lots: 10
-    PnL: $-5,293 (-60.0%) | R=-1.00 | 1R=$5,293 | eod_close | conv=0.72
+  NG         COMMODITY_FUTURE SHORT  [INTRADAY]
+    PnL: $-10,025 (-16.7%) |  |  |  | 
 
-  ^SSMI      INDEX_SPREAD   LONG   [INTRADAY]
-    Spot: 13,600.67 → 13,656.00 | 13,628/13,405 PE Spread | Width: 223
-    Debit: 80.00 (Long: 112.74, Short: 32.74) → Exit: 0.00 | Lots: 10
-    PnL: $-5,280 (-60.0%) | R=-1.00 | 1R=$5,280 | eod_close | conv=0.70
+  NG         COMMODITY_FUTURE SHORT  [INTRADAY]
+    PnL: $-10,025 (-16.7%) |  |  |  | 
 
-  ^AXJO      INDEX_SPREAD   LONG   [INTRADAY]
-    Spot: 8,941.60 → 8,933.90 | 8,959/8,864 PE Spread | Width: 96
-    Debit: 40.11 (Long: 119.94, Short: 79.83) → Exit: 25.58 | Lots: 15
-    PnL: $-4,302 (-44.0%) | R=-0.73 | 1R=$5,866 | eod_close | conv=0.74
+  NG         COMMODITY_FUTURE SHORT  [INTRADAY]
+    PnL: $-10,025 (-16.7%) |  |  |  | 
 
-  ^FCHI      INDEX_SPREAD   LONG   [INTRADAY]
-    Spot: 8,515.49 → 8,497.17 | 8,533/8,399 PE Spread | Width: 134
-    Debit: 52.67 (Long: 121.05, Short: 68.38) → Exit: 35.35 | Lots: 16
-    PnL: $-3,377 (-37.1%) | R=-0.62 | 1R=$5,461 | eod_close | conv=0.71
+  NG         COMMODITY_FUTURE SHORT  [INTRADAY]
+    PnL: $-10,025 (-16.7%) |  |  |  | 
+
+──────────────────────────────────────────────────────────────────────
+  TOP EQUITY TRADES (by |PnL|)
+──────────────────────────────────────────────────────────────────────
+  LMT        LONG   | Entry: $466.15 → $448.99 | Shares: 96
+    PnL: $-1,692 (-3.8%) | 1d | [supply_chain_beneficiary] Supply chain beneficiar
+
+  GLEN.L     LONG   | Entry: $476.50 → $460.65 | Shares: 99
+    PnL: $-1,616 (-3.4%) | 1d | [supply_chain_beneficiary] Supply chain beneficiar
+
+  GLEN.L     LONG   | Entry: $498.00 → $511.30 | Shares: 89
+    PnL: $+1,138 (+2.6%) | 1d | [supply_chain_beneficiary] Supply chain beneficiar
+
+  LMT        LONG   | Entry: $458.15 → $466.15 | Shares: 103
+    PnL: $+776 (+1.6%) | 3d | [supply_chain_beneficiary] Supply chain beneficiar
+
+  BP.L       LONG   | Entry: $401.15 → $403.15 | Shares: 74
+    PnL: $+118 (+0.4%) | 1d | [supply_chain_beneficiary] Supply chain beneficiar
+
+  GLEN.L     LONG   | Entry: $474.85 → $476.20 | Shares: 99
+    PnL: $+86 (+0.2%) | 1d | [supply_chain_beneficiary] Supply chain beneficiar
 
 ======================================================================

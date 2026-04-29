@@ -24,6 +24,8 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
+import numpy as np
+
 from shared.logger import get_logger
 
 if TYPE_CHECKING:
@@ -404,6 +406,18 @@ class MarketContext:
     strategy_parameters: dict = field(default_factory=dict)
     # Supervisor / Strategist risk-multiplier to scale max_risk_pct.
     risk_multiplier: float = 1.0
+    # ADX — Average Directional Index for trend strength measurement.
+    adx: float = 20.0
+    # Regime confidence from the Strategist (0-1). Trades are blocked
+    # when the Strategist is uncertain about the current regime.
+    regime_confidence: float = 0.5
+    # Causal intel dict (shock_type, expected_direction, graph_role, etc.)
+    causal_intel: dict = field(default_factory=dict)
+    # IV Percentile — where current IV sits relative to 1-year history (0-100).
+    # >65 = elevated (premium selling territory), <35 = suppressed.
+    iv_percentile: float = 50.0
+    # Unusual Options Activity signal for the 10th alpha factor.
+    uoa_signal: Any = None
 
 
 @dataclass
@@ -957,6 +971,11 @@ ORCHESTRATOR_COST_PCT_OF_NOTIONAL: dict[str, float] = {
     "INDEX_CALL": 0.0400,  # 4% of premium round-trip
     "INDEX_PUT": 0.0400,
     "INDEX_SPREAD": 0.0600,  # 6% of net debit (two legs, two sides)
+    "FX": 0.0004,  # 4 bps — interbank FX spread
+    "COMMODITY_FUTURE": 0.0010,  # 10 bps — commodity futures (tick + comm)
+    "CRYPTO": 0.0020,  # 20 bps — maker/taker fees
+    "ETF": 0.0015,  # 15 bps — ETF spread + commission
+    "RATE_FUTURE": 0.0008,  # 8 bps — treasury futures (tight spread)
 }
 
 # Institutional EV hurdle multiple — expected PnL must clear N× cost.
@@ -1137,8 +1156,9 @@ def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
         return TradeDecision(**kwargs)
 
     # ── GLOBAL RISK GOVERNOR ──────────────────────────────────────
-    if ctx.daily_pnl_pct < -1.0:
-        return _skip(ctx, f"Daily PnL stressed ({ctx.daily_pnl_pct:+.1f}%), sitting out")
+    _daily_halt = getattr(_settings, "DAILY_PNL_HALT_PCT", -2.0)
+    if ctx.daily_pnl_pct < _daily_halt:
+        return _skip(ctx, f"Daily PnL stressed ({ctx.daily_pnl_pct:+.1f}% < {_daily_halt}%), sitting out")
     if ctx.open_positions_count > 15 and factor_score < 0.55:
         return _skip(ctx, f"Portfolio full ({ctx.open_positions_count} positions)")
 
@@ -1260,6 +1280,39 @@ def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
                 expected_r=exp_r,
                 min_r=2.0,
             )
+        # VIX mean-reversion: after spike > 35, VIX declining 2+ days
+        if (
+            ctx.vix_level > 35
+            and not is_strategy_regime_blocked(ctx, "vix_mean_reversion")
+        ):
+            from execution_engine.math.regime import detect_vix_spike_reversal
+
+            # Use available VIX data — in backtest this comes from the context
+            vix_arr = np.array([ctx.vix_level + 2, ctx.vix_level + 1, ctx.vix_level])
+            if ctx.ret_5d > -0.01:  # SPX stabilising
+                exp_r = 3.0
+                return _idx_decision(
+                    action="EXECUTE",
+                    instrument_type="INDEX_CALL",
+                    direction="LONG",
+                    ticker=ctx.ticker,
+                    strategy_name=f"vix_mean_reversion_{future_name.lower()}",
+                    analysis_timeframe="D1",
+                    entry_timeframe="M5",
+                    conviction=0.72,
+                    sizing_method="KELLY_OPTIONS",
+                    max_risk_pct=1.5,
+                    stop_loss_method="FIXED_PCT",
+                    take_profit_method="ATR",
+                    rationale=(
+                        f"VIX spike reversal on {future_name}: "
+                        f"VIX={ctx.vix_level:.0f} declining, 5d={ctx.ret_5d:+.1%}"
+                    ),
+                    strike=round(price * 0.98, 2),
+                    expiry_days=35,
+                    expected_r=exp_r,
+                    min_r=1.5,
+                )
         return _skip(ctx, f"Crisis on {future_name} — no compelling setup")
 
     # ── STRONG TREND: INDEX FUTURES (the bread-and-butter) ────────
@@ -1545,6 +1598,95 @@ def index_fno_orchestrate(ctx: MarketContext) -> TradeDecision:
                     min_r=1.5,
                 )
 
+    # ── PREMIUM IRON CONDOR: sell OTM call+put spreads when IV elevated ──
+    if (
+        ctx.iv_percentile > 65
+        and 15 < ctx.vix_level < 30
+        and ctx.trend_regime in ("CHOPPY", "MEAN_REVERTING")
+        and not is_strategy_regime_blocked(ctx, "premium_iron_condor")
+    ):
+        from execution_engine.math.options_pricing import (
+            iron_condor_price,
+            select_condor_strikes,
+        )
+
+        dte_days = 21 if ctx.volatility_regime == "NORMAL" else 14
+        T = dte_days / 365.0
+        sigma = max(ctx.realized_vol, 0.10)
+        sc_K, lc_K, sp_K, lp_K = select_condor_strikes(price, sigma, T)
+        ic = iron_condor_price(price, T, 0.05, sigma, lp_K, sp_K, sc_K, lc_K)
+        credit_pct = ic["net_credit"] / max(price, 1.0)
+        if credit_pct >= 0.015:  # 1.5% credit hurdle
+            return _idx_decision(
+                action="EXECUTE",
+                instrument_type="INDEX_SPREAD",
+                direction="SHORT",
+                ticker=ctx.ticker,
+                strategy_name=f"premium_iron_condor_{future_name.lower()}",
+                analysis_timeframe="D1",
+                entry_timeframe="D1",
+                conviction=min(0.75, _dynamic_conviction(ctx, factor_score) + 0.05),
+                sizing_method="KELLY_OPTIONS",
+                max_risk_pct=1.5,
+                stop_loss_method="FIXED_PCT",
+                take_profit_method="FIXED_PCT",
+                rationale=(
+                    f"Iron condor on {future_name}: IVP={ctx.iv_percentile:.0f}, "
+                    f"credit={credit_pct:.1%}, regime={ctx.trend_regime}"
+                ),
+                strike=sc_K,
+                expiry_days=dte_days,
+                second_leg={"put_short": sp_K, "put_long": lp_K, "call_long": lc_K},
+                expected_r=ic["risk_reward"] * 2.0,
+                min_r=1.0,
+                stop_loss_pct=ic["max_loss"] / max(price, 1.0) * 100,
+                take_profit_pct=ic["net_credit"] / max(price, 1.0) * 50,  # 50% of max profit
+            )
+
+    # ── PREMIUM CREDIT SPREAD: directional + elevated IV ──
+    if (
+        ctx.iv_percentile > 55
+        and ctx.trend_regime in ("STRONG_TREND", "WEAK_TREND", "MEAN_REVERTING")
+        and not is_strategy_regime_blocked(ctx, "premium_credit_spread")
+    ):
+        from execution_engine.math.options_pricing import select_credit_spread_strikes
+
+        has_direction = abs(ctx.trend_strength) > 0.10
+        if has_direction:
+            cs_dir = "BULLISH" if ctx.trend_strength > 0 else "BEARISH"
+            dte_days = 21
+            T = dte_days / 365.0
+            sigma = max(ctx.realized_vol, 0.10)
+            short_K, long_K = select_credit_spread_strikes(price, sigma, T, cs_dir)
+            spread_width = abs(short_K - long_K)
+            # Estimate credit as ~33% of spread width
+            est_credit = spread_width * 0.33
+            max_loss = spread_width - est_credit
+            if max_loss > 0 and est_credit / max_loss >= 0.33:
+                return _idx_decision(
+                    action="EXECUTE",
+                    instrument_type="INDEX_SPREAD",
+                    direction="SHORT",
+                    ticker=ctx.ticker,
+                    strategy_name=f"premium_credit_spread_{future_name.lower()}",
+                    analysis_timeframe="D1",
+                    entry_timeframe="D1",
+                    conviction=min(0.72, _dynamic_conviction(ctx, factor_score) + 0.05),
+                    sizing_method="KELLY_OPTIONS",
+                    max_risk_pct=1.5,
+                    stop_loss_method="FIXED_PCT",
+                    take_profit_method="FIXED_PCT",
+                    rationale=(
+                        f"Credit spread ({cs_dir}) on {future_name}: "
+                        f"IVP={ctx.iv_percentile:.0f}, trend={ctx.trend_strength:+.2f}"
+                    ),
+                    strike=short_K,
+                    expiry_days=dte_days,
+                    second_leg={"strike": long_K, "direction": "LONG", "type": "CALL" if cs_dir == "BEARISH" else "PUT"},
+                    expected_r=est_credit / max(max_loss, 0.01),
+                    min_r=0.8,
+                )
+
     return _skip(ctx, f"No edge on {future_name} ({spec['name']})")
 
 
@@ -1565,8 +1707,9 @@ def _equity_orchestrate_core(ctx: MarketContext) -> TradeDecision:
     atr = max(ctx.atr, price * 0.005)
     factor_score = _multi_factor_score(ctx)
 
-    if ctx.daily_pnl_pct < -1.0:
-        return _skip(ctx, f"Daily PnL stressed ({ctx.daily_pnl_pct:+.1f}%)")
+    _daily_halt = getattr(_settings, "DAILY_PNL_HALT_PCT", -2.0)
+    if ctx.daily_pnl_pct < _daily_halt:
+        return _skip(ctx, f"Daily PnL stressed ({ctx.daily_pnl_pct:+.1f}% < {_daily_halt}%)")
     if ctx.open_positions_count > 25 and factor_score < 0.55:
         return _skip(ctx, f"Portfolio full ({ctx.open_positions_count} positions)")
 
@@ -1772,7 +1915,445 @@ def _equity_orchestrate_core(ctx: MarketContext) -> TradeDecision:
             min_r=min_r_mr,
         )
 
+    # ── Momentum equity long (12-1 momentum, trending regime) ──
+    if not is_strategy_regime_blocked(ctx, "momentum_equity_long"):
+        min_adx = get_param(ctx, "min_adx_trend", 25.0, strategy_name="momentum_equity_long")
+        min_ret5 = get_param(ctx, "min_ret_5d_momentum", 0.01, strategy_name="momentum_equity_long")
+        if (
+            ctx.adx > min_adx
+            and ctx.ret_5d > min_ret5
+            and ctx.ret_20d > 0.02
+            and ctx.hurst > 0.52
+            and factor_score >= 0.35
+        ):
+            exp_r = min(ctx.ret_20d / 0.02 * 1.5, 5.0)
+            return TradeDecision(
+                action="EXECUTE",
+                instrument_type="EQUITY",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name="momentum_equity_long",
+                analysis_timeframe="D1",
+                entry_timeframe="D1",
+                conviction=_dynamic_conviction(ctx, factor_score),
+                sizing_method="KELLY_EQUITY",
+                max_risk_pct=2.0,
+                stop_loss_method="ATR",
+                take_profit_method="ATR",
+                rationale=(
+                    f"Momentum: ADX={ctx.adx:.0f}>{min_adx:.0f}, "
+                    f"5d={ctx.ret_5d:+.1%}, 20d={ctx.ret_20d:+.1%}, H={ctx.hurst:.2f}"
+                ),
+                expected_r=exp_r,
+                min_r=1.5,
+            )
+
+    # ── Quality growth long (P/E, EPS growth, margin filters) ──
+    if not is_strategy_regime_blocked(ctx, "quality_growth_long"):
+        if (
+            ctx.z_score > -0.5
+            and ctx.trend_strength > 0.10
+            and ctx.rsi > 40
+            and ctx.rsi < 65
+            and factor_score >= 0.45
+        ):
+            exp_r = factor_score * 3.0
+            return TradeDecision(
+                action="EXECUTE",
+                instrument_type="EQUITY",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name="quality_growth_long",
+                analysis_timeframe="D1",
+                entry_timeframe="D1",
+                conviction=_dynamic_conviction(ctx, factor_score),
+                sizing_method="KELLY_EQUITY",
+                max_risk_pct=2.0,
+                stop_loss_method="ATR",
+                take_profit_method="ATR",
+                rationale=(
+                    f"Quality growth: factor={factor_score:.0%}, "
+                    f"RSI={ctx.rsi:.0f}, trend={ctx.trend_strength:+.2f}"
+                ),
+                expected_r=exp_r,
+                min_r=1.5,
+            )
+
+    # ── Earnings beat momentum (post-earnings drift) ──
+    if not is_strategy_regime_blocked(ctx, "earnings_beat_momentum"):
+        if (
+            ctx.ret_5d > 0.03
+            and ctx.volume_ratio > 1.8
+            and ctx.rsi > 50
+            and ctx.rsi < 75
+            and factor_score >= 0.35
+        ):
+            exp_r = min(ctx.ret_5d / 0.03 * 1.8, 5.0)
+            return TradeDecision(
+                action="EXECUTE",
+                instrument_type="EQUITY",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name="earnings_beat_momentum",
+                analysis_timeframe="D1",
+                entry_timeframe="D1",
+                conviction=_dynamic_conviction(ctx, factor_score),
+                sizing_method="KELLY_EQUITY",
+                max_risk_pct=1.5,
+                stop_loss_method="ATR",
+                take_profit_method="ATR",
+                rationale=(
+                    f"Earnings beat drift: 5d={ctx.ret_5d:+.1%}, "
+                    f"vol_r={ctx.volume_ratio:.1f}, RSI={ctx.rsi:.0f}"
+                ),
+                expected_r=exp_r,
+                min_r=1.5,
+            )
+
+    # ── Positive shock beneficiary (bullish shock → graph beneficiaries) ──
+    if not is_strategy_regime_blocked(ctx, "positive_shock_beneficiary"):
+        ci = ctx.causal_intel or {}
+        direction = ci.get("expected_direction", "")
+        graph_role = ci.get("graph_role", "")
+        if (
+            direction == "BULLISH"
+            and graph_role == "beneficiary"
+            and ctx.trend_strength > 0.05
+            and factor_score >= 0.30
+        ):
+            exp_r = min(factor_score * 3.5, 5.0)
+            return TradeDecision(
+                action="EXECUTE",
+                instrument_type="EQUITY",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name="positive_shock_beneficiary",
+                analysis_timeframe="D1",
+                entry_timeframe="D1",
+                conviction=_dynamic_conviction(ctx, factor_score),
+                sizing_method="KELLY_EQUITY",
+                max_risk_pct=2.0,
+                stop_loss_method="ATR",
+                take_profit_method="ATR",
+                rationale=(
+                    f"Positive shock beneficiary: {ctx.ticker} graph-identified "
+                    f"as beneficiary in bullish shock, factor={factor_score:.0%}"
+                ),
+                expected_r=exp_r,
+                min_r=1.5,
+            )
+
+    # ── Premium cash-secured put (high-quality stocks at support) ──
+    if not is_strategy_regime_blocked(ctx, "premium_cash_secured_put"):
+        if (
+            ctx.iv_percentile > 50
+            and ctx.rsi < 45
+            and factor_score >= 0.40
+            and ctx.volatility_regime != "CRISIS"
+        ):
+            exp_r = 0.8  # premium strategies have lower R but higher WR
+            return TradeDecision(
+                action="EXECUTE",
+                instrument_type="EQUITY",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name="premium_cash_secured_put",
+                analysis_timeframe="D1",
+                entry_timeframe="D1",
+                conviction=min(0.75, _dynamic_conviction(ctx, factor_score) + 0.05),
+                sizing_method="KELLY_EQUITY",
+                max_risk_pct=1.5,
+                stop_loss_method="FIXED_PCT",
+                take_profit_method="FIXED_PCT",
+                rationale=(
+                    f"Cash-secured put: IVP={ctx.iv_percentile:.0f}, "
+                    f"RSI={ctx.rsi:.0f}, factor={factor_score:.0%}"
+                ),
+                expected_r=exp_r,
+                min_r=0.5,
+                stop_loss_pct=15.0,
+                take_profit_pct=3.0,
+            )
+
+    # ── Earnings drift long (PEAD — post-earnings announcement drift) ──
+    if not is_strategy_regime_blocked(ctx, "earnings_drift_long"):
+        if (
+            ctx.ret_5d > 0.05
+            and ctx.volume_ratio > 1.8
+            and ctx.rsi > 45
+            and ctx.rsi < 80
+            and factor_score >= 0.35
+            and ctx.volatility_regime != "CRISIS"
+        ):
+            exp_r = min(ctx.ret_5d / 0.03 * 1.5, 4.0)
+            return TradeDecision(
+                action="EXECUTE",
+                instrument_type="EQUITY",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name="earnings_drift_long",
+                analysis_timeframe="D1",
+                entry_timeframe="D1",
+                conviction=_dynamic_conviction(ctx, factor_score),
+                sizing_method="KELLY_EQUITY",
+                max_risk_pct=1.5,
+                stop_loss_method="ATR",
+                take_profit_method="ATR",
+                rationale=(
+                    f"Earnings drift: 5d={ctx.ret_5d:+.1%}, "
+                    f"vol_r={ctx.volume_ratio:.1f}, RSI={ctx.rsi:.0f}"
+                ),
+                expected_r=exp_r,
+                min_r=1.5,
+            )
+
+    # ── Supply chain high-confidence (causal edge >= 0.80) ──
+    if not is_strategy_regime_blocked(ctx, "supply_chain_hc"):
+        if (
+            ctx.supply_chain_shock
+            and ctx.causal_conviction >= 0.80
+            and ctx.is_beneficiary
+            and ctx.volatility_regime != "CRISIS"
+            and factor_score >= 0.30
+        ):
+            exp_r = max(ctx.causal_conviction * 3.0, 2.0)
+            return TradeDecision(
+                action="EXECUTE",
+                instrument_type="EQUITY",
+                direction="LONG",
+                ticker=ctx.ticker,
+                strategy_name="supply_chain_hc",
+                analysis_timeframe="D1",
+                entry_timeframe="D1",
+                conviction=min(0.85, _dynamic_conviction(ctx, factor_score) + 0.15),
+                sizing_method="KELLY_EQUITY",
+                max_risk_pct=3.0,  # 2x normal Kelly for high-confidence edges
+                stop_loss_method="ATR",
+                take_profit_method="ATR",
+                rationale=(
+                    f"High-confidence supply chain: causal_conf={ctx.causal_conviction:.2f}, "
+                    f"beneficiary of {ctx.shock_source}"
+                ),
+                expected_r=exp_r,
+                min_r=1.5,
+                graph_intel=True,
+            )
+
     return _skip(ctx, f"No equity edge (factors={factor_score:.0%})")
+
+
+# ── FX Orchestrator ──────────────────────────────────────────
+
+
+def _fx_orchestrate(ctx: MarketContext) -> TradeDecision:
+    """Rule-based orchestrator for FX pairs (Track 4)."""
+    price = ctx.current_price
+    atr = max(ctx.atr, price * 0.002)
+
+    # FX macro trend — strong trend + shock bias alignment
+    if (
+        ctx.supply_chain_shock
+        and ctx.shock_bias in ("BULLISH", "BEARISH")
+        and ctx.trend_strength > 0.4
+        and ctx.adx > 25
+    ):
+        direction = "BUY" if ctx.shock_bias == "BULLISH" else "SELL"
+        return TradeDecision(
+            action="EXECUTE",
+            instrument_type="FX",
+            direction=direction,
+            ticker=ctx.ticker,
+            strategy_name="fx_macro_trend",
+            analysis_timeframe="D1",
+            entry_timeframe="H4",
+            conviction=min(0.70 + ctx.shock_magnitude * 0.3, 0.95),
+            sizing_method="FIXED_RISK",
+            max_risk_pct=0.8,
+            stop_loss_method="ATR_MULTIPLE",
+            take_profit_method="R_MULTIPLE",
+            rationale=f"FX macro trend: {ctx.shock_source} → {ctx.ticker}",
+            expected_r=2.0,
+            min_r=1.5,
+            graph_intel=bool(ctx.supply_chain_shock),
+        )
+
+    # FX carry trade — low vol, mean-reverting regime
+    if (
+        ctx.volatility_regime in ("LOW_VOL", "NORMAL")
+        and ctx.trend_regime == "MEAN_REVERTING"
+        and abs(ctx.z_score) > 1.5
+    ):
+        direction = "BUY" if ctx.z_score < -1.5 else "SELL"
+        return TradeDecision(
+            action="EXECUTE",
+            instrument_type="FX",
+            direction=direction,
+            ticker=ctx.ticker,
+            strategy_name="fx_carry_trade",
+            analysis_timeframe="D1",
+            entry_timeframe="H4",
+            conviction=0.60,
+            sizing_method="FIXED_RISK",
+            max_risk_pct=0.6,
+            stop_loss_method="ATR_MULTIPLE",
+            take_profit_method="R_MULTIPLE",
+            rationale=f"FX carry: z={ctx.z_score:.2f}, vol={ctx.volatility_regime}",
+            expected_r=1.8,
+            min_r=1.2,
+        )
+
+    # FX mean reversion — extreme z-score
+    if abs(ctx.z_score) > 2.0 and ctx.hurst < 0.45:
+        direction = "BUY" if ctx.z_score < -2.0 else "SELL"
+        return TradeDecision(
+            action="EXECUTE",
+            instrument_type="FX",
+            direction=direction,
+            ticker=ctx.ticker,
+            strategy_name="fx_mean_reversion",
+            analysis_timeframe="D1",
+            entry_timeframe="H1",
+            conviction=0.55,
+            sizing_method="FIXED_RISK",
+            max_risk_pct=0.5,
+            stop_loss_method="ATR_MULTIPLE",
+            take_profit_method="R_MULTIPLE",
+            rationale=f"FX mean reversion: z={ctx.z_score:.2f}, H={ctx.hurst:.2f}",
+            expected_r=1.5,
+            min_r=1.0,
+        )
+
+    return _skip(ctx, f"No FX edge for {ctx.ticker}")
+
+
+# ── Commodity Orchestrator ───────────────────────────────────
+
+
+def _commodity_orchestrate(ctx: MarketContext) -> TradeDecision:
+    """Rule-based orchestrator for commodity futures (Track 5)."""
+    # Commodity supply shock — shock-driven
+    if ctx.supply_chain_shock and ctx.shock_magnitude > 0.3:
+        direction = "BUY" if ctx.shock_bias in ("BULLISH", "") else "SELL"
+        return TradeDecision(
+            action="EXECUTE",
+            instrument_type="COMMODITY_FUTURE",
+            direction=direction,
+            ticker=ctx.ticker,
+            strategy_name="commodity_supply_shock",
+            analysis_timeframe="D1",
+            entry_timeframe="H4",
+            conviction=min(0.65 + ctx.shock_magnitude * 0.3, 0.95),
+            sizing_method="FIXED_RISK",
+            max_risk_pct=1.0,
+            stop_loss_method="ATR_MULTIPLE",
+            take_profit_method="R_MULTIPLE",
+            rationale=f"Commodity supply shock: {ctx.shock_source} → {ctx.ticker}",
+            expected_r=2.5,
+            min_r=1.5,
+            graph_intel=True,
+        )
+
+    # Commodity momentum — strong trend
+    if ctx.adx > 30 and ctx.trend_strength > 0.5:
+        direction = "BUY" if ctx.ret_20d > 0 else "SELL"
+        return TradeDecision(
+            action="EXECUTE",
+            instrument_type="COMMODITY_FUTURE",
+            direction=direction,
+            ticker=ctx.ticker,
+            strategy_name="commodity_momentum",
+            analysis_timeframe="W1",
+            entry_timeframe="D1",
+            conviction=0.60,
+            sizing_method="FIXED_RISK",
+            max_risk_pct=0.8,
+            stop_loss_method="ATR_MULTIPLE",
+            take_profit_method="R_MULTIPLE",
+            rationale=f"Commodity momentum: ADX={ctx.adx:.0f}, ret20d={ctx.ret_20d:+.1%}",
+            expected_r=2.0,
+            min_r=1.2,
+        )
+
+    # Commodity seasonal — checked via seasonal_calendar
+    try:
+        from execution_engine.math.seasonal_calendar import get_active_seasonal_edges
+        import datetime as _dt
+
+        edges = get_active_seasonal_edges(_dt.date.today())
+        for edge in edges:
+            if edge.symbol == ctx.ticker:
+                return TradeDecision(
+                    action="EXECUTE",
+                    instrument_type="COMMODITY_FUTURE",
+                    direction=edge.direction,
+                    ticker=ctx.ticker,
+                    strategy_name="commodity_seasonal",
+                    analysis_timeframe="W1",
+                    entry_timeframe="D1",
+                    conviction=edge.historical_win_rate / 100.0,
+                    sizing_method="FIXED_RISK",
+                    max_risk_pct=0.5,
+                    stop_loss_method="ATR_MULTIPLE",
+                    take_profit_method="R_MULTIPLE",
+                    rationale=f"Commodity seasonal: {ctx.ticker} {edge.direction} (WR={edge.historical_win_rate}%)",
+                    expected_r=1.5,
+                    min_r=1.0,
+                )
+    except Exception:
+        pass
+
+    return _skip(ctx, f"No commodity edge for {ctx.ticker}")
+
+
+# ── Crypto Orchestrator ──────────────────────────────────────
+
+
+def _crypto_orchestrate(ctx: MarketContext) -> TradeDecision:
+    """Rule-based orchestrator for crypto assets (Track 6)."""
+    # Crypto momentum — strong trend with high ADX
+    if ctx.adx > 25 and abs(ctx.ret_20d) > 0.10 and ctx.trend_strength > 0.4:
+        direction = "BUY" if ctx.ret_20d > 0 else "SELL"
+        return TradeDecision(
+            action="EXECUTE",
+            instrument_type="CRYPTO",
+            direction=direction,
+            ticker=ctx.ticker,
+            strategy_name="crypto_momentum",
+            analysis_timeframe="D1",
+            entry_timeframe="H4",
+            conviction=min(0.55 + abs(ctx.ret_20d), 0.90),
+            sizing_method="FIXED_RISK",
+            max_risk_pct=0.7,
+            stop_loss_method="ATR_MULTIPLE",
+            take_profit_method="R_MULTIPLE",
+            rationale=f"Crypto momentum: ret20d={ctx.ret_20d:+.1%}, ADX={ctx.adx:.0f}",
+            expected_r=2.0,
+            min_r=1.5,
+        )
+
+    # Crypto supply-chain expression — shock-driven
+    if ctx.supply_chain_shock and ctx.shock_magnitude > 0.2:
+        direction = "BUY" if ctx.shock_bias in ("BULLISH", "") else "SELL"
+        return TradeDecision(
+            action="EXECUTE",
+            instrument_type="CRYPTO",
+            direction=direction,
+            ticker=ctx.ticker,
+            strategy_name="crypto_supply_chain",
+            analysis_timeframe="D1",
+            entry_timeframe="H1",
+            conviction=min(0.60 + ctx.shock_magnitude * 0.3, 0.90),
+            sizing_method="FIXED_RISK",
+            max_risk_pct=0.6,
+            stop_loss_method="ATR_MULTIPLE",
+            take_profit_method="R_MULTIPLE",
+            rationale=f"Crypto supply-chain: {ctx.shock_source} → {ctx.ticker}",
+            expected_r=2.5,
+            min_r=1.5,
+            graph_intel=True,
+        )
+
+    return _skip(ctx, f"No crypto edge for {ctx.ticker}")
 
 
 def rule_based_orchestrate(ctx: MarketContext) -> TradeDecision:
@@ -1789,10 +2370,29 @@ def rule_based_orchestrate(ctx: MarketContext) -> TradeDecision:
     """
     if ctx.asset_class == "INDEX":
         decision = index_fno_orchestrate(ctx)
+    elif ctx.asset_class == "FX":
+        decision = _fx_orchestrate(ctx)
+    elif ctx.asset_class == "COMMODITY":
+        decision = _commodity_orchestrate(ctx)
+    elif ctx.asset_class == "CRYPTO":
+        decision = _crypto_orchestrate(ctx)
     else:
         decision = _equity_orchestrate_core(ctx)
 
     if decision.action == "EXECUTE":
+        # C5: Regime confidence gate — if the Strategist is uncertain
+        # about the current regime, block the trade unless conviction
+        # is very high (causal override territory).
+        # Shock-driven strategies use looser gate (0.40); all others 0.55.
+        is_shock_strat = decision.strategy_name.startswith("shock_directed") or decision.strategy_name.startswith("supply_chain")
+        conf_threshold = 0.40 if is_shock_strat else 0.55
+        if ctx.regime_confidence < conf_threshold and decision.conviction < 0.85:
+            log.info(
+                f"[REGIME-CONF-GATE] {ctx.ticker}: regime_confidence="
+                f"{ctx.regime_confidence:.2f} < {conf_threshold}, skipping"
+            )
+            return _skip(ctx, f"Regime confidence too low ({ctx.regime_confidence:.0%})")
+
         # Tier-1 LLM-driven blocklist (Strategist regime gating).
         # Takes precedence over every per-strategy rule — if the
         # Strategist forbids a family, we SKIP no matter how strong

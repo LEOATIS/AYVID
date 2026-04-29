@@ -42,7 +42,7 @@ flowchart LR
 ### 0:40 – 0:52 — Proof *(Likhith)*
 
 - "Post-cost walk-forward, 2018 to 2025, IBKR-Tiered commissions + slippage."
-- "**Naive baseline: minus 99.98%. Graph-aware: plus 43.65%. A 144-point swing from the graph alone.**"
+- "**Naive baseline: minus 99.98%. Graph-aware: plus 24.13%. A 124-point swing from the graph alone.**"
 - "We publish the minus-99.98% control on purpose — that's the honest quant move."
 - "Live IB-Paper runner has been writing an equity curve every cycle **since April 19**."
 
@@ -58,7 +58,7 @@ flowchart LR
 
 - **Energy split:** Likhith = technical builder cadence (short, concrete). Lakshitha = thesis cadence (clear, slightly slower). Alternate so the viewer never goes more than ~15s on one face.
 - **No jargon that isn't explained in the same sentence.** "LangGraph" is fine because "four-agent debate" explains it. "Neo4j supply-chain graph" is fine because "trace N-th order victims" explains it.
-- **The one number that must land: −99.98% → +43.65%.** Say it slowly. That's the whole pitch.
+- **The one number that must land: −99.98% → +24.13%.** Say it slowly. That's the whole pitch.
 - **Do NOT say** "AI-powered", "revolutionary", or "disrupting". Say what it does.
 - **Do NOT** demo the product, share-screen, or show the dashboard — YC explicitly says the founder video is **just the founders talking.** The demo goes in the separate demo slot.
 - **Single take, webcam quality is fine.** Polished ≠ better here.
@@ -83,7 +83,7 @@ flowchart LR
 0:38 LK:  "It's the graph, not the prompt"
 
 0:40 L:   2018-2025, post-cost, IBKR-Tiered
-0:44 L:   Naive -99.98%   →   Graph +43.65%
+0:44 L:   Naive -99.98%   →   Graph +24.13%
 0:48 L:   We publish the -99.98% on purpose
 0:50 L:   Live IB-Paper curve since April 19
 
@@ -98,11 +98,11 @@ flowchart LR
 
 - [ ] Timing card printed and taped at eye-line next to the lens (not on the monitor — the camera will see you reading).
 - [ ] Both founders framed in one shot, shoulders-up, reasonable lighting.
-- [ ] Mic test: say the one number — "minus 99.98 to plus 43.65" — and confirm it's audible.
+- [ ] Mic test: say the one number — "minus 99.98 to plus 24.13" — and confirm it's audible.
 - [ ] One untimed rehearsal. One timed rehearsal. One real take. If the real take is between 58–64 seconds and both of you sounded like yourselves, **ship it.**
 - [ ] If over 65 seconds, cut adjectives, not content. The number and "it's the graph, not the prompt" are load-bearing.
 - [ ] Export MP4, upload to the YC application video field.
 
 ---
 
-*Grounded in the actual codebase: [`graph_intelligence/agents/`](../../graph_intelligence/agents/) (4-agent swarm), [`graph_intelligence/tools/neo4j_tools.py`](../../graph_intelligence/tools/neo4j_tools.py) (`find_hidden_victims`), [`graph_intelligence/causal_falsification/`](../../graph_intelligence/causal_falsification/) (CI edge validation), [`execution_engine/broker/`](../../execution_engine/broker/) (IB bracket orders), [`execution_engine/kill_switch/`](../../execution_engine/kill_switch/) + [`execution_engine/watchdog/`](../../execution_engine/watchdog/) (C++ kill switch), [`backtesting/walkforward.py`](../../backtesting/walkforward.py) (the −99.98% vs +43.65% numbers), [`execution_engine/paper_runner.py`](../../execution_engine/paper_runner.py) (live IB-Paper curve since 2026-04-19).*
+*Grounded in the actual codebase: [`graph_intelligence/agents/`](../../graph_intelligence/agents/) (4-agent swarm), [`graph_intelligence/tools/neo4j_tools.py`](../../graph_intelligence/tools/neo4j_tools.py) (`find_hidden_victims`), [`graph_intelligence/causal_falsification/`](../../graph_intelligence/causal_falsification/) (CI edge validation), [`execution_engine/broker/`](../../execution_engine/broker/) (IB bracket orders), [`execution_engine/kill_switch/`](../../execution_engine/kill_switch/) + [`execution_engine/watchdog/`](../../execution_engine/watchdog/) (C++ kill switch), [`backtesting/walkforward.py`](../../backtesting/walkforward.py) (the −99.98% vs +24.13% numbers), [`execution_engine/paper_runner.py`](../../execution_engine/paper_runner.py) (live IB-Paper curve since 2026-04-19).*

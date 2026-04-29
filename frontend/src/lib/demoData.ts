@@ -27,7 +27,7 @@ export type ShockEvent = {
 export type GraphNode = {
   id: string;
   label: string;
-  ring: 0 | 1 | 2 | 3;
+  ring: 0 | 1 | 2 | 3 | 4;
   classification: "shock" | "beneficiary" | "victim" | "neutral";
   delta: number;
 };
@@ -37,7 +37,7 @@ export type GraphEdge = {
   from: string;
   to: string;
   weight: number;
-  hop: 1 | 2 | 3;
+  hop: 1 | 2 | 3 | 4;
   label: string;
 };
 
@@ -45,7 +45,7 @@ export type Signal = {
   id: string;
   emittedAt: string;
   ticker: string;
-  instrument: "EQUITY" | "INDEX_PUT" | "INDEX_CALL" | "INDEX_SPREAD" | "INDEX_FUTURE";
+  instrument: "EQUITY" | "INDEX_PUT" | "INDEX_CALL" | "INDEX_SPREAD" | "INDEX_FUTURE" | "FX" | "COMMODITY_FUTURE" | "CRYPTO" | "ETF" | "RATE_FUTURE";
   direction: "LONG" | "SHORT";
   strategy: string;
   conviction: number;

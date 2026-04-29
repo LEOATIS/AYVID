@@ -22,8 +22,9 @@ import type {
 const STAGES = [
   { id: 1, label: "Shock Detected" },
   { id: 2, label: "Graph Walk (3 hops)" },
-  { id: 3, label: "Signals Generated" },
-  { id: 4, label: "Orders Routed" },
+  { id: 3, label: "Multi-Asset Expression" },
+  { id: 4, label: "Signals Generated" },
+  { id: 5, label: "Orders Routed" },
 ] as const;
 
 export default function LiveShockPage() {
@@ -489,6 +490,33 @@ function mapToGraph(s: ScenarioWithIntel): { nodes: GraphNode[]; edges: GraphEdg
     }
   });
 
+  // Ring 4: multi-asset expression (FX, commodities, crypto, ETFs, rates)
+  const multiAsset = [
+    ...((s as any).fx_targets ?? []).slice(0, 2).map((t: string) => ({ id: `FX:${t}`, label: t, asset: "FX" })),
+    ...((s as any).commodity_targets ?? []).slice(0, 2).map((t: string) => ({ id: `CMD:${t}`, label: t, asset: "COMMODITY" })),
+    ...((s as any).crypto_targets ?? []).slice(0, 2).map((t: string) => ({ id: `CRY:${t}`, label: t, asset: "CRYPTO" })),
+    ...((s as any).etf_targets ?? []).slice(0, 2).map((t: string) => ({ id: `ETF:${t}`, label: t, asset: "ETF" })),
+    ...((s as any).rates_targets ?? []).slice(0, 2).map((t: string) => ({ id: `RATE:${t}`, label: t, asset: "RATE" })),
+  ].slice(0, 6);
+
+  multiAsset.forEach((ma, i) => {
+    nodes.push({
+      id: ma.id,
+      label: `${ma.label} [${ma.asset}]`,
+      ring: 4,
+      classification: "beneficiary",
+      delta: 0.01 + i * 0.003,
+    });
+    edges.push({
+      id: `e-shock-${ma.id}`,
+      from: shockId,
+      to: ma.id,
+      weight: 0.6 - i * 0.03,
+      hop: 4,
+      label: `${ma.asset.toLowerCase()} expression`,
+    });
+  });
+
   return { nodes, edges };
 }
 
@@ -533,6 +561,11 @@ function mapInstrument(t: string): DemoSignal["instrument"] {
   if (u.includes("CALL")) return "INDEX_CALL";
   if (u.includes("SPREAD")) return "INDEX_SPREAD";
   if (u.includes("FUTURE")) return "INDEX_FUTURE";
+  if (u === "FX") return "EQUITY";
+  if (u === "CRYPTO") return "EQUITY";
+  if (u === "ETF") return "EQUITY";
+  if (u === "COMMODITY_FUTURE") return "INDEX_FUTURE";
+  if (u === "RATE_FUTURE") return "INDEX_FUTURE";
   return "EQUITY";
 }
 

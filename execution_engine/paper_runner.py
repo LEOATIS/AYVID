@@ -236,14 +236,13 @@ def _consume_signal_book(
     """Turn live signal-book entries into shadow fills.
 
     Contract:
-      * Only EQUITY signals are honoured here (shadow runner does not
-        synthesise option legs).
+      * All asset classes are accepted (EQUITY, ETF, FX, COMMODITY,
+        CRYPTO, FUTURE, BOND, INDEX_FUTURE). Crypto signals are
+        tracked as signal-only since IBKR Paper doesn't support Paxos.
       * LONG → BUY, SHORT → SELL. We allow SHORT in shadow because the
-        cost model already handles both sides and a SHORT signal failing
-        to produce a fill would be more confusing than a simulated entry.
+        cost model already handles both sides.
       * Sizing uses the signal's conviction + expected_r with a single
-        Kelly fraction, capped at 5% of cash — identical cap to the
-        orchestrator-scan path below so the two sources are interchangeable.
+        Kelly fraction, capped at 5% of cash.
       * Each (ticker, regime_fingerprint) key fires at most once per
         runner lifetime; the `consumed_signals` set is the dedupe guard.
     """
@@ -267,7 +266,9 @@ def _consume_signal_book(
             continue
         if key in state.consumed_signals:
             continue
-        if str(sig.get("instrument_type", "")).upper() != "EQUITY":
+        # Accept all asset classes — multi-asset routing
+        inst_type = str(sig.get("instrument_type", "EQUITY")).upper()
+        if inst_type not in ("EQUITY", "ETF", "FX", "COMMODITY", "CRYPTO", "FUTURE", "BOND", "INDEX_FUTURE"):
             continue
         ticker = str(sig.get("ticker") or "").upper()
         if not ticker or ticker in state.positions:
@@ -290,7 +291,10 @@ def _consume_signal_book(
         if shares < 1 or shares * mark > state.cash * 0.4:
             continue
 
-        slip = 1.0005 if side == "BUY" else 0.9995
+        # Asset-class-specific slippage
+        _slip_map = {"FX": 0.0001, "CRYPTO": 0.0010, "COMMODITY": 0.0003, "FUTURE": 0.0002}
+        slip_bps = _slip_map.get(inst_type, 0.0005)
+        slip = (1 + slip_bps) if side == "BUY" else (1 - slip_bps)
         entry = mark * slip
         cost = entry * shares
         if side == "BUY" and cost > state.cash:
@@ -443,7 +447,9 @@ async def _shadow_cycle(state: ShadowState) -> EquitySnapshot:
             open_positions_count=len(state.positions),
         )
         decision = rule_based_orchestrate(ctx)
-        if decision.action != "EXECUTE" or decision.instrument_type != "EQUITY":
+        if decision.action != "EXECUTE":
+            continue
+        if decision.instrument_type not in ("EQUITY", "ETF", "FX", "COMMODITY_FUTURE", "CRYPTO", "RATE_FUTURE", "INDEX_FUTURE", "FUTURE", "BOND"):
             continue
 
         frac = kelly_fraction_single(decision.conviction, max(decision.expected_r, 1.0))
@@ -452,8 +458,33 @@ async def _shadow_cycle(state: ShadowState) -> EquitySnapshot:
         if shares < 1 or shares * last_bar.close > state.cash * 0.4:
             continue
 
-        # Apply slippage for shadow fill.
-        entry = last_bar.close * 1.0005
+        # Portfolio-level risk check
+        from execution_engine.math.portfolio_risk import get_portfolio_risk_manager
+
+        risk_mgr = get_portfolio_risk_manager()
+        risk_mgr.update_portfolio_state(
+            positions=state.positions,
+            total_equity=state.cash + sum(
+                p.get("shares", 0) * p.get("entry_price", 0)
+                for p in state.positions.values()
+            ),
+            peak_equity=getattr(state, "peak_equity", state.cash),
+        )
+        risk_check = risk_mgr.check_risk(
+            ticker=sym,
+            asset_class=decision.instrument_type or "EQUITY",
+            proposed_notional=shares * last_bar.close,
+        )
+        if not risk_check.allowed:
+            log.info(f"[RISK-GATE] {sym} blocked: {risk_check.reason}")
+            continue
+        if risk_check.size_reduction < 1.0:
+            shares = max(1, int(shares * risk_check.size_reduction))
+
+        # Apply asset-class-specific slippage for shadow fill.
+        _orch_slip = {"FX": 0.0001, "CRYPTO": 0.0010, "COMMODITY_FUTURE": 0.0003, "ETF": 0.0003}
+        slip_bps = _orch_slip.get(decision.instrument_type, 0.0005)
+        entry = last_bar.close * (1 + slip_bps)
         cost = entry * shares
         if cost > state.cash:
             continue

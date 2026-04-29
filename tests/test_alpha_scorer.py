@@ -127,6 +127,7 @@ def test_factor_breakdown_lists_all_factors():
         "vrp",
         "macro",
         "causal",
+        "uoa",
     }
     assert set(alpha.factor_breakdown.keys()) == expected_factors
 
@@ -206,7 +207,7 @@ def test_trade_gate_accepts_high_conviction_aligned_setup():
     )
     alpha = alpha_scorer.score(ctx)
     assert alpha.direction == TradeAction.LONG
-    assert alpha_scorer.passes_trade_gate(alpha), (
+    assert alpha_scorer.passes_trade_gate(alpha, strategy_type="shock_driven"), (
         f"High-conviction setup failed gate: "
         f"unified={alpha.unified_conviction:.3f} factor={alpha.factor_score:.2f} "
         f"bayes={alpha.bayesian_conviction:.2f} R={alpha.expected_r:.2f}"

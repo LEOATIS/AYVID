@@ -79,13 +79,22 @@ def multivariate_kelly(
 
     excess_returns = expected_returns - risk_free_rate
 
+    # Diagonal regularization: add a small ridge term to prevent
+    # near-singular covariance from producing explosive allocations.
+    ridge = 1e-6 * np.eye(n)
+    cov_reg = covariance_matrix + ridge
     try:
-        cov_inv = np.linalg.inv(covariance_matrix)
+        cov_inv = np.linalg.inv(cov_reg)
     except np.linalg.LinAlgError:
         log.warning("Singular covariance matrix — using pseudo-inverse")
-        cov_inv = np.linalg.pinv(covariance_matrix)
+        cov_inv = np.linalg.pinv(cov_reg)
 
     raw_allocation = (1.0 / volatility_penalty) * cov_inv @ excess_returns
+
+    # NaN / inf guard: if any allocation is non-finite, zero the vector.
+    if not np.all(np.isfinite(raw_allocation)):
+        log.warning("Non-finite Kelly allocation detected — zeroing")
+        return np.zeros(n)
 
     half_kelly = raw_allocation * settings.KELLY_FRACTION
 
@@ -156,6 +165,7 @@ def optimal_allocation_for_signal(
     current_price: float,
     enforce_ev_hurdle: bool = True,
     conviction: float | None = None,
+    asset_class: str = "EQUITY",
 ) -> tuple[float, int]:
     """Convenience: compute Kelly fraction and share count for a single signal.
 
@@ -196,11 +206,11 @@ def optimal_allocation_for_signal(
         from execution_engine.math.costs import evaluate_trade_ev
 
         report = evaluate_trade_ev(
-            asset_class="EQUITY",
+            asset_class=asset_class,
             expected_return_pct=abs(expected_return),
             price=current_price,
             notional_shares=shares,
-            label="kelly_equity",
+            label=f"kelly_{asset_class.lower()}",
         )
         if not report.passes:
             log.info(
@@ -230,16 +240,31 @@ def kelly_options(
     Fraction is sized relative to the risk capital (premium or margin),
     not the notional.
     """
+    import math
+
+    if (
+        not math.isfinite(win_probability)
+        or not math.isfinite(expected_payoff)
+        or not math.isfinite(max_loss)
+        or not math.isfinite(premium_cost)
+    ):
+        return 0.0
     if max_loss <= 0 or premium_cost <= 0:
         return 0.0
+
+    # Clamp probability to [0, 1]
+    p = max(0.0, min(1.0, float(win_probability)))
 
     expected_profit = expected_payoff - premium_cost
     if expected_profit <= 0:
         return 0.0
 
     rr = expected_profit / max_loss
-    q = 1.0 - win_probability
-    f_star = win_probability - (q / rr) if rr > 0 else 0.0
+    q = 1.0 - p
+    f_star = p - (q / rr) if rr > 0 else 0.0
+    # Edge check: negative Kelly means no edge — don't bet
+    if f_star <= 0:
+        return 0.0
     half_kelly = f_star * settings.KELLY_FRACTION
     return max(0.0, min(half_kelly, settings.MAX_POSITION_PCT / 100.0))
 
@@ -274,16 +299,25 @@ def kelly_futures(
 
     Sizes based on margin consumption rather than notional.
     """
+    import math
+
+    if (
+        not math.isfinite(win_probability)
+        or not math.isfinite(avg_win_ticks)
+        or not math.isfinite(avg_loss_ticks)
+    ):
+        return 0
     if avg_loss_ticks <= 0 or margin_per_contract <= 0:
         return 0
 
+    p = max(0.0, min(1.0, float(win_probability)))
     rr = avg_win_ticks / avg_loss_ticks
-    q = 1.0 - win_probability
-    f_star = win_probability - (q / rr) if rr > 0 else 0.0
-    half_kelly = f_star * settings.KELLY_FRACTION
+    q = 1.0 - p
+    f_star = p - (q / rr) if rr > 0 else 0.0
 
-    if half_kelly <= 0:
+    if f_star <= 0:
         return 0
 
+    half_kelly = f_star * settings.KELLY_FRACTION
     risk_capital = portfolio_equity * min(half_kelly, settings.MAX_POSITION_PCT / 100.0)
     return max(int(risk_capital / margin_per_contract), 0)

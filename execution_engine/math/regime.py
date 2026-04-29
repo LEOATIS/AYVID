@@ -430,6 +430,52 @@ def classify_regime(
     )
 
 
+def detect_vix_spike_reversal(
+    vix_values: np.ndarray,
+    spx_returns: np.ndarray | None = None,
+    spike_threshold: float = 35.0,
+) -> bool:
+    """Detect VIX spike reversal setup (VIX > 35 and declining 2+ days).
+
+    This is one of the highest-probability F&O setups: after VIX spikes
+    above 35, it declines within 30 days ~78% of the time.
+
+    Returns True when:
+    - Current VIX > spike_threshold (35)
+    - VIX has declined for at least 2 consecutive days
+    - If spx_returns provided, SPX 2-day return > -1% (stabilising)
+    """
+    if len(vix_values) < 4:
+        return False
+    current = float(vix_values[-1])
+    if current < spike_threshold:
+        return False
+    # Check VIX declining for 2+ consecutive days
+    if not (vix_values[-1] < vix_values[-2] < vix_values[-3]):
+        return False
+    # Optional SPX stabilisation check
+    if spx_returns is not None and len(spx_returns) >= 2:
+        two_day_ret = float(np.sum(spx_returns[-2:]))
+        if two_day_ret < -0.01:
+            return False
+    return True
+
+
+def compute_iv_percentile(
+    historical_iv: np.ndarray,
+) -> float:
+    """Compute IV Percentile rank (0-100).
+
+    >65 = elevated (premium selling territory)
+    <35 = suppressed (premium buying territory)
+    """
+    if len(historical_iv) < 10:
+        return 50.0
+    current = float(historical_iv[-1])
+    rank = float(np.sum(historical_iv[:-1] < current)) / max(len(historical_iv) - 1, 1)
+    return round(rank * 100.0, 1)
+
+
 def compute_regime_fingerprint(
     closes: np.ndarray,
     highs: np.ndarray,

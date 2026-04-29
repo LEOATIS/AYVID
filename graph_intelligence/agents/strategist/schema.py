@@ -48,6 +48,37 @@ CANONICAL_STRATEGIES: tuple[str, ...] = (
     "supply_chain_oversold_dip",
     "trend_investment",
     "mr_equity_bounce",
+    # Non-crisis / bull-market strategies
+    "momentum_equity_long",
+    "quality_growth_long",
+    "earnings_beat_momentum",
+    "positive_shock_beneficiary",
+    # Track 3 — Premium selling (structural 70-80% win rate)
+    "premium_iron_condor",
+    "premium_credit_spread",
+    "premium_cash_secured_put",
+    # Statistical edge strategies
+    "earnings_drift_long",
+    "vix_mean_reversion",
+    "supply_chain_hc",
+    # Track 4 — FX strategies
+    "fx_macro_trend",
+    "fx_carry_trade",
+    "fx_mean_reversion",
+    # Track 5 — Commodity futures
+    "commodity_supply_shock",
+    "commodity_momentum",
+    "commodity_seasonal",
+    # Track 6 — Crypto
+    "crypto_momentum",
+    "crypto_supply_chain",
+    # Track 7 — ETF strategies
+    "sector_rotation_etf",
+    "factor_etf_momentum",
+    "etf_supply_chain_expression",
+    # Track 8 — Rate / bond futures
+    "rates_macro",
+    "rates_steepener_flattener",
 )
 
 MacroRegime = Literal["RISK_ON", "RISK_OFF", "TRANSITIONAL"]
