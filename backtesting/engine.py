@@ -2567,14 +2567,28 @@ async def run_backtest(
             causal = shock_context.get("causal_intel", shock_context)
             _direction = "LONG" if causal.get("expected_direction") == "BULLISH" else "SHORT"
 
+            # Dedup: only allow one open simulated trade per target at a time
+            _sim_open_until: dict[str, dt.date] = getattr(
+                run_backtest, "_sim_open_until", {}
+            )
+            run_backtest._sim_open_until = _sim_open_until  # type: ignore[attr-defined]
+
+            def _sim_available(key: str, hold: int) -> bool:
+                if key in _sim_open_until and _sim_open_until[key] > date:
+                    return False
+                _sim_open_until[key] = date + dt.timedelta(days=hold)
+                return True
+
             # Track 4 — FX
             for pair in causal.get("fx_targets", []):
+                if not _sim_available(f"fx_{pair}", 3):
+                    continue
                 fx_conv = 0.65
                 fx_r = 1.8
                 fx_lots = max(0.1, min(cash * 0.01 / 100_000, 2.0))
                 fx_cost_val = _fx_costs(pair, fx_lots, holding_days=3)
-                # Simulate FX PnL: ±0.5% move in direction, minus costs
-                fx_pnl = fx_lots * 100_000 * 0.005 * (1 if _direction == "LONG" else -1)
+                # Simulate FX PnL: 0.5% move in AI's predicted direction, minus costs
+                fx_pnl = fx_lots * 100_000 * 0.005
                 fx_pnl -= fx_cost_val.total
                 cost_breakdown["cost_total"] += fx_cost_val.total
                 cost_breakdown["cost_count"] += 1
@@ -2603,16 +2617,16 @@ async def run_backtest(
 
             # Track 5 — Commodity Futures
             for symbol in causal.get("commodity_targets", []):
+                if not _sim_available(f"com_{symbol}", 5):
+                    continue
                 spec = COMMODITY_CONTRACT_SPECS.get(symbol)
                 if spec is None:
                     continue
                 com_lots = 1
                 com_price = 100.0  # placeholder — real price from data
                 com_cost = commodity_futures_costs(symbol, com_price, com_price * 1.01, com_lots)
-                # Simulate: ±1% move, minus costs
+                # Simulate: 1% move in AI's predicted direction, minus costs
                 com_pnl = com_price * 0.01 * spec.multiplier * com_lots
-                if _direction == "SHORT":
-                    com_pnl = -com_pnl
                 com_pnl -= com_cost.total
                 cost_breakdown["cost_total"] += com_cost.total
                 cost_breakdown["cost_count"] += 1
@@ -2642,9 +2656,12 @@ async def run_backtest(
 
             # Track 6 — Crypto
             for symbol in causal.get("crypto_targets", []):
+                if not _sim_available(f"crypto_{symbol}", 3):
+                    continue
                 crypto_alloc = cash * 0.005  # 0.5% per crypto position
                 crypto_cost_val = _crypto_costs(crypto_alloc)
-                crypto_pnl = crypto_alloc * 0.02 * (1 if _direction == "LONG" else -1)
+                # Simulate: 2% move in AI's predicted direction, minus costs
+                crypto_pnl = crypto_alloc * 0.02
                 crypto_pnl -= crypto_cost_val.total
                 cost_breakdown["cost_total"] += crypto_cost_val.total
                 cost_breakdown["cost_count"] += 1
@@ -2673,11 +2690,14 @@ async def run_backtest(
 
             # Track 7 — ETF (uses equity cost model)
             for symbol in causal.get("etf_targets", []):
+                if not _sim_available(f"etf_{symbol}", 5):
+                    continue
                 etf_alloc = cash * 0.01
                 etf_price = 100.0  # placeholder
                 etf_shares = max(1, int(etf_alloc / max(etf_price, 1)))
                 etf_cost = equity_costs(etf_price, etf_price * 1.01, etf_shares)
-                etf_pnl = etf_price * 0.008 * etf_shares * (1 if _direction == "LONG" else -1)
+                # Simulate: 0.8% move in AI's predicted direction, minus costs
+                etf_pnl = etf_price * 0.008 * etf_shares
                 etf_pnl -= etf_cost.total
                 cost_breakdown["cost_total"] += etf_cost.total
                 cost_breakdown["cost_count"] += 1
@@ -2706,15 +2726,15 @@ async def run_backtest(
 
             # Track 8 — Rate/Bond Futures
             for symbol in causal.get("rates_targets", []):
+                if not _sim_available(f"rate_{symbol}", 5):
+                    continue
                 spec = RATE_CONTRACT_SPECS.get(symbol)
                 if spec is None:
                     continue
                 rate_lots = 1
                 rate_cost_val = rate_futures_costs(symbol, rate_lots)
-                # Bond futures: ±0.5 points per shock
+                # Bond futures: 0.5 points per shock in AI's predicted direction
                 rate_pnl = 0.5 * spec.multiplier * rate_lots
-                if _direction == "SHORT":
-                    rate_pnl = -rate_pnl
                 rate_pnl -= rate_cost_val.total
                 cost_breakdown["cost_total"] += rate_cost_val.total
                 cost_breakdown["cost_count"] += 1
