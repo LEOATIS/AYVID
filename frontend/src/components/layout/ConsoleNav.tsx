@@ -109,6 +109,43 @@ export function ConsoleNav() {
             </span>
           </div>
           <ThemeToggle />
+          {/* Build SHA badge — surfaces deploy drift at a glance.
+             If the displayed SHA doesn't match `git rev-parse --short HEAD`
+             the new bundle hasn't reached this user's tab yet (CDN cache
+             or sticky CF revision). The CI smoke test asserts the backend
+             SHA matches commit, so a mismatch here ⇒ frontend stragglers,
+             not bad deploys. */}
+          {(() => {
+            const sha = (process.env.NEXT_PUBLIC_BUILD_SHA || "dev").trim();
+            const short = sha.length >= 7 ? sha.slice(0, 7) : sha;
+            const isReal = sha !== "dev" && sha !== "unknown" && sha.length >= 7;
+            const href = isReal
+              ? `https://github.com/LEOATIS/AYVID/commit/${sha}`
+              : undefined;
+            const className =
+              "hidden items-center gap-1 rounded-md border border-app bg-panel px-2 py-1 font-mono text-[10px] tracking-[0.06em] text-subtle hover:text-fg md:inline-flex";
+            const inner = (
+              <>
+                <span className="text-muted/60">build</span>
+                <span className="text-fg/70">{short}</span>
+              </>
+            );
+            return href ? (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={`Build SHA: ${sha}`}
+                className={className}
+              >
+                {inner}
+              </a>
+            ) : (
+              <span title={`Build SHA: ${sha}`} className={className}>
+                {inner}
+              </span>
+            );
+          })()}
           <Link
             href="/"
             className="hidden items-center gap-1 text-[11px] uppercase tracking-[0.16em] text-subtle hover:text-fg xl:inline-flex"

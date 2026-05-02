@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,10 @@ router = APIRouter(dependencies=[Depends(verify_api_key)])
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 LIVE_DIR = PROJECT_ROOT / "live"
 SIGNAL_BOOK = PROJECT_ROOT / "data_store" / "signal_book.json"
+
+# Captured at module import so /system/build can report uptime instead
+# of just "I started at this Unix epoch second".
+_PROCESS_STARTED_AT = dt.datetime.now(dt.UTC)
 
 
 def _count_trades_today() -> int:
@@ -165,3 +170,46 @@ async def get_pipeline_status() -> dict[str, Any]:
         # Snapshot timestamp so the UI can show "as of XX seconds ago"
         "snapshot_at": dt.datetime.now(dt.UTC).isoformat(),
     }
+
+
+@router.get("/build")
+async def build_info() -> dict[str, Any]:
+    """Identity of the currently-running backend container.
+
+    The CI smoke test asserts ``build_sha`` matches ``GITHUB_SHA``
+    after every deploy — that's the single tripwire that catches
+    "Cloud Run rolled but VM didn't" / "we shipped but it didn't
+    take" / "this revision is from yesterday" drift. The companion
+    ``/runner-info`` endpoint reports the paper runner's SHA, which
+    can briefly differ during a rolling deploy.
+    """
+    started = _PROCESS_STARTED_AT
+    return {
+        "build_sha": os.environ.get("BUILD_SHA", "dev"),
+        "build_time": os.environ.get("BUILD_TIME", "unknown"),
+        "started_at": started.isoformat(),
+        "uptime_sec": (dt.datetime.now(dt.UTC) - started).total_seconds(),
+    }
+
+
+@router.get("/runner-info")
+async def runner_info() -> dict[str, Any]:
+    """Identity of the paper runner that's writing live/* files.
+
+    Backed by ``live/deploy_marker.json`` which the runner writes at
+    the very top of ``run()`` (before any other init). If the marker
+    is missing the runner hasn't started yet (boot in progress); if
+    its ``build_sha`` doesn't match ``/build``, the VM is still on
+    an older image.
+    """
+    marker_path = LIVE_DIR / "deploy_marker.json"
+    if not marker_path.exists():
+        return {
+            "build_sha": "unknown",
+            "started_at": None,
+            "note": "deploy_marker.json not yet written by runner",
+        }
+    try:
+        return json.loads(marker_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        return {"build_sha": "error", "error": str(exc)}

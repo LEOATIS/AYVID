@@ -47,6 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       image_tag: ${{ steps.meta.outputs.tag }}
+      build_time: ${{ steps.meta.outputs.build_time }}
       execution_changed: ${{ steps.changes.outputs.execution }}
     steps:
       - uses: actions/checkout@v4
@@ -69,7 +70,9 @@ jobs:
               - "scripts/vm_redeploy.sh"
 
       - id: meta
-        run: echo "tag=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
+        run: |
+          echo "tag=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
+          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -97,6 +100,7 @@ jobs:
         env:
           IMAGE_BASE: ${{ env.REGISTRY }}/ayvid-backend
           IMAGE_TAG:  ${{ steps.meta.outputs.tag }}
+          BUILD_TIME: ${{ steps.meta.outputs.build_time }}
         run: |
           set -uo pipefail
           attempt=0
@@ -110,6 +114,8 @@ jobs:
                 --file Dockerfile \
                 --tag "$IMAGE_BASE:$IMAGE_TAG" \
                 --tag "$IMAGE_BASE:latest" \
+                --build-arg "BUILD_SHA=${GITHUB_SHA}" \
+                --build-arg "BUILD_TIME=${BUILD_TIME}" \
                 --cache-from type=gha,scope=backend \
                 --cache-to   type=gha,mode=max,scope=backend \
                 --push \
@@ -130,6 +136,7 @@ jobs:
         env:
           IMAGE_BASE: ${{ env.REGISTRY }}/ayvid-execution
           IMAGE_TAG:  ${{ steps.meta.outputs.tag }}
+          BUILD_TIME: ${{ steps.meta.outputs.build_time }}
         run: |
           set -uo pipefail
           attempt=0
@@ -143,6 +150,8 @@ jobs:
                 --file Dockerfile.execution \
                 --tag "$IMAGE_BASE:$IMAGE_TAG" \
                 --tag "$IMAGE_BASE:latest" \
+                --build-arg "BUILD_SHA=${GITHUB_SHA}" \
+                --build-arg "BUILD_TIME=${BUILD_TIME}" \
                 --cache-from type=gha,scope=execution \
                 --cache-to   type=gha,mode=max,scope=execution \
                 --push \
@@ -182,9 +191,16 @@ jobs:
       # surface where Actions only changes the image, nothing else.
       - name: Deploy new Cloud Run revision
         run: |
+          # `update-env-vars` instead of `--set-env-vars` so we don't
+          # clobber other env values managed in cloudrun.tf (CORS,
+          # auth, EXECUTION_MODE, …). BUILD_SHA + BUILD_TIME are also
+          # baked into the image via Dockerfile ARGs as a fallback —
+          # this update-env-vars belt-and-suspenders ensures the env
+          # always reflects the SHA the deploy job *thinks* it pushed.
           gcloud run services update ayvid-backend \
             --region=${{ env.GCP_REGION }} \
             --image=${{ env.REGISTRY }}/ayvid-backend:${{ needs.build-and-push.outputs.image_tag }} \
+            --update-env-vars=BUILD_SHA=${{ github.sha }},BUILD_TIME=${{ needs.build-and-push.outputs.build_time }} \
             --quiet
 
       - name: Wait for revision to be ready
@@ -355,6 +371,50 @@ jobs:
             echo "::warning::auto_execute reported as $AUTO (expected True)"
           fi
           echo "execution_mode=$MODE auto_execute=$AUTO"
+
+      # ── SHA-drift tripwires ──────────────────────────────────────────
+      # The May 2 incident (deployed instance 3 days behind, test
+      # fixture signal still rendered) was invisible until a human
+      # opened the console. These three steps make the same drift
+      # impossible to ship — if either the backend or the runner is
+      # still on the old image when the workflow finishes, the deploy
+      # fails loud. No auto-rollback (manual via rollback.yml) — a
+      # human decides whether to roll back or push a fix-forward.
+      - name: Backend SHA matches commit
+        run: |
+          set -e
+          for attempt in 1 2 3 4 5 6; do
+            RESP=$(curl -fsS "${{ steps.url.outputs.url }}/api/v1/system/build" 2>/dev/null || echo '{}')
+            API_SHA=$(echo "$RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('build_sha','none'))")
+            if [ "$API_SHA" = "${{ github.sha }}" ]; then
+              echo "✓ backend SHA matches commit: $API_SHA"
+              exit 0
+            fi
+            echo "[$attempt/6] backend SHA: $API_SHA, expected ${{ github.sha }} — Cloud Run revision propagating, retrying..."
+            sleep 20
+          done
+          echo "::error::Backend SHA never converged to ${{ github.sha }} — Cloud Run did not pick up the new image."
+          exit 1
+
+      - name: Runner SHA matches commit
+        run: |
+          set -e
+          # The VM cron / `vm_redeploy.sh` may need a few minutes to
+          # pull the new image; allow up to 6 minutes.
+          for attempt in $(seq 1 12); do
+            RESP=$(curl -fsS "${{ steps.url.outputs.url }}/api/v1/system/runner-info" 2>/dev/null || echo '{}')
+            RUNNER_SHA=$(echo "$RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('build_sha','none'))")
+            if [ "$RUNNER_SHA" = "${{ github.sha }}" ]; then
+              echo "✓ runner SHA matches commit: $RUNNER_SHA"
+              exit 0
+            fi
+            echo "[$attempt/12] runner SHA: $RUNNER_SHA, expected ${{ github.sha }} — VM still rolling..."
+            sleep 30
+          done
+          echo "::error::Runner SHA never converged to ${{ github.sha }} after 6 min."
+          echo "::error::Likely cause: the VM container did not refresh — image pull failed, or the cron didn't fire."
+          echo "::error::Manual remediation: gcloud compute ssh ayvid-execution --tunnel-through-iap --zone=\${{ env.GCP_ZONE }} --command='bash -s ${{ env.GCP_REGION }} ${{ env.GCP_PROJECT }} ${{ needs.build-and-push.outputs.image_tag }}' < scripts/vm_redeploy.sh"
+          exit 1
 
       - name: Verify runner is producing fresh snapshots
         run: |

@@ -10,11 +10,31 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-ENV NEXT_TELEMETRY_DISABLED=1
+# NEXT_PUBLIC_* must be present at BUILD time, not runtime, because Next.js
+# inlines them into the static bundle. The nav badge reads
+# NEXT_PUBLIC_BUILD_SHA so the deployed frontend's commit is visible at a
+# glance — drift between bundle and backend becomes immediately obvious.
+ARG NEXT_PUBLIC_BUILD_SHA=dev
+ARG NEXT_PUBLIC_API_BASE
+ENV NEXT_PUBLIC_BUILD_SHA=${NEXT_PUBLIC_BUILD_SHA} \
+    NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE} \
+    NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 FROM node:20-alpine AS runner
 WORKDIR /app
+
+# Re-declare so the runtime layer also has the SHA visible (for `docker
+# inspect` / Cloud Run env). The bundle was already stamped in the
+# builder stage above; this is for ops, not the browser.
+ARG BUILD_SHA=dev
+ARG BUILD_TIME=unknown
+ARG NEXT_PUBLIC_BUILD_SHA=dev
+ENV BUILD_SHA=${BUILD_SHA} \
+    BUILD_TIME=${BUILD_TIME} \
+    NEXT_PUBLIC_BUILD_SHA=${NEXT_PUBLIC_BUILD_SHA}
+LABEL build_sha=${BUILD_SHA}
+LABEL build_time=${BUILD_TIME}
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \

@@ -18,6 +18,16 @@ RUN pip install --upgrade pip && \
 
 FROM python:3.12-slim AS runtime
 
+# Build-time identity: stamped by CI via --build-arg so /api/v1/system/build
+# and live/deploy_marker.json can prove which commit is running. The
+# smoke test in deploy-gcp.yml asserts these match GITHUB_SHA.
+ARG BUILD_SHA=dev
+ARG BUILD_TIME=unknown
+ENV BUILD_SHA=${BUILD_SHA} \
+    BUILD_TIME=${BUILD_TIME}
+LABEL build_sha=${BUILD_SHA}
+LABEL build_time=${BUILD_TIME}
+
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 
 RUN apt-get update && apt-get install --no-install-recommends -y tini && \

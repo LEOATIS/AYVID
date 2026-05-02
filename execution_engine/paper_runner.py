@@ -119,6 +119,106 @@ def _sync_path_to_gcs(path: Path) -> None:
         log.warning(f"gcs sync failed for {path}: {exc}")
 
 
+import time as _time
+
+DEPLOY_MARKER_PATH = LIVE_DIR / "deploy_marker.json"
+
+
+async def _stall_watchdog(max_silence_seconds: int = 600) -> None:
+    """Detects a "silent zombie" runner — process alive but not writing
+    snapshots — and signals graceful shutdown so Docker's restart policy
+    reboots the container with a fresh deploy marker.
+
+    Behaviour: every 60s we ``stat`` ``live/equity_curve.jsonl``. If its
+    size hasn't changed for ``max_silence_seconds`` we set
+    ``_stop_event``. The main loops at lines 282–284 and the IB cleanup
+    finally-block at 286–300 then run normally — this is **not**
+    ``os._exit``: open IB brackets are cancelled before disconnect.
+
+    Why a stall watchdog exists: the May 2 incident showed the deployed
+    runner went 3 days without writing equity_curve.jsonl while still
+    "Up" in Docker — health is structural, not behavioural. This makes
+    it impossible: 10 minutes of no writes → restart → new deploy marker.
+    """
+    if _stop_event is None:
+        return
+    eq_path = LIVE_DIR / "equity_curve.jsonl"
+    last_size = -1
+    last_change_at = _time.monotonic()
+    log.info(f"stall_watchdog_started max_silence_seconds={max_silence_seconds}")
+    while not _stop_event.is_set():
+        try:
+            await asyncio.wait_for(_stop_event.wait(), timeout=60)
+            return  # graceful shutdown initiated elsewhere — exit cleanly
+        except TimeoutError:
+            pass
+        try:
+            current_size = eq_path.stat().st_size if eq_path.exists() else 0
+        except OSError as exc:
+            log.warning(f"stall_watchdog_stat_failed: {exc!s}")
+            continue
+        if current_size != last_size:
+            last_size = current_size
+            last_change_at = _time.monotonic()
+            continue
+        silence = _time.monotonic() - last_change_at
+        if silence > max_silence_seconds:
+            log.error(
+                f"stall_watchdog_triggered silence_seconds={int(silence)} "
+                f"last_size={last_size} action=graceful_shutdown_signal"
+            )
+            # Set stop event — main loops exit, IB finally-block runs
+            # (orphan-bracket cancellation), Docker restart policy reboots.
+            _stop_event.set()
+            return
+
+
+def _write_deploy_marker() -> dict[str, Any]:
+    """Persist the runner's identity to ``live/deploy_marker.json``.
+
+    Read by ``GET /api/v1/system/runner-info`` so the CI smoke test
+    can verify the VM container is on the new image. The image's
+    Dockerfile bakes ``BUILD_SHA`` / ``BUILD_TIME`` as ENV vars at
+    build time (see Dockerfile.execution), so this just snapshots
+    them plus the live process metadata.
+
+    Atomic write so a SIGKILL mid-write can't leave a half-truncated
+    JSON file that would 500 the runner-info endpoint.
+    """
+    exec_mode = getattr(settings, "EXECUTION_MODE", None)
+    marker = {
+        "build_sha": os.environ.get("BUILD_SHA", "dev"),
+        "build_time": os.environ.get("BUILD_TIME", "unknown"),
+        "started_at": dt.datetime.now(dt.UTC).isoformat(),
+        "pid": os.getpid(),
+        "execution_mode": (
+            exec_mode.value if hasattr(exec_mode, "value") else str(exec_mode or "shadow")
+        ),
+        "auto_execute": bool(getattr(settings, "AUTO_EXECUTE", False)),
+        "llm_orchestration_enabled": bool(
+            getattr(settings, "LLM_ORCHESTRATION_ENABLED", False)
+        ),
+    }
+    try:
+        DEPLOY_MARKER_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = DEPLOY_MARKER_PATH.with_suffix(".tmp")
+        with tmp.open("w") as fh:
+            json.dump(marker, fh, indent=2, default=str)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, DEPLOY_MARKER_PATH)
+        log.info(
+            f"deploy_marker_written sha={marker['build_sha']} "
+            f"mode={marker['execution_mode']} pid={marker['pid']}"
+        )
+        _sync_path_to_gcs(DEPLOY_MARKER_PATH)
+    except OSError as exc:
+        # Non-fatal — we'd rather start the runner with no marker than
+        # refuse to boot. The smoke test will surface the gap.
+        log.warning(f"deploy_marker_write_failed: {exc!s}")
+    return marker
+
+
 def _write_meta(mode: str, initial_equity: float, interval_seconds: int) -> None:
     exec_mode = getattr(settings, "EXECUTION_MODE", None)
     meta = {
@@ -1267,6 +1367,10 @@ async def run(
     global _stop_event
     _stop_event = asyncio.Event()
     _ensure_dirs()
+    # Identity stamp BEFORE anything else: makes "which image is running"
+    # answerable from /api/v1/system/runner-info even if the rest of
+    # init explodes. The CI smoke test depends on this firing first.
+    _write_deploy_marker()
 
     # Explicit --shadow flag wins. Otherwise consult the env-driven
     # EXECUTION_MODE so a deploy that sets EXECUTION_MODE=shadow doesn't
@@ -1337,6 +1441,16 @@ async def run(
         asyncio.create_task(
             _run_readiness_loop(shadow=shadow, shadow_state_holder=shadow_state_holder),
             name="trade_readiness_checker",
+        )
+    )
+
+    # Silent-zombie tripwire — see _stall_watchdog docstring. Setting
+    # the timeout to 10× the runner's cycle interval gives a comfortable
+    # buffer for slow OHLCV fetches without letting a true stall hide.
+    tasks.append(
+        asyncio.create_task(
+            _stall_watchdog(max_silence_seconds=max(600, interval_seconds * 10)),
+            name="stall_watchdog",
         )
     )
 
