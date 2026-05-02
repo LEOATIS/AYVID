@@ -175,6 +175,10 @@ resource "google_compute_instance" "execution" {
     HOST_LIVE_DIR=/var/lib/ayvid/live
     HOST_DATA_DIR=/var/lib/ayvid/data_store
     mkdir -p "$HOST_LIVE_DIR" "$HOST_DATA_DIR"
+    # uid/gid 1001 = `ayvid` user inside the container (Dockerfile.execution).
+    # Without this chown the runner crashes EACCES on every write into
+    # /app/live and Docker restart-loops on boot.
+    chown -R 1001:1001 "$HOST_LIVE_DIR" "$HOST_DATA_DIR"
 
     GCS_BUCKET="${var.project_id}-tfstate"
     GCS_PREFIX="live_state"
@@ -204,6 +208,8 @@ resource "google_compute_instance" "execution" {
     }
     hydrate_from_gcs "live"       "$HOST_LIVE_DIR"       || true
     hydrate_from_gcs "data_store" "$HOST_DATA_DIR"       || true
+    # Re-chown after hydrate: the GCS read above writes as root.
+    chown -R 1001:1001 "$HOST_LIVE_DIR" "$HOST_DATA_DIR"
 
     # --- AYVID runner container --------------------------------------------
     docker --config "$DOCKER_CONFIG" pull "$IMAGE"

@@ -234,8 +234,17 @@ def _write_meta(mode: str, initial_equity: float, interval_seconds: int) -> None
         "live_trading_confirmed": getattr(settings, "LIVE_TRADING_CONFIRMED", False),
         "llm_orchestration_enabled": getattr(settings, "LLM_ORCHESTRATION_ENABLED", False),
     }
-    RUN_META_PATH.write_text(json.dumps(meta, indent=2))
-    _sync_path_to_gcs(RUN_META_PATH)
+    # Defensive write: an EACCES on live/ used to crash the runner at
+    # boot which then Docker-restart-looped (May 3 incident: bind-mount
+    # was root-owned but container ran as uid 1001). Now we degrade
+    # gracefully — log a warning, surface the gap via /system/runner-info
+    # missing-marker hint, but don't take down the trading loop just
+    # because we can't snapshot run metadata.
+    try:
+        RUN_META_PATH.write_text(json.dumps(meta, indent=2))
+        _sync_path_to_gcs(RUN_META_PATH)
+    except OSError as exc:
+        log.warning(f"_write_meta failed (non-fatal): {exc!s}")
 
 
 # ────────────────────────────────────────────────────────────────

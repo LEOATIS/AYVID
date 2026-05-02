@@ -74,6 +74,13 @@ sudo chmod 600 "$SECRETS_FILE"
 echo "[vm_redeploy] hydrating live/ + data_store/ from gs://${GCS_BUCKET}/${GCS_PREFIX}/ ..."
 sudo mkdir -p "$HOST_LIVE_DIR" "$HOST_DATA_DIR"
 sudo chmod 755 "$HOST_LIVE_DIR" "$HOST_DATA_DIR"
+# CRITICAL: the container runs as uid 1001 (`ayvid` user — see
+# Dockerfile.execution). Bind-mounted host dirs preserve the host's
+# owner, so unless we chown to 1001 here the runner gets EACCES on
+# every write to live/ and crashes in a Docker restart-loop on boot
+# (deploy_marker.tmp / run_meta.json fail). The May 3 incident was
+# this exact bug.
+sudo chown -R 1001:1001 "$HOST_LIVE_DIR" "$HOST_DATA_DIR"
 
 # COS doesn't ship gsutil; use the same metadata-token pattern via
 # curl + the GCS JSON API. Robust against gsutil absence.
@@ -106,6 +113,11 @@ hydrate_from_gcs() {
 }
 hydrate_from_gcs "live"       "$HOST_LIVE_DIR"       || echo "[vm_redeploy] live hydrate failed (non-fatal)"
 hydrate_from_gcs "data_store" "$HOST_DATA_DIR"       || echo "[vm_redeploy] data_store hydrate failed (non-fatal)"
+
+# `sudo tee`/`sudo mkdir` inside hydrate_from_gcs writes as root, which
+# re-roots the dirs we chowned above. Final chown sweeps everything to
+# 1001:1001 so the container user can read and write.
+sudo chown -R 1001:1001 "$HOST_LIVE_DIR" "$HOST_DATA_DIR"
 
 echo "[vm_redeploy] swapping container..."
 sudo docker rm -f ayvid-execution 2>/dev/null || true
