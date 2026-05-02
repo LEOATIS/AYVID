@@ -86,34 +86,78 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Build on the runner and push directly. We use the gha cache so
-      # repeat builds reuse layers across workflow runs — first build
-      # of the day takes ~6 min, subsequent are ~90s.
-      - name: Build & push backend image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: Dockerfile
-          platforms: linux/amd64
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/ayvid-backend:${{ steps.meta.outputs.tag }}
-            ${{ env.REGISTRY }}/ayvid-backend:latest
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend
+      # Build + push with an OUTER retry loop. ``docker buildx`` already
+      # retries 5× on its own, but Artifact Registry 502s sometimes
+      # outlast that window (Nov 2025 incident produced 90+s of 502s on
+      # the manifest config PUT). The shell wrapper below re-issues the
+      # whole build with exponential backoff so a transient registry
+      # blip doesn't fail an entire deploy. The buildx builder + GHA
+      # cache survive between attempts, so attempt 2 is always ~90s.
+      - name: Build & push backend image (retry-wrapped)
+        env:
+          IMAGE_BASE: ${{ env.REGISTRY }}/ayvid-backend
+          IMAGE_TAG:  ${{ steps.meta.outputs.tag }}
+        run: |
+          set -uo pipefail
+          attempt=0
+          max=5
+          delay=10
+          until [ $attempt -ge $max ]; do
+            attempt=$((attempt + 1))
+            echo "::group::Build & push backend (attempt $attempt/$max)"
+            if docker buildx build \
+                --platform linux/amd64 \
+                --file Dockerfile \
+                --tag "$IMAGE_BASE:$IMAGE_TAG" \
+                --tag "$IMAGE_BASE:latest" \
+                --cache-from type=gha,scope=backend \
+                --cache-to   type=gha,mode=max,scope=backend \
+                --push \
+                . ; then
+              echo "::endgroup::"
+              echo "Build+push succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "::warning::Attempt $attempt failed; sleeping ${delay}s before retry"
+            sleep $delay
+            delay=$((delay * 2))
+          done
+          echo "::error::All $max build+push attempts exhausted (likely Artifact Registry 5xx)"
+          exit 1
 
-      - name: Build & push execution image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: Dockerfile.execution
-          platforms: linux/amd64
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/ayvid-execution:${{ steps.meta.outputs.tag }}
-            ${{ env.REGISTRY }}/ayvid-execution:latest
-          cache-from: type=gha,scope=execution
-          cache-to: type=gha,mode=max,scope=execution
+      - name: Build & push execution image (retry-wrapped)
+        env:
+          IMAGE_BASE: ${{ env.REGISTRY }}/ayvid-execution
+          IMAGE_TAG:  ${{ steps.meta.outputs.tag }}
+        run: |
+          set -uo pipefail
+          attempt=0
+          max=5
+          delay=10
+          until [ $attempt -ge $max ]; do
+            attempt=$((attempt + 1))
+            echo "::group::Build & push execution (attempt $attempt/$max)"
+            if docker buildx build \
+                --platform linux/amd64 \
+                --file Dockerfile.execution \
+                --tag "$IMAGE_BASE:$IMAGE_TAG" \
+                --tag "$IMAGE_BASE:latest" \
+                --cache-from type=gha,scope=execution \
+                --cache-to   type=gha,mode=max,scope=execution \
+                --push \
+                . ; then
+              echo "::endgroup::"
+              echo "Build+push succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "::warning::Attempt $attempt failed; sleeping ${delay}s before retry"
+            sleep $delay
+            delay=$((delay * 2))
+          done
+          echo "::error::All $max build+push attempts exhausted (likely Artifact Registry 5xx)"
+          exit 1
 
   deploy-cloud-run:
     name: Deploy backend (Cloud Run)
