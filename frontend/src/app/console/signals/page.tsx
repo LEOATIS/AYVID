@@ -5,8 +5,13 @@ import { LineChart } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Empty } from "@/components/ui/Empty";
-import { useSignals } from "@/lib/hooks";
-import type { ReadinessStatus, Signal, SignalReadinessEvent } from "@/lib/api";
+import { useSignals, useSignalsHistory } from "@/lib/hooks";
+import type {
+  ReadinessStatus,
+  Signal,
+  SignalReadinessEvent,
+  SignalHistoryRecord,
+} from "@/lib/api";
 import { fmtAge, fmtMoney, fmtNumber } from "@/lib/format";
 
 // ── Asset-class palette ────────────────────────────────────────────
@@ -140,8 +145,80 @@ function SlTpBar({ signal }: { signal: Signal }) {
 }
 
 // ── Main page ──────────────────────────────────────────────────────
+// Cast a single SignalHistoryRecord into the Signal shape the rest of
+// this page renders. History rows can be missing some fields (especially
+// the inferred PORTFOLIO markers), so we fill in safe defaults.
+function _historyRecordToSignal(r: SignalHistoryRecord): Signal {
+  return {
+    ticker: r.ticker ?? "?",
+    direction: (r.direction ?? "LONG") as Signal["direction"],
+    instrument_type: r.instrument_type ?? r.asset_class ?? "EQUITY",
+    asset_class: (r.asset_class ?? "EQUITY") as Signal["asset_class"],
+    conviction: r.conviction ?? 0,
+    strategy_name: r.strategy_name ?? r.event ?? "",
+    strike: r.strike ?? null,
+    expiry_date: r.expiry_date ?? "",
+    stop_loss_pct: r.stop_loss_pct ?? 0,
+    take_profit_pct: r.take_profit_pct ?? 0,
+    rationale: r.rationale ?? "",
+    computed_at: r.computed_at ?? r.logged_at,
+    ttl_minutes: r.ttl_minutes ?? 30,
+    regime_fingerprint: r.regime_fingerprint ?? "",
+    expected_r: r.expected_r ?? 0,
+    min_r: r.min_r ?? 0,
+    entry_price: r.entry_price ?? r.entry_price_at_compute ?? 0,
+    entry_price_at_compute: r.entry_price_at_compute ?? r.entry_price ?? 0,
+    entry_zone_low: r.entry_zone_low ?? 0,
+    entry_zone_high: r.entry_zone_high ?? 0,
+    stop_loss_price: r.stop_loss_price ?? 0,
+    take_profit_price: r.take_profit_price ?? 0,
+    risk_reward_ratio: r.risk_reward_ratio ?? 0,
+    quantity: r.quantity ?? 0,
+    notional_value: r.notional_value ?? 0,
+    risk_amount: r.risk_amount ?? 0,
+    kelly_fraction: r.kelly_fraction ?? 0,
+    contract_multiplier: r.contract_multiplier ?? null,
+    pip_value: r.pip_value ?? null,
+    margin_required: r.margin_required ?? null,
+    factor_score: r.factor_score ?? 0,
+    expires_at: r.expires_at ?? r.logged_at,
+    readiness_status: (r.readiness_status ?? "EXPIRED") as ReadinessStatus,
+    readiness_reason: r.readiness_reason ?? r.event ?? "",
+    readiness_checked_at: r.readiness_checked_at ?? r.logged_at,
+    current_price: r.current_price ?? null,
+    distance_to_entry_pct: r.distance_to_entry_pct ?? null,
+  } as Signal;
+}
+
+const _today = () => new Date().toISOString().slice(0, 10);
+const _daysAgo = (n: number) =>
+  new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+
 export default function SignalsPage() {
-  const { data, error, isLoading } = useSignals();
+  const [view, setView] = useState<"active" | "history">("active");
+  const [dateStart, setDateStart] = useState<string>(_daysAgo(14));
+  const [dateEnd, setDateEnd] = useState<string>(_today());
+
+  const { data: activeData, error: activeError, isLoading: activeLoading } =
+    useSignals();
+  const {
+    data: historyData,
+    error: historyError,
+    isLoading: historyLoading,
+  } = useSignalsHistory(
+    view === "history"
+      ? {
+          start: `${dateStart}T00:00:00`,
+          end: `${dateEnd}T23:59:59`,
+          limit: 2000,
+        }
+      : {},
+  );
+
+  const isLoading = view === "active" ? activeLoading : historyLoading;
+  const error = view === "active" ? activeError : historyError;
+  const data = view === "active" ? activeData : undefined;
+
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [assetFilter, setAssetFilter] = useState<AssetFilter>("ALL");
   const [flashTickers, setFlashTickers] = useState<Set<string>>(new Set());
@@ -198,7 +275,15 @@ export default function SignalsPage() {
     };
   }, []);
 
-  const signals: Signal[] = data?.signals ?? [];
+  const signals: Signal[] =
+    view === "active"
+      ? activeData?.signals ?? []
+      : (historyData?.records ?? [])
+          // Skip the synthetic PORTFOLIO markers that have no ticker —
+          // they're useful for the timeline summary but don't render
+          // as signal cards.
+          .filter((r) => r.ticker && r.ticker !== "PORTFOLIO")
+          .map(_historyRecordToSignal);
 
   const filtered = useMemo(() => {
     return signals.filter((s) => {
@@ -220,20 +305,101 @@ export default function SignalsPage() {
     });
   }, [filtered]);
 
-  const ready = data?.ready_count ?? 0;
-  const waiting = data?.waiting_count ?? 0;
-  const total = data?.total ?? signals.length;
+  // Counts come from the active SignalsResponse in active view, and
+  // from the history endpoint's by_status aggregate in history view.
+  const histCounts = historyData?.by_status ?? {};
+  const ready =
+    view === "active"
+      ? activeData?.ready_count ?? 0
+      : histCounts.READY ?? 0;
+  const waiting =
+    view === "active"
+      ? activeData?.waiting_count ?? 0
+      : histCounts.WAITING ?? 0;
+  const expired =
+    view === "active"
+      ? activeData?.expired_count ?? 0
+      : histCounts.EXPIRED ?? 0;
+  const cancelled =
+    view === "active"
+      ? activeData?.cancelled_count ?? 0
+      : histCounts.CANCELLED ?? 0;
+  const filled = view === "history" ? histCounts.FILLED ?? 0 : 0;
+  const total =
+    view === "active"
+      ? activeData?.total ?? signals.length
+      : historyData?.total ?? signals.length;
 
   const filterPills: { label: StatusFilter; count: number }[] = [
     { label: "ALL", count: total },
     { label: "READY", count: ready },
     { label: "WAITING", count: waiting },
-    { label: "EXPIRED", count: data?.expired_count ?? 0 },
-    { label: "CANCELLED", count: data?.cancelled_count ?? 0 },
+    { label: "EXPIRED", count: expired },
+    { label: "CANCELLED", count: cancelled },
   ];
 
   return (
     <div className="flex flex-col gap-6 fade-up">
+      {/* View toggle + date range — sits above the existing header */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="inline-flex rounded-full bg-[hsl(var(--bg-sunken))] p-0.5">
+          <button
+            type="button"
+            onClick={() => setView("active")}
+            className={[
+              "px-4 py-1.5 text-[11px] font-mono font-medium tracking-[0.06em] rounded-full transition-colors",
+              view === "active"
+                ? "bg-brand text-bg"
+                : "text-muted hover:text-fg",
+            ].join(" ")}
+          >
+            ◌ ACTIVE BOOK
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("history")}
+            className={[
+              "px-4 py-1.5 text-[11px] font-mono font-medium tracking-[0.06em] rounded-full transition-colors",
+              view === "history"
+                ? "bg-brand text-bg"
+                : "text-muted hover:text-fg",
+            ].join(" ")}
+          >
+            ⏱ FULL HISTORY
+          </button>
+        </div>
+        {view === "history" && (
+          <>
+            <input
+              type="date"
+              value={dateStart}
+              onChange={(e) => setDateStart(e.target.value)}
+              max={dateEnd}
+              className="num rounded-md bg-[hsl(var(--bg-sunken))] px-3 py-1.5 text-[12px] text-fg ring-1 ring-inset ring-[hsl(var(--border))] focus:outline-none focus:ring-brand"
+            />
+            <span className="text-[12px] text-subtle">→</span>
+            <input
+              type="date"
+              value={dateEnd}
+              onChange={(e) => setDateEnd(e.target.value)}
+              min={dateStart}
+              max={_today()}
+              className="num rounded-md bg-[hsl(var(--bg-sunken))] px-3 py-1.5 text-[12px] text-fg ring-1 ring-inset ring-[hsl(var(--border))] focus:outline-none focus:ring-brand"
+            />
+            <span className="num text-[10px] tracking-wider text-subtle">
+              {historyData?.total ?? 0} records
+              {historyData?.earliest && historyData.latest && (
+                <>
+                  {" · "}
+                  {historyData.earliest.slice(0, 16)} → {historyData.latest.slice(0, 16)}
+                </>
+              )}
+              {filled > 0 && <> · <span className="text-pos">{filled} FILLED</span></>}
+            </span>
+          </>
+        )}
+      </div>
+
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-[26px] font-semibold tracking-tight text-fg">Signals</h1>

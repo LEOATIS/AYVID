@@ -6,6 +6,7 @@ import {
   type EquityResponse,
   type RunnerStatus,
   type SignalsResponse,
+  type SignalsHistoryResponse,
   type BacktestSummary,
   type ShockScenario,
   type SystemStatus,
@@ -34,6 +35,27 @@ export const useSignals = () =>
     dedupingInterval: 2_000,
     revalidateOnFocus: true,
   });
+
+export const useSignalsHistory = (params: {
+  start?: string;
+  end?: string;
+  ticker?: string;
+  asset_class?: string;
+  status?: string;
+  event?: string;
+  limit?: number;
+} = {}) => {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== "") qs.set(k, String(v));
+  }
+  const path = `/live/signals/history${qs.toString() ? `?${qs.toString()}` : ""}`;
+  return useSWR<SignalsHistoryResponse>(path, fetcher, {
+    refreshInterval: REFRESH.medium,
+    dedupingInterval: 5_000,
+    revalidateOnFocus: false,
+  });
+};
 
 export const usePositions = () =>
   useSWR<{

@@ -464,6 +464,82 @@ async def signals() -> dict[str, Any]:
     }
 
 
+@router.get("/signals/history")
+async def signals_history(
+    start: str | None = Query(None, description="ISO timestamp lower bound"),
+    end: str | None = Query(None, description="ISO timestamp upper bound"),
+    ticker: str | None = Query(None),
+    asset_class: str | None = Query(None),
+    status: str | None = Query(None, description="readiness_status filter"),
+    event: str | None = Query(None, description="event filter (CREATED, EXPIRED, …)"),
+    limit: int = Query(1000, ge=1, le=10000),
+) -> dict[str, Any]:
+    """Filtered scan over the immortal ``signal_history.jsonl`` ledger.
+
+    The ledger is append-only and bounded only by disk — every signal
+    AYVID has ever generated stays here, even after the active book's
+    LRU evicts it. The Signals page's "Full History" toggle hits this
+    endpoint with a date range; the active /signals route still serves
+    the live book for the default view.
+    """
+    import datetime as _dt
+
+    from execution_engine.signal_book import get_signal_book
+
+    def _parse_ts(s: str | None) -> _dt.datetime | None:
+        if not s:
+            return None
+        try:
+            return _dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            return None
+
+    book = get_signal_book()
+    records = book.get_history(
+        start=_parse_ts(start),
+        end=_parse_ts(end),
+        ticker=ticker.upper() if ticker else None,
+        asset_class=asset_class.upper() if asset_class else None,
+        status=status.upper() if status else None,
+        event=event.upper() if event else None,
+        limit=limit,
+    )
+
+    by_status: dict[str, int] = {}
+    by_asset_class: dict[str, int] = {}
+    by_event: dict[str, int] = {}
+    by_ticker: dict[str, int] = {}
+    for r in records:
+        s = str(r.get("readiness_status") or "?")
+        by_status[s] = by_status.get(s, 0) + 1
+        ac = str(r.get("asset_class") or "?")
+        by_asset_class[ac] = by_asset_class.get(ac, 0) + 1
+        ev = str(r.get("event") or "?")
+        by_event[ev] = by_event.get(ev, 0) + 1
+        t = str(r.get("ticker") or "?")
+        by_ticker[t] = by_ticker.get(t, 0) + 1
+
+    return {
+        "records": records,
+        "total": len(records),
+        "by_status": by_status,
+        "by_asset_class": by_asset_class,
+        "by_event": by_event,
+        "by_ticker": dict(
+            sorted(by_ticker.items(), key=lambda kv: -kv[1])[:20]
+        ),
+        "earliest": (
+            records[-1].get("logged_at") or records[-1].get("computed_at")
+            if records else None
+        ),
+        "latest": (
+            records[0].get("logged_at") or records[0].get("computed_at")
+            if records else None
+        ),
+        "snapshot_at": _dt.datetime.now(_dt.UTC).isoformat(),
+    }
+
+
 def _list_backtest_files_gcs() -> list[tuple[str, str]]:
     """List backtest JSON files from GCS. Returns [(blob_name, text), ...]."""
     if not _GCS_BUCKET:

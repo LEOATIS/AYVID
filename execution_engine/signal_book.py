@@ -28,6 +28,14 @@ log = get_logger("signal_book")
 
 _DEFAULT_TTL_MINUTES = 30
 _BOOK_PATH = Path("data_store/signal_book.json")
+# Append-only ledger of every signal lifecycle event ever seen. Survives
+# expiry, container restart, and the active-book LRU eviction. The
+# /signals/history endpoint reads this file; nothing in the runtime
+# path ever truncates or rewrites it.
+_HISTORY_PATH = Path("data_store/signal_history.jsonl")
+# Soft cap on the active book — keeps the in-memory dict / signal_book.json
+# bounded. Anything older than this drains into history-only.
+_ACTIVE_BOOK_CAP = 500
 
 
 def compose_thesis_signature(causal_intel: dict | None) -> str:
@@ -631,12 +639,21 @@ class SignalBook:
         shadow fills. The exact tripwires below are the M3 retro
         findings — the regression that produced the May 1 fake NVDA
         trades was a ``test_strategy`` row landing in the book.
+
+        Also writes a ``CREATED`` row to the immortal history ledger so
+        every signal ever generated stays auditable forever, even after
+        the active-book LRU evicts it.
         """
         _validate_signal(signal)
         with self._lock:
             key = self._key(signal.ticker, signal.regime_fingerprint)
             self._signals[key] = signal
             self._stats["upserts"] += 1
+        # Append-only history is intentionally outside the lock — the
+        # file write has its own fcntl lock and the in-memory state
+        # has already been committed. Better to risk a missed history
+        # row (logged) than to extend the RLock across disk I/O.
+        self._append_history(signal, event="CREATED")
 
     def upsert_batch(self, signals: list[PrecomputedSignal]) -> int:
         """Insert multiple signals atomically."""
@@ -647,16 +664,176 @@ class SignalBook:
                 key = self._key(sig.ticker, sig.regime_fingerprint)
                 self._signals[key] = sig
                 self._stats["upserts"] += 1
-            return len(signals)
+            count = len(signals)
+        for sig in signals:
+            self._append_history(sig, event="CREATED")
+        return count
+
+    # ── Immortal history ledger ────────────────────────────────────
+    @staticmethod
+    def _signal_to_record(signal: PrecomputedSignal, event: str) -> dict:
+        """Project a PrecomputedSignal + event tag into a JSONL row."""
+        try:
+            payload = asdict(signal)
+        except TypeError:
+            payload = {
+                k: getattr(signal, k, None)
+                for k in PrecomputedSignal.__dataclass_fields__
+            }
+        record = {
+            "event": event,
+            "logged_at": dt.datetime.now(dt.UTC).isoformat(),
+            "key": SignalBook._key_static(signal.ticker, signal.regime_fingerprint),
+            **payload,
+        }
+        return record
+
+    def _append_history(self, signal: PrecomputedSignal, *, event: str) -> None:
+        """Append a single event row to ``signal_history.jsonl``.
+
+        Multi-process-safe via fcntl LOCK_EX. Skipped silently on the
+        rare platforms (Windows in CI) without fcntl — the runtime
+        target is Linux containers + macOS dev so this is fine.
+        """
+        record = self._signal_to_record(signal, event=event)
+        path = _HISTORY_PATH
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            import json as _json
+            try:
+                import fcntl  # type: ignore[import-not-found]
+            except ImportError:
+                fcntl = None  # type: ignore[assignment]
+            with open(path, "a", encoding="utf-8") as fh:
+                if fcntl is not None:
+                    try:
+                        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+                    except OSError:
+                        pass
+                fh.write(_json.dumps(record, default=str) + "\n")
+                fh.flush()
+                try:
+                    import os as _os
+                    _os.fsync(fh.fileno())
+                except OSError:
+                    pass
+                if fcntl is not None:
+                    try:
+                        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+                    except OSError:
+                        pass
+        except Exception as exc:
+            log.warning(f"signal_history append failed for {signal.ticker}: {exc}")
+            return
+        try:
+            from shared.gcs import sync_artifact
+            sync_artifact(path)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _key_static(ticker: str, regime_fingerprint: str) -> str:
+        """Mirror of the instance ``_key`` for use without a SignalBook."""
+        return f"{ticker}|{regime_fingerprint}"
+
+    def get_history(
+        self,
+        *,
+        start: dt.datetime | None = None,
+        end: dt.datetime | None = None,
+        ticker: str | None = None,
+        asset_class: str | None = None,
+        status: str | None = None,
+        event: str | None = None,
+        limit: int = 1000,
+    ) -> list[dict]:
+        """Filtered scan over ``signal_history.jsonl``.
+
+        Reads the entire file (it's append-only, capped only by disk).
+        For demo-scale (~10K rows / 14 days) this is sub-millisecond.
+        Production-scale would page or move to a column store; we are
+        not there yet and a pure-file solution is one less moving part.
+        """
+        path = _HISTORY_PATH
+        if not path.exists():
+            return []
+        out: list[dict] = []
+        start_iso = start.isoformat() if start else None
+        end_iso = end.isoformat() if end else None
+        try:
+            with open(path, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        import json as _json
+                        rec = _json.loads(line)
+                    except Exception:
+                        continue
+                    ts = (
+                        rec.get("computed_at")
+                        or rec.get("logged_at")
+                        or ""
+                    )
+                    if start_iso and ts and ts < start_iso:
+                        continue
+                    if end_iso and ts and ts > end_iso:
+                        continue
+                    if ticker and rec.get("ticker") != ticker:
+                        continue
+                    if asset_class and rec.get("asset_class") != asset_class:
+                        continue
+                    if status and rec.get("readiness_status") != status:
+                        continue
+                    if event and rec.get("event") != event:
+                        continue
+                    out.append(rec)
+        except OSError:
+            return []
+        out.sort(
+            key=lambda r: r.get("computed_at") or r.get("logged_at") or "",
+            reverse=True,
+        )
+        return out[:limit]
 
     def expire_stale(self) -> int:
-        """Remove all stale signals. Returns count of evicted entries."""
+        """Mark stale signals EXPIRED (do NOT delete) + LRU-evict only the
+        very oldest beyond the active-book cap.
+
+        Behaviour change vs. legacy: signals are immortal in
+        ``signal_history.jsonl``. The active book retains the last
+        ``_ACTIVE_BOOK_CAP`` (default 500) for live UI rendering;
+        anything older drains away but stays queryable via
+        ``get_history`` and the /signals/history endpoint.
+
+        Returns the number of signals **flipped to EXPIRED** (the
+        callers that historically read this count for monitoring still
+        get a meaningful value — only newly-flipped, not LRU-evicted).
+        """
+        flipped: list[PrecomputedSignal] = []
         with self._lock:
-            stale_keys = [k for k, v in self._signals.items() if v.is_stale]
-            for k in stale_keys:
-                del self._signals[k]
-            self._stats["stale_evictions"] += len(stale_keys)
-            return len(stale_keys)
+            for sig in self._signals.values():
+                if sig.readiness_status in ("EXPIRED", "CANCELLED", "FILLED"):
+                    continue
+                if sig.is_stale or sig.is_expired:
+                    sig.readiness_status = "EXPIRED"
+                    sig.readiness_reason = sig.readiness_reason or "ttl_elapsed"
+                    sig.readiness_checked_at = dt.datetime.now(dt.UTC).isoformat()
+                    flipped.append(sig)
+            # LRU-evict the oldest beyond the cap. We do NOT delete from
+            # history — the ledger is append-only.
+            if len(self._signals) > _ACTIVE_BOOK_CAP:
+                ranked = sorted(
+                    self._signals.items(),
+                    key=lambda kv: kv[1].computed_at or "",
+                    reverse=True,
+                )
+                self._signals = dict(ranked[:_ACTIVE_BOOK_CAP])
+            self._stats["stale_evictions"] += len(flipped)
+        for sig in flipped:
+            self._append_history(sig, event="EXPIRED")
+        return len(flipped)
 
     def get_all_active(self) -> list[PrecomputedSignal]:
         """Return all non-stale signals."""
@@ -717,17 +894,26 @@ class SignalBook:
             checked_iso = readiness_checked_at
         else:
             checked_iso = dt.datetime.now(dt.UTC).isoformat()
+        prev_status: str | None = None
+        sig_snapshot: PrecomputedSignal | None = None
         with self._lock:
             sig = self._signals.get(key)
             if sig is None:
                 return False
+            prev_status = sig.readiness_status
             sig.readiness_status = status
             sig.readiness_reason = readiness_reason or sig.readiness_reason
             sig.readiness_checked_at = checked_iso
             if current_price > 0:
                 sig.current_price = current_price
             sig.distance_to_entry_pct = distance_to_entry_pct
-            return True
+            sig_snapshot = sig
+        # Status transition → history event. We only log on transitions
+        # (not on every "still WAITING" tick) so the ledger stays
+        # readable.
+        if sig_snapshot is not None and prev_status != status:
+            self._append_history(sig_snapshot, event=f"STATUS_{status}")
+        return True
 
     def mark_all_expired(self) -> int:
         """Sweep — flip every TTL-elapsed WAITING/READY signal to EXPIRED.
@@ -736,7 +922,7 @@ class SignalBook:
         readiness-checker cycle so the frontend's expiry counter
         moves forward even when no live evaluation hits the signal.
         """
-        flipped = 0
+        flipped: list[PrecomputedSignal] = []
         with self._lock:
             for sig in self._signals.values():
                 if sig.readiness_status in ("EXPIRED", "CANCELLED"):
@@ -745,8 +931,10 @@ class SignalBook:
                     sig.readiness_status = "EXPIRED"
                     sig.readiness_reason = "ttl_elapsed"
                     sig.readiness_checked_at = dt.datetime.now(dt.UTC).isoformat()
-                    flipped += 1
-        return flipped
+                    flipped.append(sig)
+        for sig in flipped:
+            self._append_history(sig, event="EXPIRED")
+        return len(flipped)
 
     def size(self) -> int:
         with self._lock:

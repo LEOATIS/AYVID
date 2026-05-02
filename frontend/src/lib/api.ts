@@ -371,6 +371,25 @@ export interface SignalsResponse {
   snapshot_at: string | null;
 }
 
+/** A single row from the immortal signal_history.jsonl ledger. */
+export interface SignalHistoryRecord extends Partial<Signal> {
+  event: string;            // CREATED, EXPIRED, STATUS_READY, BACKFILLED_CREATED, …
+  logged_at: string;        // ISO timestamp of the event itself
+  key: string;              // <ticker>|<regime_fingerprint>
+}
+
+export interface SignalsHistoryResponse {
+  records: SignalHistoryRecord[];
+  total: number;
+  by_status: Record<string, number>;
+  by_asset_class: Record<string, number>;
+  by_event: Record<string, number>;
+  by_ticker: Record<string, number>;
+  earliest: string | null;
+  latest: string | null;
+  snapshot_at: string;
+}
+
 export interface SignalReadinessEvent {
   type: "snapshot" | "readiness_change" | "heartbeat";
   ticker?: string;
@@ -459,6 +478,22 @@ export const api = {
   trades: (limit = 200) => getJSON<{ trades: unknown[]; count: number }>(`/live/trades?limit=${limit}`),
   positions: () => getJSON<{ positions: unknown[]; count: number; as_of: string | null }>("/live/positions"),
   signals: () => getJSON<SignalsResponse>("/live/signals"),
+  signalsHistory: (params: {
+    start?: string;
+    end?: string;
+    ticker?: string;
+    asset_class?: string;
+    status?: string;
+    event?: string;
+    limit?: number;
+  } = {}) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+    }
+    const qs = q.toString();
+    return getJSON<SignalsHistoryResponse>(`/live/signals/history${qs ? `?${qs}` : ""}`);
+  },
   scenarios: () => getJSON<{ scenarios: ShockScenario[]; count: number }>("/live/scenarios"),
   backtests: () => getJSON<{ reports: BacktestSummary[]; count: number }>("/live/backtests"),
   backtest: (name: string) => getJSON<Record<string, unknown>>(`/live/backtests/${encodeURIComponent(name)}`),
