@@ -205,19 +205,33 @@ async def runner_info() -> dict[str, Any]:
     """Identity of the paper runner that's writing live/* files.
 
     Backed by ``live/deploy_marker.json`` which the runner writes at
-    the very top of ``run()`` (before any other init). If the marker
-    is missing the runner hasn't started yet (boot in progress); if
-    its ``build_sha`` doesn't match ``/build``, the VM is still on
-    an older image.
+    the very top of ``run()`` (before any other init).
+
+    GCS-aware: Cloud Run and the runner are on different machines, so
+    the marker the runner writes to its VM disk isn't visible to the
+    Cloud Run backend's local filesystem. The runner mirrors it via
+    ``_sync_path_to_gcs`` to ``gs://${AYVID_LIVE_GCS_BUCKET}/${AYVID_LIVE_GCS_PREFIX}/live/deploy_marker.json``;
+    we delegate the local-then-GCS read to the same ``_read_text_any``
+    helper that powers ``/api/v1/live/equity`` and friends so the
+    bucket / prefix / client cache are shared.
     """
+    # Import-time dependency on live_routes is fine here: it's already
+    # imported by main.py for include_router, so no extra cost.
+    from backend.api.v1.endpoints.live_routes import _read_text_any
+
     marker_path = LIVE_DIR / "deploy_marker.json"
-    if not marker_path.exists():
+    text = _read_text_any(marker_path)
+    if text is None:
         return {
             "build_sha": "unknown",
             "started_at": None,
-            "note": "deploy_marker.json not yet written by runner",
+            "note": (
+                "deploy_marker.json not present locally and not in GCS — "
+                "runner has not booted yet OR is on an image without "
+                "_write_deploy_marker"
+            ),
         }
     try:
-        return json.loads(marker_path.read_text())
-    except (json.JSONDecodeError, OSError) as exc:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
         return {"build_sha": "error", "error": str(exc)}

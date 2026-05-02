@@ -443,17 +443,43 @@ jobs:
           # The VM cron / `vm_redeploy.sh` may need a few minutes to
           # pull the new image; allow up to 6 minutes.
           for attempt in $(seq 1 12); do
-            RESP=$(curl -fsS "${{ steps.url.outputs.url }}/api/v1/system/runner-info" 2>/dev/null || echo '{}')
-            RUNNER_SHA=$(echo "$RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('build_sha','none'))")
+            # Capture HTTP status + body so a "unknown" outcome
+            # distinguishes runner-not-booted from GCS-sync-broken
+            # from wrong-SHA. Without this we'd see opaque
+            # "runner SHA: unknown" all 12 attempts and never know
+            # which of the three failure modes hit.
+            RAW=$(curl -sS -w "\n___HTTP_STATUS:%{http_code}" \
+                   "${{ steps.url.outputs.url }}/api/v1/system/runner-info" 2>&1 || true)
+            HTTP=$(echo "$RAW" | sed -n 's/^___HTTP_STATUS://p')
+            BODY=$(echo "$RAW" | sed '/^___HTTP_STATUS:/d')
+            RESP="$BODY"
+            RUNNER_SHA=$(echo "$RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('build_sha','none'))" 2>/dev/null || echo "PARSE_ERROR")
+            NOTE=$(echo "$RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('note',''))" 2>/dev/null || echo "")
             if [ "$RUNNER_SHA" = "${{ github.sha }}" ]; then
               echo "✓ runner SHA matches commit: $RUNNER_SHA"
               exit 0
             fi
-            echo "[$attempt/12] runner SHA: $RUNNER_SHA, expected ${{ github.sha }} — VM still rolling..."
+            echo "[$attempt/12] HTTP=$HTTP runner_sha=$RUNNER_SHA expected=${{ github.sha }}"
+            if [ -n "$NOTE" ]; then
+              echo "         note: $NOTE"
+            fi
+            # Per-mode hints so "unknown" doesn't sit there opaquely
+            if [ "$RUNNER_SHA" = "unknown" ]; then
+              echo "         → marker not present in local disk OR GCS — VM container hasn't booted with new image yet"
+            elif [ "$RUNNER_SHA" = "error" ]; then
+              echo "         → marker file is corrupt / unparseable"
+            elif [ "$RUNNER_SHA" = "dev" ]; then
+              echo "         → runner running with default BUILD_SHA — Dockerfile ARG not propagating"
+            elif [ "$RUNNER_SHA" != "none" ] && [ "$RUNNER_SHA" != "PARSE_ERROR" ]; then
+              echo "         → runner is on a DIFFERENT SHA than the deploy expects (older / concurrent)"
+            fi
             sleep 30
           done
           echo "::error::Runner SHA never converged to ${{ github.sha }} after 6 min."
-          echo "::error::Likely cause: the VM container did not refresh — image pull failed, or the cron didn't fire."
+          echo "::error::Last response body: $BODY"
+          echo "::error::Last HTTP status: $HTTP"
+          echo "::error::Last runner_sha: $RUNNER_SHA"
+          echo "::error::Last note: $NOTE"
           echo "::error::Manual remediation: gcloud compute ssh ayvid-execution --tunnel-through-iap --zone=\${{ env.GCP_ZONE }} --command='bash -s ${{ env.GCP_REGION }} ${{ env.GCP_PROJECT }} ${{ needs.build-and-push.outputs.image_tag }}' < scripts/vm_redeploy.sh"
           exit 1
 
