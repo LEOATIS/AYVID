@@ -12,7 +12,7 @@ dependencies = [
     # Matching the bounds to what the local venv + openbb-core 1.6.x
     # actually require keeps the resolver shallow.
     "fastapi[all]>=0.115,<0.130",
-    "uvicorn[standard]>=0.29,<0.40",
+    "uvicorn[standard]>=0.29,<0.50",
     "pydantic>=2.6,<3",
     "pydantic-settings>=2.2,<3",
 
@@ -47,8 +47,11 @@ dependencies = [
     "openbb>=4.7.0,<5.0",
 
     # --- CLI & Terminal UI ---
-    "typer[all]>=0.12,<1",
-    "rich>=13.7,<15",
+    # typer 0.13+ rolled the legacy `[all]` extras (rich, shellingham,
+    # colorama) into the base install. Plain `typer` is enough now and
+    # avoids a "does not provide the extra 'all'" warning at install.
+    "typer>=0.12,<1",
+    "rich>=13.7,<16",
 
     # --- Async & Resilience ---
     "tenacity>=8.2,<10",
