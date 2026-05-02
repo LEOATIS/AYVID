@@ -62,6 +62,28 @@ for secret_id in $(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" \
     value=$(echo "$encoded" | base64 -d)
     printf '%s=%s\n' "$env_name" "$value" | sudo tee -a "$SECRETS_FILE" >/dev/null
 done
+
+# Plaintext config env vars. compute.tf writes these on FIRST boot only;
+# without re-injecting them on every redeploy, vm_redeploy.sh's
+# `: > $SECRETS_FILE` truncate above wipes them and the runner loses
+# AYVID_LIVE_GCS_BUCKET / EXECUTION_MODE / etc. The May 3 incident was
+# this exact bug: the marker write succeeded locally on the VM but
+# `_sync_path_to_gcs` returned early because $AYVID_LIVE_GCS_BUCKET
+# was empty post-redeploy, so Cloud Run could never see the marker
+# and the smoke test looped 12× on `runner_sha=unknown`.
+# Source-of-truth values match compute.tf exactly.
+{
+  printf 'AYVID_LIVE_GCS_BUCKET=%s\n'      "${PROJECT}-tfstate"
+  printf 'AYVID_LIVE_GCS_PREFIX=%s\n'      "live_state"
+  printf 'EXECUTION_MODE=%s\n'             "ib_paper"
+  printf 'AUTO_EXECUTE=%s\n'               "true"
+  printf 'LIVE_TRADING_CONFIRMED=%s\n'     "false"
+  printf 'CONTINUOUS_PIPELINE_ENABLED=%s\n' "true"
+  printf 'LLM_ORCHESTRATION_ENABLED=%s\n'  "true"
+  printf 'LLM_SIGNAL_TIMEOUT_SECONDS=%s\n' "45"
+  printf 'LLM_MAX_CONCURRENT_SIGNALS=%s\n' "5"
+} | sudo tee -a "$SECRETS_FILE" >/dev/null
+
 sudo chmod 600 "$SECRETS_FILE"
 
 # ── HYDRATE LIVE DATA FROM GCS ────────────────────────────────────────
