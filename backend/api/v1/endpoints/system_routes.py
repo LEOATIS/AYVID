@@ -23,6 +23,14 @@ log = get_logger("api.system")
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 
+# Unauthenticated sibling for endpoints that expose ONLY build identity
+# (commit SHA, container start time, runner deploy marker). The CI smoke
+# test in deploy-gcp.yml has no API key — gating these would 403 every
+# deploy verification (we hit exactly that on the May 3 deploy of
+# 5c87819). Build SHA is the inverse of secret: its purpose is to be
+# publicly verifiable so users can confirm what's running.
+public_router = APIRouter()
+
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 LIVE_DIR = PROJECT_ROOT / "live"
 SIGNAL_BOOK = PROJECT_ROOT / "data_store" / "signal_book.json"
@@ -172,7 +180,7 @@ async def get_pipeline_status() -> dict[str, Any]:
     }
 
 
-@router.get("/build")
+@public_router.get("/build")
 async def build_info() -> dict[str, Any]:
     """Identity of the currently-running backend container.
 
@@ -192,7 +200,7 @@ async def build_info() -> dict[str, Any]:
     }
 
 
-@router.get("/runner-info")
+@public_router.get("/runner-info")
 async def runner_info() -> dict[str, Any]:
     """Identity of the paper runner that's writing live/* files.
 

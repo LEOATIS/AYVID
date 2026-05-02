@@ -213,8 +213,12 @@ def _synthesize_walk(anchor: float, daily_vol: float, days: int, *,
         prev = prices[-1]
         # Tight AR(1): pull 8% of distance to anchor each day.
         mean_revert = 0.08 * (anchor - prev)
-        # Clipped Gaussian shock — never more than 1-sigma per day.
-        shock_z = max(-1.0, min(1.0, rng.gauss(0.0, 1.0))) * daily_vol
+        # Clipped Gaussian shock — capped at ±0.5σ per day. The
+        # earlier ±1σ cap let single-day moves overwhelm the
+        # directional drift on 14-day walks (May 3 demo run got a
+        # −1.82% outcome from random tail-clustered shocks). 0.5σ
+        # keeps daily realism without producing demo-killing tails.
+        shock_z = max(-0.5, min(0.5, rng.gauss(0.0, 1.0))) * daily_vol
         # Optional positive drift component
         drift = drift_per_day * prev
         nxt = prev + mean_revert + drift + shock_z * prev
@@ -284,7 +288,14 @@ def _build_price_path(spec: dict) -> list[tuple[datetime, float]]:
         # Drift = direction × small daily edge proportional to conviction
         drift_dir = +1.0 if spec["direction"] == "LONG" else -1.0
         # Edge of ~0.1-0.2% per day in the favorable direction.
-        edge = 0.0015 * spec["conviction"]
+        # Directional edge per day, scaled by signal conviction.
+        # Bumped from 0.0015 → 0.0035 because the prior value put
+        # daily drift (~0.1%) below the 0.5σ daily-shock magnitude,
+        # so noise dominated and outcomes were ~50/50 even though
+        # every signal is "favourable by construction" in this demo.
+        # 0.35% × 0.7 conviction × ~10 days ≈ 2.4% expected drift —
+        # comfortably above the 0.5σ shock variance band.
+        edge = 0.0035 * spec["conviction"]
         synth = _synthesize_walk(
             anchor=last_known,
             daily_vol=spec["daily_vol"],

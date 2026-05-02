@@ -86,3 +86,5 @@ execution_engine/watchdog/kill_switch
 live/
 
 Dumps/
+
+frontend/tsconfig.tsbuildinfo
