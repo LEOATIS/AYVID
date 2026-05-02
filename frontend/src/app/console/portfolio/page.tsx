@@ -112,6 +112,7 @@ export default function PortfolioPage() {
           label="Open positions"
           value={fmtNumber(summary?.open_positions ?? 0)}
           hint={`mode: ${runner?.mode ?? "—"}`}
+          loading={!summary || !runner}
         />
       </section>
 

@@ -184,42 +184,56 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      # Update the running Cloud Run service to point at the new image.
-      # We do this with `gcloud run services update-traffic` style calls
-      # rather than terraform, because terraform-managed Cloud Run env
-      # vars get overwritten on every apply — we want a tight diff
-      # surface where Actions only changes the image, nothing else.
-      - name: Deploy new Cloud Run revision
+      # Deterministic deploy: name the new revision after the commit
+      # SHA and verify THIS specific revision is serving 100% traffic
+      # before exiting. The previous version polled
+      # `service.status.conditions[].Ready` which is True even when the
+      # OLD revision is still the one routing traffic — that's how we
+      # got the May 3 "smoke test fails because /system/build returns
+      # nothing" outcome: the deploy step "succeeded", but the new
+      # revision never actually rolled.
+      - name: Deploy new Cloud Run revision (deterministic suffix)
+        id: deploy
+        env:
+          REV_SUFFIX: ${{ needs.build-and-push.outputs.image_tag }}
         run: |
-          # `update-env-vars` instead of `--set-env-vars` so we don't
-          # clobber other env values managed in cloudrun.tf (CORS,
-          # auth, EXECUTION_MODE, …). BUILD_SHA + BUILD_TIME are also
-          # baked into the image via Dockerfile ARGs as a fallback —
-          # this update-env-vars belt-and-suspenders ensures the env
-          # always reflects the SHA the deploy job *thinks* it pushed.
-          gcloud run services update ayvid-backend \
+          REV_NAME="ayvid-backend-$REV_SUFFIX"
+          echo "rev_name=$REV_NAME" >> $GITHUB_OUTPUT
+          # `gcloud run deploy` (not `services update`): forces a new
+          # revision even if the image digest is unchanged, sets a
+          # human-readable revision-suffix so the smoke test can wait
+          # for THIS specific revision rather than the service-level
+          # Ready condition (which is True for the old rev).
+          gcloud run deploy ayvid-backend \
             --region=${{ env.GCP_REGION }} \
             --image=${{ env.REGISTRY }}/ayvid-backend:${{ needs.build-and-push.outputs.image_tag }} \
-            --update-env-vars=BUILD_SHA=${{ github.sha }},BUILD_TIME=${{ needs.build-and-push.outputs.build_time }} \
+            --revision-suffix="$REV_SUFFIX" \
+            --update-env-vars="BUILD_SHA=${{ github.sha }},BUILD_TIME=${{ needs.build-and-push.outputs.build_time }}" \
             --quiet
+          echo "Created revision: $REV_NAME"
 
-      - name: Wait for revision to be ready
+      - name: Wait for the *new* revision to serve 100% traffic
         run: |
+          REV_NAME="${{ steps.deploy.outputs.rev_name }}"
           for i in $(seq 1 30); do
-            ready=$(gcloud run services describe ayvid-backend \
+            LATEST_READY=$(gcloud run services describe ayvid-backend \
               --region=${{ env.GCP_REGION }} \
-              --format='json' | python3 -c "import json,sys; d=json.load(sys.stdin); print(next((c.get('status','') for c in d.get('status',{}).get('conditions',[]) if c.get('type')=='Ready'), ''))")
-            if [ "$ready" = "True" ]; then
-              echo "Cloud Run is Ready."
+              --format='value(status.latestReadyRevisionName)')
+            ACTIVE_REV=$(gcloud run services describe ayvid-backend \
+              --region=${{ env.GCP_REGION }} \
+              --format='value(status.traffic[0].revisionName)')
+            if [ "$LATEST_READY" = "$REV_NAME" ] && [ "$ACTIVE_REV" = "$REV_NAME" ]; then
+              echo "✓ revision $REV_NAME is ready AND serving 100% traffic"
               gcloud run services describe ayvid-backend --region=${{ env.GCP_REGION }} --format='value(status.url)'
               exit 0
             fi
-            echo "[$i] revision not ready yet (status=$ready); sleeping..."
+            echo "[$i] expected=$REV_NAME latest_ready=$LATEST_READY active=$ACTIVE_REV — sleeping..."
             sleep 10
           done
-          echo "Cloud Run revision did not reach Ready within 5 min" >&2
+          echo "::error::revision $REV_NAME did not roll to 100% traffic within 5 min" >&2
           echo "Last known service state:" >&2
-          gcloud run services describe ayvid-backend --region=${{ env.GCP_REGION }} --format='yaml(status.conditions,status.latestCreatedRevisionName,status.latestReadyRevisionName,status.url)' >&2 || true
+          gcloud run services describe ayvid-backend --region=${{ env.GCP_REGION }} \
+            --format='yaml(status.conditions,status.latestCreatedRevisionName,status.latestReadyRevisionName,status.traffic,status.url)' >&2 || true
           exit 1
 
   deploy-vm:
@@ -384,16 +398,43 @@ jobs:
         run: |
           set -e
           for attempt in 1 2 3 4 5 6; do
-            RESP=$(curl -fsS "${{ steps.url.outputs.url }}/api/v1/system/build" 2>/dev/null || echo '{}')
-            API_SHA=$(echo "$RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('build_sha','none'))")
+            # `-w` to capture HTTP status; don't use `-f` so we still
+            # see the body on 404 / 5xx. The previous version's `-fsS
+            # || echo '{}'` swallowed everything into "none" — we
+            # couldn't tell whether the endpoint 404'd (old image),
+            # returned dev (env var missing), or returned a wrong SHA.
+            RAW=$(curl -sS -w "\n___HTTP_STATUS:%{http_code}" \
+                  "${{ steps.url.outputs.url }}/api/v1/system/build" 2>&1 || true)
+            HTTP=$(echo "$RAW" | sed -n 's/^___HTTP_STATUS://p')
+            BODY=$(echo "$RAW" | sed '/^___HTTP_STATUS:/d')
+            API_SHA=$(echo "$BODY" | python3 -c "
+          import json, sys
+          try:
+              print(json.load(sys.stdin).get('build_sha','MISSING_FIELD'))
+          except Exception:
+              print('NON_JSON')
+          " 2>/dev/null || echo "PARSE_ERROR")
+            echo "[$attempt/6] HTTP=$HTTP build_sha=$API_SHA expected=${{ github.sha }}"
             if [ "$API_SHA" = "${{ github.sha }}" ]; then
-              echo "✓ backend SHA matches commit: $API_SHA"
+              echo "✓ backend SHA matches commit"
               exit 0
             fi
-            echo "[$attempt/6] backend SHA: $API_SHA, expected ${{ github.sha }} — Cloud Run revision propagating, retrying..."
+            # Diagnostic hints
+            if [ "$HTTP" = "404" ] || [ "$API_SHA" = "MISSING_FIELD" ] || [ "$API_SHA" = "NON_JSON" ]; then
+              echo "::warning::endpoint not on new image yet (old revision still serving)"
+            elif [ "$API_SHA" = "dev" ] || [ "$API_SHA" = "unknown" ]; then
+              echo "::warning::new revision is up but BUILD_SHA env var is missing or default"
+            elif [ -n "$API_SHA" ] && [ "$API_SHA" != "MISSING_FIELD" ]; then
+              echo "::warning::serving an UNEXPECTED SHA — different deploy concurrent with this one?"
+            fi
             sleep 20
           done
-          echo "::error::Backend SHA never converged to ${{ github.sha }} — Cloud Run did not pick up the new image."
+          echo "::error::Backend SHA never converged to ${{ github.sha }}"
+          echo "::error::Last response body: $BODY"
+          echo "::error::Last HTTP status: $HTTP"
+          echo "::error::Cloud Run revision summary:"
+          gcloud run services describe ayvid-backend --region=${{ env.GCP_REGION }} \
+            --format='yaml(status.latestCreatedRevisionName,status.latestReadyRevisionName,status.traffic)' || true
           exit 1
 
       - name: Runner SHA matches commit

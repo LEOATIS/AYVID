@@ -38,22 +38,31 @@ export function StatTile({
       </div>
       <div className="mt-2.5 min-w-0">
         {loading ? (
-          <div className="skeleton h-9 w-32" />
+          <>
+            <div className="skeleton h-9 w-32" />
+            {/* Hide delta + hint during load too — without this the
+                StatTile flashes "+0% vs $0 start" underneath the value
+                skeleton, which on the Portfolio page reads as a real
+                "we're at zero" state until the first SWR resolve. */}
+            {(delta || hint) && <div className="skeleton mt-1.5 h-3 w-24" />}
+          </>
         ) : (
-          <div className="num stat-value text-fg" title={typeof value === "string" ? value : undefined}>
-            {value}
-          </div>
-        )}
-        {(delta || hint) && (
-          <div
-            className={clsx(
-              "mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11.5px] sm:text-[12px]",
-              trendCls,
+          <>
+            <div className="num stat-value text-fg" title={typeof value === "string" ? value : undefined}>
+              {value}
+            </div>
+            {(delta || hint) && (
+              <div
+                className={clsx(
+                  "mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11.5px] sm:text-[12px]",
+                  trendCls,
+                )}
+              >
+                {delta && <span className="num font-medium">{delta}</span>}
+                {hint && <span className="truncate text-muted">{hint}</span>}
+              </div>
             )}
-          >
-            {delta && <span className="num font-medium">{delta}</span>}
-            {hint && <span className="truncate text-muted">{hint}</span>}
-          </div>
+          </>
         )}
       </div>
     </div>
