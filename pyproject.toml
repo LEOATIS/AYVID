@@ -6,7 +6,12 @@ authors = [{ name = "LEOATIS" }]
 requires-python = ">=3.11,<3.13"
 dependencies = [
     # --- Web / API ---
-    "fastapi[all]>=0.110,<0.120",
+    # Upper bounds bumped 2026-05-02: pip 26.1's resolver hits
+    # `resolution-too-deep` when the installable openbb-core / openbb
+    # demands fastapi / starlette / openai versions outside our caps.
+    # Matching the bounds to what the local venv + openbb-core 1.6.x
+    # actually require keeps the resolver shallow.
+    "fastapi[all]>=0.115,<0.130",
     "uvicorn[standard]>=0.29,<0.40",
     "pydantic>=2.6,<3",
     "pydantic-settings>=2.2,<3",
@@ -15,7 +20,8 @@ dependencies = [
     # ib_async ships breaking changes between minor versions; pin to 1.x.
     "ib_async>=1.0.0,<2.0",
     "numpy>=1.26,<3",
-    "pandas>=2.1,<3",
+    # pandas 3.x is the current line; openbb 1.6 supports it.
+    "pandas>=2.1,<4",
     "scipy>=1.11,<2",
     "polars>=0.20,<2",
 
@@ -25,15 +31,17 @@ dependencies = [
     "qdrant-client>=1.8,<2",
 
     # --- LLM Orchestration ---
-    # LangChain ships breaking minor releases monthly. Pin tight enough
-    # to make a release a deliberate decision, loose enough to absorb
-    # security patches without a manual bump.
-    "langgraph>=0.2,<0.3",
-    "langchain-anthropic>=0.2,<0.3",
-    "langchain-openai>=0.2,<0.3",
-    "langchain-core>=0.3,<0.4",
-    "openai>=1.30,<2",
-    "anthropic>=0.30,<1",
+    # LangChain went 1.0 in late-2025 and openai shipped 2.0 around
+    # the same time. Pinning to the 1.x / 2.x lines keeps pip 26.1's
+    # resolver shallow — without these floors, it tries every
+    # langchain-core 0.3.x against every openai 1.x.x looking for a
+    # combo that satisfies openbb-core, then hits resolution-too-deep.
+    "langgraph>=1.0,<2",
+    "langchain-anthropic>=1.0,<2",
+    "langchain-openai>=1.0,<2",
+    "langchain-core>=1.0,<2",
+    "openai>=2,<3",
+    "anthropic>=0.30,<2",
 
     # --- Data Sources ---
     "openbb>=4.7.0,<5.0",
@@ -45,7 +53,7 @@ dependencies = [
     # --- Async & Resilience ---
     "tenacity>=8.2,<10",
     "httpx>=0.27,<1",
-    "aiofiles>=23,<25",
+    "aiofiles>=23,<26",
     "google-cloud-storage>=2.16,<4",
 ]
 
