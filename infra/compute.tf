@@ -165,6 +165,46 @@ resource "google_compute_instance" "execution" {
         sleep 5
     done
 
+    # --- Persisted volumes --------------------------------------------------
+    # Bind-mounting these into the container makes live/* and
+    # data_store/* survive every restart. The runner already mirrors
+    # them to gs://${var.project_id}-tfstate/live_state/ via
+    # _sync_path_to_gcs, so a fresh VM (or a `terraform taint
+    # google_compute_instance.execution`) hydrates from the cloud copy
+    # below instead of starting at 0 snapshots.
+    HOST_LIVE_DIR=/var/lib/ayvid/live
+    HOST_DATA_DIR=/var/lib/ayvid/data_store
+    mkdir -p "$HOST_LIVE_DIR" "$HOST_DATA_DIR"
+
+    GCS_BUCKET="${var.project_id}-tfstate"
+    GCS_PREFIX="live_state"
+
+    # Hydrate from GCS using the metadata server's access token + the
+    # GCS JSON API. We avoid gsutil because COS doesn't ship it.
+    hydrate_from_gcs() {
+        local rel_prefix="$1"
+        local dest_dir="$2"
+        local list_url="https://storage.googleapis.com/storage/v1/b/$GCS_BUCKET/o?prefix=$GCS_PREFIX/$rel_prefix/"
+        local objects
+        objects=$(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" "$list_url" 2>/dev/null \
+            | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' || true)
+        [ -z "$objects" ] && { echo "hydrate: no objects under $GCS_PREFIX/$rel_prefix/"; return 0; }
+        while IFS= read -r obj; do
+            [ -z "$obj" ] && continue
+            case "$obj" in */) continue ;; esac
+            local rel="$${obj#$GCS_PREFIX/$rel_prefix/}"
+            local out="$dest_dir/$rel"
+            mkdir -p "$(dirname "$out")"
+            local encoded
+            encoded=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$obj")
+            curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" \
+                "https://storage.googleapis.com/storage/v1/b/$GCS_BUCKET/o/$encoded?alt=media" \
+                > "$out" && echo "hydrated $rel"
+        done <<< "$objects"
+    }
+    hydrate_from_gcs "live"       "$HOST_LIVE_DIR"       || true
+    hydrate_from_gcs "data_store" "$HOST_DATA_DIR"       || true
+
     # --- AYVID runner container --------------------------------------------
     docker --config "$DOCKER_CONFIG" pull "$IMAGE"
     docker rm -f ayvid-execution 2>/dev/null || true
@@ -179,6 +219,8 @@ resource "google_compute_instance" "execution" {
         --env-file $SECRETS_FILE \
         --cap-add=SYS_PTRACE \
         --tmpfs /tmp:exec,size=128m \
+        -v "$HOST_LIVE_DIR":/app/live \
+        -v "$HOST_DATA_DIR":/app/data_store \
         -p 8001:8001 \
         "$IMAGE" \
         "$${RUNNER_ARGS[@]}"
