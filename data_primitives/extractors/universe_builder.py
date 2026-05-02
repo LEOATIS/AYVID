@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import json
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -541,8 +543,130 @@ async def _fetch_sp500_from_wikipedia() -> list[str]:
     return [t for t in tickers if isinstance(t, str) and t]
 
 
-async def discover_sp500_constituents() -> list[str]:
-    """Fetch live S&P 500 constituents (tries FMP API, falls back to Wikipedia)."""
+# ── Point-in-time S&P 500 constituent loader ────────────────────────
+# Survivorship bias is the single largest backtest distortion: pulling
+# the *current* S&P 500 list and using it for a 2018 simulation excludes
+# every name that has since been delisted, acquired, or removed. To get
+# valid historical results, the constituent list at each historical
+# date must be the list that was actually trading on that date.
+#
+# We expect operators to seed `data_store/sp500_constituents/` with
+# date-stamped JSON snapshots. The file naming convention is one of:
+#
+#   data_store/sp500_constituents/YYYY-MM-DD.json    # exact date
+#   data_store/sp500_constituents/index.json         # date-keyed map
+#
+# When ``as_of`` is supplied to ``discover_sp500_constituents`` and we
+# cannot find a PIT snapshot at-or-before that date, we raise — the
+# alternative (silently using current constituents) corrupts results.
+
+_PIT_SP500_DIR = Path("data_store/sp500_constituents")
+
+
+class MissingPointInTimeUniverseError(RuntimeError):
+    """Raised when a PIT-constituent snapshot is required but missing.
+
+    Backtests must surface this as a hard failure rather than silently
+    fall back to the *current* universe — the survivorship-bias risk is
+    quantitatively large enough to invalidate results.
+    """
+
+
+def _load_pit_sp500(as_of: dt.date) -> list[str] | None:
+    """Find the latest snapshot whose effective date is on-or-before ``as_of``.
+
+    Returns the constituent ticker list, or ``None`` if no snapshot
+    exists for that period. Operators populate this directory by
+    running the seed script (see scripts/seed_pit_constituents.py).
+    """
+    if not _PIT_SP500_DIR.exists():
+        return None
+
+    index_path = _PIT_SP500_DIR / "index.json"
+    if index_path.exists():
+        try:
+            idx = json.loads(index_path.read_text())
+            if isinstance(idx, dict):
+                # Pick the most recent snapshot whose key (YYYY-MM-DD)
+                # is <= as_of. Keys lex-sort identically to date order.
+                target = as_of.isoformat()
+                candidates = sorted(k for k in idx.keys() if isinstance(k, str) and k <= target)
+                if candidates:
+                    snap = idx[candidates[-1]]
+                    if isinstance(snap, list):
+                        return [t for t in snap if isinstance(t, str)]
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Fall back: per-date file lookup.
+    candidates: list[Path] = sorted(_PIT_SP500_DIR.glob("*.json"))
+    chosen: Path | None = None
+    for p in candidates:
+        if p.name == "index.json":
+            continue
+        try:
+            stem_date = dt.date.fromisoformat(p.stem)
+        except ValueError:
+            continue
+        if stem_date <= as_of:
+            chosen = p  # latest wins (sorted ascending)
+    if chosen is None:
+        return None
+    try:
+        data = json.loads(chosen.read_text())
+        if isinstance(data, list):
+            return [t for t in data if isinstance(t, str)]
+        if isinstance(data, dict) and "tickers" in data:
+            return [t for t in data["tickers"] if isinstance(t, str)]
+    except (json.JSONDecodeError, OSError):
+        return None
+    return None
+
+
+async def discover_sp500_constituents(
+    *,
+    as_of: dt.date | None = None,
+    require_point_in_time: bool = False,
+) -> list[str]:
+    """Fetch S&P 500 constituents.
+
+    Parameters
+    ----------
+    as_of:
+        If supplied, return the constituent list as it stood on that
+        date. We look up a date-stamped snapshot under
+        ``data_store/sp500_constituents/``. If no snapshot is found
+        and ``require_point_in_time`` is True, we raise — silent
+        fallback to today's list would introduce survivorship bias.
+    require_point_in_time:
+        Backtests should pass ``True``. Live trading and ad-hoc
+        discovery may pass ``False`` and accept the current list.
+
+    The legacy zero-argument call site keeps working: with neither
+    parameter set, we fetch today's constituents from FMP / Wikipedia
+    just as before.
+    """
+    if as_of is not None:
+        pit = _load_pit_sp500(as_of)
+        if pit:
+            log.info(
+                f"Loaded {len(pit)} S&P 500 constituents as-of {as_of} "
+                f"from {_PIT_SP500_DIR}"
+            )
+            return pit
+        if require_point_in_time:
+            raise MissingPointInTimeUniverseError(
+                f"No S&P 500 constituent snapshot found at-or-before {as_of} "
+                f"under {_PIT_SP500_DIR}. Backtest aborted to prevent "
+                f"survivorship bias from the current-list fallback. Seed "
+                f"PIT data via scripts/seed_pit_constituents.py before retry."
+            )
+        log.warning(
+            f"No PIT S&P 500 snapshot for {as_of}; falling back to current list. "
+            f"This introduces survivorship bias — pass "
+            f"require_point_in_time=True to make this a hard failure."
+        )
+
     from data_primitives.extractors.openbb_client import _ensure_credentials
 
     _ensure_credentials()

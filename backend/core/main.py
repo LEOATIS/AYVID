@@ -282,6 +282,7 @@ from backend.api.sse.streamer import router as sse_router
 from backend.api.v1.endpoints.calibration_routes import router as calibration_router
 from backend.api.v1.endpoints.graph_routes import router as graph_router
 from backend.api.v1.endpoints.live_routes import router as live_router
+from backend.api.v1.endpoints.system_routes import router as system_router
 from backend.api.v1.endpoints.trade_routes import router as trade_router
 
 app.include_router(graph_router, prefix="/api/v1/graph", tags=["graph"])
@@ -289,3 +290,4 @@ app.include_router(trade_router, prefix="/api/v1/trade", tags=["trade"])
 app.include_router(live_router, prefix="/api/v1/live", tags=["live"])
 app.include_router(calibration_router, prefix="/api/v1/calibration", tags=["calibration"])
 app.include_router(sse_router, prefix="/api/v1/sse", tags=["sse"])
+app.include_router(system_router, prefix="/api/v1/system", tags=["system"])

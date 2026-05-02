@@ -399,9 +399,14 @@ class AlphaScore(BaseModel):
     factor_score: float = Field(ge=0.0, le=1.0)
     bayesian_conviction: float = Field(ge=0.0, le=1.0)
     unified_conviction: float = Field(ge=0.0, le=1.0)
-    expected_r: float = 0.0
-    min_r: float = 1.5
-    kl_divergence_to_naive: float = 0.0
+    # ``expected_r`` is the multiple-of-stop-distance the strategy expects
+    # to capture. It MUST be finite and bounded — without these guards an
+    # LLM that returns ``"inf"``, NaN, or 1e100 would pass every gate and
+    # blow up Kelly sizing. 100.0 is far above any realistic strategy
+    # (4–6 is typical, 10 is extreme); anything higher is broken input.
+    expected_r: float = Field(default=0.0, ge=0.0, le=100.0)
+    min_r: float = Field(default=1.5, ge=0.0, le=100.0)
+    kl_divergence_to_naive: float = Field(default=0.0, ge=0.0)
     factor_breakdown: dict[str, float] = Field(default_factory=dict)
     rationale: str = ""
 

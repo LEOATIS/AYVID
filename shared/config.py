@@ -1,7 +1,22 @@
 from __future__ import annotations
 
+from enum import Enum
+
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class ExecutionMode(str, Enum):
+    """Where orders go when ``AUTO_EXECUTE`` is True.
+
+    SHADOW   — no broker. Fills simulated locally; safe for any environment.
+    IB_PAPER — IB paper account (DU* / DUQ*). Real-market sim, no real money.
+    IB_LIVE  — real IB account. Requires ``LIVE_TRADING_CONFIRMED=True``.
+    """
+
+    SHADOW = "shadow"
+    IB_PAPER = "ib_paper"
+    IB_LIVE = "ib_live"
 
 
 class Settings(BaseSettings):
@@ -95,6 +110,11 @@ class Settings(BaseSettings):
     # account is auto-subscribed on connect; calling reqAccountUpdates again
     # for the same account hangs forever (IB never resends accountDownloadEnd).
     IB_SUBSCRIBE_ACCOUNT_UPDATES: bool = False
+    # Market-data feed type passed to ``reqMarketDataType`` on connect.
+    # Paper accounts default to delayed (3); set to 1 if a live data
+    # subscription is purchased so position marks are real-time.
+    #   1 = live, 2 = frozen, 3 = delayed (15min), 4 = delayed-frozen
+    IB_MARKET_DATA_TYPE: int = 3
 
     # --- IB Client Portal REST (independent kill-switch flatten path) ---
     # The C++ watchdog calls these endpoints DIRECTLY when the kill
@@ -214,12 +234,38 @@ class Settings(BaseSettings):
     PAPER_TRADING: bool = True
     API_KEY: str | None = None
     LLM_LIVE_ORCHESTRATOR: bool = False
-    AUTO_EXECUTE: bool = False
+    # AUTO_EXECUTE flips signal-book consumption from "advisory only" to
+    # "actually fill". Default True so paper / shadow modes trade
+    # automatically; the IB-LIVE path is gated separately via
+    # LIVE_TRADING_CONFIRMED in `_validate_live_routing` above, so flipping
+    # this on for paper/shadow cannot leak real-money orders.
+    AUTO_EXECUTE: bool = True
+    # Execution venue. Default SHADOW so a fresh checkout never reaches
+    # for IB; flip to IB_PAPER (paper account) or IB_LIVE (real money,
+    # requires LIVE_TRADING_CONFIRMED=true) explicitly.
+    EXECUTION_MODE: ExecutionMode = ExecutionMode.SHADOW
     # Backend lifespan toggle: when False, API startup skips the continuous
     # ingestion worker so local dashboard/API requests stay responsive.
     CONTINUOUS_PIPELINE_ENABLED: bool = False
     # Hard opt-in to real-money (live, non-paper) IB trading. Keep False.
     LIVE_TRADING_CONFIRMED: bool = False
+    # Max single-order notional for IB_LIVE — second tripwire on top of
+    # LIVE_TRADING_CONFIRMED. Paper / shadow ignore this entirely.
+    MAX_SINGLE_ORDER_NOTIONAL: float = 50_000.0
+
+    # --- LLM orchestration control (LangGraph swarm vs rule-based) ---
+    # When True (default), the 15-min ingestion cycle calls the full
+    # LangGraph LLM swarm (`orchestrate_trade`) per ticker, with the
+    # deterministic `rule_based_orchestrate` as a timeout / error
+    # fallback. Set False to skip the LLM entirely (faster, cheaper,
+    # no LLM API cost).
+    LLM_ORCHESTRATION_ENABLED: bool = True
+    # Per-ticker timeout for the LLM orchestrator call. On timeout we
+    # fall back to rule-based — never block the cycle on a slow LLM.
+    LLM_SIGNAL_TIMEOUT_SECONDS: int = 45
+    # Cap on concurrent LLM calls to avoid exhausting provider rate
+    # limits when the cycle iterates over 100+ tickers.
+    LLM_MAX_CONCURRENT_SIGNALS: int = 5
     # Vision-LLM PatternAgent toggle. Default OFF so the hot ingestion
     # path never pays the chart-render + vision-LLM cost. When True,
     # ``classify_pattern`` renders an SVG and (in the future, when an

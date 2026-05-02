@@ -13,11 +13,40 @@ interface PositionRow {
   quantity?: number;
   qty?: number;
   avg_price?: number;
+  avg_cost?: number;
   market_price?: number;
+  mark_price_timestamp?: string | null;
+  mark_price_source?: string | null;
+  mark_age_seconds?: number | null;
   market_value?: number;
   unrealized_pnl?: number;
   realized_pnl?: number;
   side?: string;
+  stop_loss_price?: number | null;
+  take_profit_price?: number | null;
+  stop_loss_pct?: number | null;
+  take_profit_pct?: number | null;
+  asset_class?: string | null;
+  strategy?: string | null;
+  strategy_name?: string | null;
+}
+
+const STALE_WARN_SEC = 600; // 10 min — yellow
+const STALE_BAD_SEC = 3600; // 1 hr — red
+
+function formatAge(seconds: number | null | undefined): string {
+  if (seconds == null || !Number.isFinite(seconds)) return "—";
+  if (seconds < 60) return `${Math.round(seconds)}s ago`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
+  return `${Math.round(seconds / 86400)}d ago`;
+}
+
+function ageVariant(seconds: number | null | undefined): "pos" | "info" | "neg" {
+  if (seconds == null || !Number.isFinite(seconds)) return "info";
+  if (seconds >= STALE_BAD_SEC) return "neg";
+  if (seconds >= STALE_WARN_SEC) return "info";
+  return "pos";
 }
 
 interface TradeRow {
@@ -86,7 +115,25 @@ export default function PortfolioPage() {
         />
       </section>
 
-      <Card title="Open positions" subtitle={positions?.as_of ? `as of ${fmtTime(positions.as_of)}` : undefined}>
+      <Card
+        title="Open positions"
+        subtitle={
+          positions?.as_of ? (
+            <span className="flex items-center gap-2">
+              <span>as of {fmtTime(positions.as_of)}</span>
+              {positions?.mode === "shadow" && (
+                <Badge variant="info">SHADOW MODE</Badge>
+              )}
+              {positions?.max_mark_age_seconds != null &&
+                positions.max_mark_age_seconds >= STALE_WARN_SEC && (
+                  <Badge variant={positions.max_mark_age_seconds >= STALE_BAD_SEC ? "neg" : "info"}>
+                    MARKS {formatAge(positions.max_mark_age_seconds)}
+                  </Badge>
+                )}
+            </span>
+          ) : undefined
+        }
+      >
         {positionRows.length === 0 ? (
           <Empty
             icon={<Briefcase className="h-8 w-8" />}
@@ -103,6 +150,13 @@ export default function PortfolioPage() {
                   <th className="py-2 pr-4 text-right font-medium">Qty</th>
                   <th className="py-2 pr-4 text-right font-medium">Avg</th>
                   <th className="py-2 pr-4 text-right font-medium">Mark</th>
+                  <th className="py-2 pr-4 font-medium">Mark age</th>
+                  <th className="py-2 pr-4 text-right font-medium" style={{ color: "hsl(var(--neg))" }}>
+                    Stop Loss
+                  </th>
+                  <th className="py-2 pr-4 text-right font-medium" style={{ color: "hsl(var(--pos))" }}>
+                    Target
+                  </th>
                   <th className="py-2 pr-4 text-right font-medium">Market value</th>
                   <th className="py-2 text-right font-medium">Unrealized P&amp;L</th>
                 </tr>
@@ -113,6 +167,23 @@ export default function PortfolioPage() {
                   const qty = p.quantity ?? p.qty ?? 0;
                   const upnl = p.unrealized_pnl ?? 0;
                   const sideLong = (p.side ?? (qty >= 0 ? "LONG" : "SHORT")).toUpperCase();
+                  const ageVar = ageVariant(p.mark_age_seconds);
+                  const avgEntry = p.avg_price ?? p.avg_cost ?? null;
+                  // Resolve SL: prefer absolute price; fall back to pct × avg.
+                  const slPrice =
+                    p.stop_loss_price ??
+                    (avgEntry != null && p.stop_loss_pct != null
+                      ? sideLong === "LONG"
+                        ? avgEntry * (1 - p.stop_loss_pct / 100)
+                        : avgEntry * (1 + p.stop_loss_pct / 100)
+                      : null);
+                  const tpPrice =
+                    p.take_profit_price ??
+                    (avgEntry != null && p.take_profit_pct != null
+                      ? sideLong === "LONG"
+                        ? avgEntry * (1 + p.take_profit_pct / 100)
+                        : avgEntry * (1 - p.take_profit_pct / 100)
+                      : null);
                   return (
                     <tr key={`${sym}-${i}`} className="hover:bg-[hsl(var(--bg-sunken))]">
                       <td className="num py-2 pr-4 font-medium text-fg">{sym}</td>
@@ -120,8 +191,37 @@ export default function PortfolioPage() {
                         <Badge variant={sideLong === "LONG" ? "pos" : "neg"}>{sideLong}</Badge>
                       </td>
                       <td className="num py-2 pr-4 text-right text-fg">{fmtNumber(qty)}</td>
-                      <td className="num py-2 pr-4 text-right text-muted">{fmtMoney(p.avg_price)}</td>
+                      <td className="num py-2 pr-4 text-right text-muted">{fmtMoney(avgEntry)}</td>
                       <td className="num py-2 pr-4 text-right text-muted">{fmtMoney(p.market_price)}</td>
+                      <td className="py-2 pr-4">
+                        <span
+                          title={`source=${p.mark_price_source ?? "?"} ts=${p.mark_price_timestamp ?? "?"}`}
+                        >
+                          <Badge variant={ageVar}>{formatAge(p.mark_age_seconds)}</Badge>
+                        </span>
+                      </td>
+                      <td className="num py-2 pr-4 text-right" style={{ color: "hsl(var(--neg))" }}>
+                        {slPrice != null ? fmtMoney(slPrice) : "—"}
+                        {p.stop_loss_pct != null && (
+                          <div
+                            className="text-[9px]"
+                            style={{ color: "hsl(var(--neg) / 0.6)" }}
+                          >
+                            −{p.stop_loss_pct.toFixed(1)}%
+                          </div>
+                        )}
+                      </td>
+                      <td className="num py-2 pr-4 text-right" style={{ color: "hsl(var(--pos))" }}>
+                        {tpPrice != null ? fmtMoney(tpPrice) : "—"}
+                        {p.take_profit_pct != null && (
+                          <div
+                            className="text-[9px]"
+                            style={{ color: "hsl(var(--pos) / 0.6)" }}
+                          >
+                            +{p.take_profit_pct.toFixed(1)}%
+                          </div>
+                        )}
+                      </td>
                       <td className="num py-2 pr-4 text-right text-fg">{fmtMoney(p.market_value)}</td>
                       <td className={`num py-2 text-right ${upnl >= 0 ? "text-pos" : "text-neg"}`}>
                         {fmtMoney(upnl)}

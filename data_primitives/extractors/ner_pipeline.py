@@ -63,7 +63,7 @@ Always respond with valid JSON matching the requested schema exactly."""
 _NER_USER_TEMPLATE = """\
 Extract all named entities from this financial news text:
 
-"{text}"
+{text_json}
 
 Return a JSON object:
 {{
@@ -108,9 +108,14 @@ async def extract_entities(text: str) -> list[dict[str, Any]]:
         return []
 
     try:
+        # JSON-escape the user content. `json.dumps` yields a quoted
+        # JSON string literal — embedded `"`, `}`, `{`, backslashes, and
+        # newlines are all escaped, so an attacker cannot break out of
+        # the prompt's quoted-string context to inject control directives.
+        text_json = json.dumps(sanitised.clean, ensure_ascii=False)
         raw = await _llm_json_call(
             _NER_SYSTEM_PROMPT,
-            _NER_USER_TEMPLATE.format(text=sanitised.clean),
+            _NER_USER_TEMPLATE.format(text_json=text_json),
         )
         parsed = _parse_llm_json(raw)
         if parsed is None:
@@ -132,8 +137,8 @@ Always respond with valid JSON matching the requested schema exactly."""
 _CLASSIFY_USER_TEMPLATE = """\
 Classify this financial news event:
 
-Title: {title}
-Text: {text}
+Title: {title_json}
+Text: {text_json}
 
 Return a JSON object:
 {{
@@ -187,8 +192,8 @@ async def classify_event_with_llm(title: str, text: str) -> tuple[EventType, flo
         raw = await _llm_json_call(
             _CLASSIFY_SYSTEM_PROMPT,
             _CLASSIFY_USER_TEMPLATE.format(
-                title=title_clean.clean,
-                text=combined_text[:2000],
+                title_json=json.dumps(title_clean.clean, ensure_ascii=False),
+                text_json=json.dumps(combined_text[:2000], ensure_ascii=False),
             ),
         )
         parsed = _parse_llm_json(raw)

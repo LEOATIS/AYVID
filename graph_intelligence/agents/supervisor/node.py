@@ -143,8 +143,8 @@ async def _compute_regime_for_target(target_ticker: str) -> tuple[str, str]:
     """
     try:
         from data_primitives.extractors.openbb_client import fetch_ohlcv
-        from execution_engine.math.regime import classify_regime
-        from execution_engine.math.signals import compute_hurst_exponent
+        from shared.quant.regime import classify_regime
+        from shared.quant.signals import compute_hurst_exponent
 
         bars = await fetch_ohlcv(target_ticker, days=90)
         if not bars or len(bars) < 30:

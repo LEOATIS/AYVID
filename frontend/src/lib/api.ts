@@ -286,23 +286,106 @@ export interface BacktestSummary {
   total_trades?: number | null;
 }
 
+export type ReadinessStatus = "WAITING" | "READY" | "EXPIRED" | "CANCELLED";
+export type SignalDirection = "LONG" | "SHORT" | "HOLD";
+export type SignalAssetClass =
+  | "EQUITY"
+  | "INDEX"
+  | "FX"
+  | "FUTURE"
+  | "CRYPTO"
+  | "ETF"
+  | "OPTION"
+  | "COMMODITY"
+  | "BOND";
+
 export interface Signal {
+  // Identity
   ticker: string;
-  direction: "LONG" | "SHORT" | string;
+  asset_class: SignalAssetClass | string;
   instrument_type: string;
-  asset_class: string;
-  conviction: number;
   strategy_name: string;
-  strike?: number | null;
-  expiry_date?: string;
-  stop_loss_pct?: number;
-  take_profit_pct?: number;
-  rationale?: string;
+  direction: SignalDirection | string;
+
+  // Pricing
+  entry_price: number | null;
+  current_price: number | null;
+  stop_loss_price: number | null;
+  take_profit_price: number | null;
+  stop_loss_pct: number | null;
+  take_profit_pct: number | null;
+  risk_reward_ratio: number | null;
+  distance_to_entry_pct: number | null;
+  entry_zone_low: number | null;
+  entry_zone_high: number | null;
+  entry_price_at_compute: number | null;
+
+  // Sizing
+  quantity: number | null;
+  notional_value: number | null;
+  risk_amount: number | null;
+  kelly_fraction: number | null;
+  lot_size: number | null;
+  contract_multiplier: number | null;
+  pip_value: number | null;
+  margin_required: number | null;
+
+  // Options
+  strike: number | null;
+  expiry_date: string | null;
+  option_type: "CALL" | "PUT" | null;
+  leg_2_strike: number | null;
+  leg_2_expiry: string | null;
+  second_leg: Record<string, unknown> | null;
+
+  // Quality
+  conviction: number;
+  factor_score: number | null;
+  expected_r: number | null;
+  min_r: number | null;
+  rationale: string | null;
+
+  // Readiness
+  readiness_status: ReadinessStatus | string;
+  readiness_reason: string | null;
+  readiness_checked_at: string | null;
+
+  // Timestamps + metadata
   computed_at: string;
-  ttl_minutes?: number;
-  expected_r?: number;
-  min_r?: number;
-  entry_price_at_compute?: number;
+  expires_at: string | null;
+  ttl_minutes: number | null;
+  regime_fingerprint: string | null;
+  thesis_signature: string | null;
+  tier3_shock: boolean | null;
+  price_at_compute: number | null;
+}
+
+export interface SignalsResponse {
+  signals: Signal[];
+  count: number;
+  ready_count: number;
+  waiting_count: number;
+  expired_count: number;
+  cancelled_count: number;
+  total: number;
+  snapshot_at: string | null;
+}
+
+export interface SignalReadinessEvent {
+  type: "snapshot" | "readiness_change" | "heartbeat";
+  ticker?: string;
+  asset_class?: string;
+  direction?: SignalDirection | string;
+  readiness_status?: ReadinessStatus | string;
+  readiness_reason?: string | null;
+  current_price?: number | null;
+  entry_price?: number | null;
+  stop_loss_price?: number | null;
+  take_profit_price?: number | null;
+  quantity?: number | null;
+  distance_to_entry_pct?: number | null;
+  conviction?: number;
+  strategy_name?: string;
 }
 
 export interface ShockScenario {
@@ -346,6 +429,28 @@ export interface SystemStatus {
   };
 }
 
+export interface PipelineStatus {
+  orchestration_mode: "llm_swarm" | "rule_based";
+  llm_orchestration_enabled: boolean;
+  llm_signal_timeout_seconds: number;
+  llm_max_concurrent_signals: number;
+  last_pipeline_run: string | null;
+  signals_generated_last_cycle: number;
+  execution_mode: "shadow" | "ib_paper" | "ib_live";
+  auto_execute: boolean;
+  live_confirmed: boolean;
+  max_single_order_notional: number;
+  asset_classes_enabled: string[];
+  open_positions: number;
+  signals_total: number;
+  signals_waiting: number;
+  signals_ready: number;
+  signals_expired: number;
+  signals_cancelled: number;
+  trades_today: number;
+  snapshot_at: string;
+}
+
 /* ─── Endpoints ─────────────────────────────────────────────────────── */
 
 export const api = {
@@ -353,9 +458,10 @@ export const api = {
   runner: () => getJSON<RunnerStatus>("/live/runner-status"),
   trades: (limit = 200) => getJSON<{ trades: unknown[]; count: number }>(`/live/trades?limit=${limit}`),
   positions: () => getJSON<{ positions: unknown[]; count: number; as_of: string | null }>("/live/positions"),
-  signals: () => getJSON<{ signals: Signal[]; count: number }>("/live/signals"),
+  signals: () => getJSON<SignalsResponse>("/live/signals"),
   scenarios: () => getJSON<{ scenarios: ShockScenario[]; count: number }>("/live/scenarios"),
   backtests: () => getJSON<{ reports: BacktestSummary[]; count: number }>("/live/backtests"),
   backtest: (name: string) => getJSON<Record<string, unknown>>(`/live/backtests/${encodeURIComponent(name)}`),
   systemStatus: () => getJSON<SystemStatus>("/live/system-status"),
+  pipeline: () => getJSON<PipelineStatus>("/system/pipeline"),
 };

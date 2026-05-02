@@ -109,6 +109,35 @@ resource "google_cloud_run_v2_service" "backend" {
         value = "true"
       }
 
+      # Mirror of the execution-VM env (compute.tf). Cloud Run reads
+      # these via shared.config.Settings the same way; the read-only
+      # API needs them so `/api/v1/system/pipeline` reports the live
+      # mode rather than the cold-start default.
+      env {
+        name  = "EXECUTION_MODE"
+        value = "ib_paper"
+      }
+      env {
+        name  = "AUTO_EXECUTE"
+        value = "true"
+      }
+      env {
+        name  = "LIVE_TRADING_CONFIRMED"
+        value = "false"
+      }
+      env {
+        name  = "LLM_ORCHESTRATION_ENABLED"
+        value = "true"
+      }
+      env {
+        name  = "LLM_SIGNAL_TIMEOUT_SECONDS"
+        value = "45"
+      }
+      env {
+        name  = "LLM_MAX_CONCURRENT_SIGNALS"
+        value = "5"
+      }
+
       startup_probe {
         http_get {
           path = "/health"

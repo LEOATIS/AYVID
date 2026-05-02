@@ -17,7 +17,6 @@ are short (dict lookups, no I/O) so lock contention is sub-microsecond.
 from __future__ import annotations
 
 import datetime as dt
-import json
 import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -76,8 +75,18 @@ class PrecomputedSignal:
     fast-execute → broker router knows to cross the spread with a LIMIT
     instead of TWAP/VWAP'ing the entry. Normal periodic pre-computes set
     False (passive routing on horizon).
+
+    The pricing/sizing block is the canonical contract every downstream
+    consumer (Kelly sizing, IB routing, the readiness checker, the
+    frontend Signals page) reads. Absolute prices (``stop_loss_price``,
+    ``take_profit_price``, ``entry_zone_low/high``) are auto-derived
+    from the pct fields in ``__post_init__`` if not provided, so legacy
+    callers that only set the percentages still produce a complete
+    record. New code SHOULD set quantity / notional / risk_amount
+    explicitly via the ``execution_engine.math.position_sizer`` helper.
     """
 
+    # ── Identity ──────────────────────────────────────────────
     ticker: str
     direction: str
     instrument_type: str
@@ -89,6 +98,8 @@ class PrecomputedSignal:
     take_profit_pct: float
     rationale: str
     computed_at: str
+
+    # ── Legacy / existing optional ────────────────────────────
     ttl_minutes: int = _DEFAULT_TTL_MINUTES
     regime_fingerprint: str = ""
     second_leg: dict[str, Any] = field(default_factory=dict)
@@ -114,6 +125,152 @@ class PrecomputedSignal:
     confirmation_threshold_pct: float = 0.003  # 0.3% move in signal direction
     confirmation_expires_bars: int = 3  # wait max 3 bars then cancel
 
+    # ── Asset-class metadata ──────────────────────────────────
+    # Strings rather than the AssetClass enum so JSON round-trip
+    # without a custom encoder is trivial. Valid values:
+    # EQUITY | INDEX | FX | FUTURE | CRYPTO | ETF | OPTION |
+    # COMMODITY | BOND.
+    asset_class: str = "EQUITY"
+
+    # ── Absolute pricing (auto-derived from pct fields) ───────
+    entry_price: float = 0.0          # alias of entry_price_at_compute
+    entry_zone_low: float = 0.0
+    entry_zone_high: float = 0.0
+    stop_loss_price: float = 0.0
+    take_profit_price: float = 0.0
+    risk_reward_ratio: float = 0.0
+
+    # ── Sizing ────────────────────────────────────────────────
+    quantity: float = 0.0
+    notional_value: float = 0.0
+    risk_amount: float = 0.0           # $ at risk if SL is hit
+    kelly_fraction: float = 0.0
+
+    # ── Asset-class-specific sizing context ───────────────────
+    lot_size: float | None = None
+    contract_multiplier: float | None = None
+    pip_value: float | None = None
+    margin_required: float | None = None
+
+    # ── Options / spreads ─────────────────────────────────────
+    option_type: str | None = None     # "CALL" | "PUT"
+    leg_2_strike: float | None = None
+    leg_2_expiry: str | None = None
+
+    # ── Quality ───────────────────────────────────────────────
+    factor_score: float = 0.0          # 0..1 (N/10 factors confirmed)
+
+    # ── Expiry / timing ───────────────────────────────────────
+    expires_at: str = ""               # ISO 8601 — derived from computed_at + ttl
+    price_at_compute: float = 0.0      # market price at compute (= entry_price)
+
+    # ── Causal intel snapshot for readiness gate ──────────────
+    causal_intel: dict[str, Any] = field(default_factory=dict)
+
+    # ── Readiness state (mutated by TradeReadinessChecker) ────
+    # WAITING — newly-cached signal, not yet evaluated against live
+    #           market. Default for every new entry.
+    # READY   — current price entered the entry zone AND every other
+    #           gate (regime, position, capital, risk) is green.
+    #           This is the state the dispatcher routes on.
+    # EXPIRED — past computed_at + ttl_minutes; no longer tradable.
+    # CANCELLED — regime rotated or thesis flipped after compute.
+    readiness_status: str = "WAITING"
+    readiness_reason: str = ""
+    readiness_checked_at: str = ""     # ISO 8601
+    current_price: float = 0.0
+    distance_to_entry_pct: float = 0.0  # (current - entry) / entry — signed
+
+    def __post_init__(self) -> None:
+        """Derive the absolute pricing block from the percentage inputs.
+
+        Every site downstream (UI, readiness checker, broker) consumes
+        absolute prices; the orchestrator emits percentages. We close
+        the gap here so the dataclass is internally consistent the
+        moment it is constructed, regardless of which fields the
+        caller populated.
+        """
+        # Entry-price aliases — entry_price ↔ entry_price_at_compute
+        # are kept in sync because legacy callers still set the long
+        # name and new callers set the short one.
+        if self.entry_price <= 0 and self.entry_price_at_compute > 0:
+            self.entry_price = self.entry_price_at_compute
+        elif self.entry_price > 0 and self.entry_price_at_compute <= 0:
+            self.entry_price_at_compute = self.entry_price
+        if self.price_at_compute <= 0 and self.entry_price > 0:
+            self.price_at_compute = self.entry_price
+
+        # Entry zone bounds — symmetric ± entry_zone_pct around entry.
+        if self.entry_price > 0:
+            if self.entry_zone_low <= 0:
+                self.entry_zone_low = self.entry_price * (1.0 - self.entry_zone_pct)
+            if self.entry_zone_high <= 0:
+                self.entry_zone_high = self.entry_price * (1.0 + self.entry_zone_pct)
+
+        # Stop-loss / take-profit prices. Direction-aware: LONG SL is
+        # below entry, SHORT SL is above. HOLD signals get no SL/TP
+        # because they are signal-only (no execution).
+        direction_up = str(self.direction).upper()
+        if (
+            self.entry_price > 0
+            and self.stop_loss_price <= 0
+            and self.stop_loss_pct > 0
+            and direction_up in ("LONG", "SHORT")
+        ):
+            sl_sign = -1.0 if direction_up == "LONG" else 1.0
+            self.stop_loss_price = self.entry_price * (
+                1.0 + sl_sign * self.stop_loss_pct / 100.0
+            )
+        if (
+            self.entry_price > 0
+            and self.take_profit_price <= 0
+            and self.take_profit_pct > 0
+            and direction_up in ("LONG", "SHORT")
+        ):
+            tp_sign = 1.0 if direction_up == "LONG" else -1.0
+            self.take_profit_price = self.entry_price * (
+                1.0 + tp_sign * self.take_profit_pct / 100.0
+            )
+
+        # Risk/reward ratio: reward / risk in absolute price units.
+        if (
+            self.risk_reward_ratio <= 0
+            and self.entry_price > 0
+            and self.stop_loss_price > 0
+            and self.take_profit_price > 0
+        ):
+            risk = abs(self.entry_price - self.stop_loss_price)
+            reward = abs(self.take_profit_price - self.entry_price)
+            if risk > 0:
+                self.risk_reward_ratio = round(reward / risk, 4)
+
+        # Notional value & dollar risk: derived from quantity if set.
+        if self.notional_value <= 0 and self.quantity > 0 and self.entry_price > 0:
+            self.notional_value = round(self.quantity * self.entry_price, 2)
+        if (
+            self.risk_amount <= 0
+            and self.quantity > 0
+            and self.entry_price > 0
+            and self.stop_loss_price > 0
+        ):
+            self.risk_amount = round(
+                self.quantity * abs(self.entry_price - self.stop_loss_price), 2
+            )
+
+        # Expires-at ISO timestamp. Computed once so the frontend can
+        # render a stable "expires in 12m" without re-parsing
+        # computed_at + adding ttl.
+        if not self.expires_at and self.computed_at:
+            try:
+                computed = dt.datetime.fromisoformat(self.computed_at)
+                if computed.tzinfo is None:
+                    computed = computed.replace(tzinfo=dt.UTC)
+                self.expires_at = (
+                    computed + dt.timedelta(minutes=self.ttl_minutes)
+                ).isoformat()
+            except (ValueError, TypeError):
+                pass
+
     @property
     def is_stale(self) -> bool:
         try:
@@ -123,12 +280,95 @@ class PrecomputedSignal:
         except (ValueError, TypeError):
             return True
 
+    @property
+    def is_expired(self) -> bool:
+        """Stricter cousin of ``is_stale`` keyed off ``expires_at``."""
+        if not self.expires_at:
+            return self.is_stale
+        try:
+            exp = dt.datetime.fromisoformat(self.expires_at)
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=dt.UTC)
+            return dt.datetime.now(dt.UTC) >= exp
+        except (ValueError, TypeError):
+            return self.is_stale
+
     def price_in_entry_zone(self, current_price: float) -> bool:
         """Check if current price is still within acceptable entry range."""
         if self.entry_price_at_compute <= 0:
             return True
         pct_move = abs(current_price - self.entry_price_at_compute) / self.entry_price_at_compute
         return pct_move <= self.entry_zone_pct
+
+    def is_in_entry_zone(self, current_price: float) -> bool:
+        """Use the absolute zone bounds derived in __post_init__."""
+        if current_price <= 0 or self.entry_zone_low <= 0 or self.entry_zone_high <= 0:
+            return self.price_in_entry_zone(current_price)
+        return self.entry_zone_low <= current_price <= self.entry_zone_high
+
+    def compute_distance_to_entry_pct(self, current_price: float) -> float:
+        """Signed distance from current to entry as a fraction.
+
+        Negative means current is below entry (good for LONG limits),
+        positive means current is above entry (good for SHORT limits).
+        """
+        if self.entry_price <= 0 or current_price <= 0:
+            return 0.0
+        return (current_price - self.entry_price) / self.entry_price
+
+
+# ── Test-data tripwire ─────────────────────────────────────────────────
+# Strings that should never appear in a production signal. Anything
+# carrying these names is a fixture / placeholder and must be rejected
+# at the SignalBook boundary so it cannot drive a shadow fill.
+_BANNED_STRATEGY_NAMES = frozenset(
+    s.lower() for s in (
+        "", "test", "test_strategy", "dummy", "placeholder",
+        "fake", "fake_signal", "sample", "stub",
+    )
+)
+_BANNED_TICKERS = frozenset({"", "TEST", "DUMMY", "FAKE", "SAMPLE"})
+
+
+def _validate_signal(signal: PrecomputedSignal) -> None:
+    """Reject test / debug / zero-conviction entries.
+
+    Run on every write path (upsert / upsert_batch / load_from_disk).
+    Raises ``ValueError`` for hard rejects so the caller fails loudly
+    instead of silently corrupting the book.
+    """
+    ticker_norm = (signal.ticker or "").strip().upper()
+    if ticker_norm in _BANNED_TICKERS:
+        raise ValueError(
+            f"Refusing to cache signal with placeholder ticker {signal.ticker!r}"
+        )
+    strat_norm = (signal.strategy_name or "").strip().lower()
+    if strat_norm in _BANNED_STRATEGY_NAMES:
+        raise ValueError(
+            f"Refusing to cache signal with test/empty strategy_name "
+            f"{signal.strategy_name!r} for {signal.ticker}"
+        )
+    fp_norm = (signal.regime_fingerprint or "").strip().lower()
+    if fp_norm in {"test_fp", "test", "dummy", "placeholder"}:
+        raise ValueError(
+            f"Refusing to cache signal with test regime_fingerprint "
+            f"{signal.regime_fingerprint!r} for {signal.ticker}"
+        )
+    # HOLD signals are allowed at zero conviction (signal-only); EXECUTE
+    # paths require both conviction and expected_r > 0 so the shadow
+    # consumer never sees a zero-sized order.
+    direction_up = (signal.direction or "").upper()
+    if direction_up in ("LONG", "SHORT"):
+        if signal.conviction <= 0.0:
+            raise ValueError(
+                f"Refusing to cache {direction_up} signal for "
+                f"{signal.ticker} with zero conviction"
+            )
+        if signal.expected_r <= 0.0:
+            raise ValueError(
+                f"Refusing to cache {direction_up} signal for "
+                f"{signal.ticker} with zero expected_r"
+            )
 
 
 class SignalBook:
@@ -200,6 +440,24 @@ class SignalBook:
             self._overrides_pending[ticker] = dt.datetime.now(dt.UTC)
             log.info(f"Override pending: {ticker} (fast path blocked)")
 
+    def invalidate_and_mark_override(self, ticker: str, reason: str = "") -> int:
+        """Atomic invalidate + mark-override.
+
+        Replaces the legacy two-step ``invalidate(t); mark_override(t)``
+        sequence. Without atomicity, the fast path could observe a
+        window where the cache has been emptied but the override flag
+        is not yet set, allowing a stale-data lookup to slip through.
+        Returns the number of signals evicted (same contract as
+        ``invalidate``).
+        """
+        with self._lock:
+            evicted = self.invalidate(ticker, reason=reason)
+            # RLock is re-entrant so the nested ``with self._lock`` in
+            # ``mark_override_pending`` is fine; we keep the call to
+            # avoid duplicating the override timestamp logic.
+            self.mark_override_pending(ticker)
+            return evicted
+
     def clear_override_pending(self, ticker: str) -> None:
         """Clear the override-pending flag after re-compute finishes."""
         with self._lock:
@@ -263,6 +521,16 @@ class SignalBook:
         """Drop the thesis pin after the position closes."""
         with self._lock:
             self._open_theses.pop(intent_id, None)
+
+    def open_thesis_tickers(self) -> set[str]:
+        """Snapshot of every ticker with at least one open thesis.
+
+        Used by the IB-side reconciliation heartbeat to detect divergence
+        between local state and broker positions (e.g. a close order
+        that succeeded locally but never confirmed at IB).
+        """
+        with self._lock:
+            return {ticker for (ticker, _sig) in self._open_theses.values()}
 
     def invalidated_intents(
         self,
@@ -356,7 +624,15 @@ class SignalBook:
             return sig
 
     def upsert(self, signal: PrecomputedSignal) -> None:
-        """Insert or update a pre-computed signal."""
+        """Insert or update a pre-computed signal.
+
+        Hard rejects test/placeholder/zero-conviction entries so a
+        debug fixture from a notebook can never end up driving real
+        shadow fills. The exact tripwires below are the M3 retro
+        findings — the regression that produced the May 1 fake NVDA
+        trades was a ``test_strategy`` row landing in the book.
+        """
+        _validate_signal(signal)
         with self._lock:
             key = self._key(signal.ticker, signal.regime_fingerprint)
             self._signals[key] = signal
@@ -364,6 +640,8 @@ class SignalBook:
 
     def upsert_batch(self, signals: list[PrecomputedSignal]) -> int:
         """Insert multiple signals atomically."""
+        for sig in signals:
+            _validate_signal(sig)
         with self._lock:
             for sig in signals:
                 key = self._key(sig.ticker, sig.regime_fingerprint)
@@ -384,6 +662,91 @@ class SignalBook:
         """Return all non-stale signals."""
         with self._lock:
             return [s for s in self._signals.values() if not s.is_stale]
+
+    # ── Readiness query API (consumed by TradeReadinessChecker + /signals) ──
+
+    def get_signals_by_status(self, status: str) -> dict[str, PrecomputedSignal]:
+        """Return all signals whose ``readiness_status`` matches.
+
+        Returns a fresh dict so callers can iterate without holding
+        the lock. Values are still references to the live cache
+        entries (intentional — readiness updates mutate in place).
+        """
+        with self._lock:
+            return {k: v for k, v in self._signals.items() if v.readiness_status == status}
+
+    def get_ready_signals(self) -> list[PrecomputedSignal]:
+        """Return READY signals sorted by conviction descending.
+
+        This is the surface the dispatcher reads to decide which
+        signals to route to the broker first when capital is finite.
+        """
+        ready = self.get_signals_by_status("READY")
+        return sorted(ready.values(), key=lambda s: s.conviction, reverse=True)
+
+    def get_all_signals_with_readiness(self) -> list[PrecomputedSignal]:
+        """Return every signal in the book regardless of stale-ness.
+
+        EXPIRED signals stay visible so the frontend can render the
+        most-recent decision even after its TTL elapses; the
+        readiness_status field is the authoritative tradability gate.
+        """
+        with self._lock:
+            return list(self._signals.values())
+
+    def update_readiness(
+        self,
+        key: str,
+        *,
+        status: str,
+        current_price: float = 0.0,
+        distance_to_entry_pct: float = 0.0,
+        readiness_checked_at: dt.datetime | str | None = None,
+        readiness_reason: str = "",
+    ) -> bool:
+        """Mutate the readiness state of a single signal in place.
+
+        Returns True if the signal was found and updated, False
+        otherwise. The book is NOT auto-persisted here — callers
+        (typically the readiness checker's main loop) batch many
+        updates per cycle and call ``save_to_disk`` once at the end.
+        """
+        if isinstance(readiness_checked_at, dt.datetime):
+            checked_iso = readiness_checked_at.isoformat()
+        elif isinstance(readiness_checked_at, str) and readiness_checked_at:
+            checked_iso = readiness_checked_at
+        else:
+            checked_iso = dt.datetime.now(dt.UTC).isoformat()
+        with self._lock:
+            sig = self._signals.get(key)
+            if sig is None:
+                return False
+            sig.readiness_status = status
+            sig.readiness_reason = readiness_reason or sig.readiness_reason
+            sig.readiness_checked_at = checked_iso
+            if current_price > 0:
+                sig.current_price = current_price
+            sig.distance_to_entry_pct = distance_to_entry_pct
+            return True
+
+    def mark_all_expired(self) -> int:
+        """Sweep — flip every TTL-elapsed WAITING/READY signal to EXPIRED.
+
+        Returns the number of signals transitioned. Called once per
+        readiness-checker cycle so the frontend's expiry counter
+        moves forward even when no live evaluation hits the signal.
+        """
+        flipped = 0
+        with self._lock:
+            for sig in self._signals.values():
+                if sig.readiness_status in ("EXPIRED", "CANCELLED"):
+                    continue
+                if sig.is_expired:
+                    sig.readiness_status = "EXPIRED"
+                    sig.readiness_reason = "ttl_elapsed"
+                    sig.readiness_checked_at = dt.datetime.now(dt.UTC).isoformat()
+                    flipped += 1
+        return flipped
 
     def size(self) -> int:
         with self._lock:
@@ -408,17 +771,17 @@ class SignalBook:
     def save_to_disk(self, path: Path | None = None) -> None:
         """Persist the signal book to JSON for crash recovery.
 
-        Uses atomic write-then-rename so a crash mid-write never
-        corrupts the existing file. The C++ watchdog can SIGKILL us
-        at any instant; a half-written .tmp is harmless.
+        Uses atomic write-then-rename + a `.bak` rotation so a crash
+        mid-write never corrupts the existing file AND a corrupt
+        primary can be recovered from the previous good copy.
         """
+        from shared.atomic_io import atomic_write_json
+
         path = path or _BOOK_PATH
         path.parent.mkdir(parents=True, exist_ok=True)
         with self._lock:
             data = {k: asdict(v) for k, v in self._signals.items()}
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=2, default=str))
-        tmp.replace(path)
+        atomic_write_json(path, data, indent=2, default=str, keep_backup=True)
         log.info(f"Signal book saved: {len(data)} signals -> {path}")
         try:
             from shared.gcs import sync_artifact
@@ -427,12 +790,23 @@ class SignalBook:
             pass
 
     def load_from_disk(self, path: Path | None = None) -> int:
-        """Load signal book from disk. Returns count of loaded signals."""
+        """Load signal book from disk. Returns count of loaded signals.
+
+        Falls back to the `.bak` if the primary fails to parse — this
+        is the dual-file rotation written by ``save_to_disk``.
+        """
+        from shared.atomic_io import safe_load_json
+
         path = path or _BOOK_PATH
-        if not path.exists():
+        raw = safe_load_json(path, fallback_to_backup=True)
+        if raw is None:
+            if path.exists():
+                log.error(
+                    f"Signal book at {path} (and its .bak) is corrupt; "
+                    f"starting empty. Investigate before trading."
+                )
             return 0
         try:
-            raw = json.loads(path.read_text())
             with self._lock:
                 for key, val in raw.items():
                     sig = PrecomputedSignal(
@@ -448,7 +822,7 @@ class SignalBook:
             log.info(f"Signal book loaded: {loaded} active signals from {path}")
             return loaded
         except Exception as exc:
-            log.warning(f"Signal book load failed: {exc}")
+            log.warning(f"Signal book load failed during deserialise: {exc}")
             return 0
 
     def clear(self) -> None:

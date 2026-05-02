@@ -86,6 +86,52 @@ def _script_of(ch: str) -> str:
 _WORD_RE = re.compile(r"\w+", re.UNICODE)
 
 
+# ── Bidi / format / private-use control character stripping ─────────
+# Bidirectional override codepoints can visually reverse a span of text
+# (rendering "LONG" as "GNOL") so a human reviewer of the source feed sees
+# different content than the LLM's tokenizer ingests. Same risk applies
+# to the isolate codepoints (U+2066–U+2069) and to invisible format
+# controls. Strip them before any other pass; the only legitimate use of
+# bidi controls in financial English is zero, so we lose nothing.
+_BIDI_CONTROL_CHARS = frozenset(
+    chr(cp) for cp in (
+        0x202A, 0x202B, 0x202C, 0x202D, 0x202E,  # LRE/RLE/PDF/LRO/RLO
+        0x2066, 0x2067, 0x2068, 0x2069,           # LRI/RLI/FSI/PDI
+        0x200E, 0x200F,                            # LRM/RLM
+        0x200B, 0x200C, 0x200D,                    # ZWSP/ZWNJ/ZWJ
+        0xFEFF,                                    # ZWNBSP / BOM
+    )
+)
+
+
+def _strip_bidi_controls(text: str) -> tuple[str, int]:
+    """Remove bidi-override and zero-width format controls.
+
+    Returns ``(clean, removed_count)``. Strips both the explicit bidi
+    overrides (LRE/RLE/PDF/LRO/RLO/LRI/RLI/FSI/PDI/LRM/RLM) and the
+    zero-width joiners that homoglyph attacks sometimes use to fool
+    word-segmenters.
+    """
+    if not text:
+        return text, 0
+    removed = 0
+    out: list[str] = []
+    for ch in text:
+        if ch in _BIDI_CONTROL_CHARS:
+            removed += 1
+            continue
+        # Any other format-class codepoint we haven't whitelisted gets
+        # dropped too. Cf is the Unicode general category for "format".
+        try:
+            if unicodedata.category(ch) == "Cf":
+                removed += 1
+                continue
+        except (TypeError, ValueError):
+            pass
+        out.append(ch)
+    return "".join(out), removed
+
+
 # ── Hidden-element HTML parser ────────────────────────────────────────
 _HIDDEN_TAG_NAMES = frozenset({"script", "style", "noscript"})
 
@@ -302,6 +348,8 @@ class SanitizedText:
     clean_length: int
     dropped_html_blocks: int
     normalised_chars: int
+    bidi_controls_removed: int = 0
+    truncated_to_chars: int = 0
     rejected_tokens: list[str] = field(default_factory=list)
     sha256_changed: bool = False
     raw_sha256: str = ""
@@ -322,10 +370,21 @@ def _short_sha256(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8", errors="replace")).hexdigest()[:16]
 
 
+# Hard upper bound on the number of characters allowed into the LLM per
+# article. 8000 characters is roughly 2000 tokens for English news prose
+# (cl100k_base) — well inside any 100k-context model and small enough
+# that an attacker cannot push the system prompt out of attention via
+# context-window stuffing. The cap is in characters (not tokens) so the
+# sanitiser stays dependency-free; callers that need a stricter token-
+# accurate budget can pass ``max_chars=N`` derived from a tokenizer.
+DEFAULT_MAX_CHARS = 8000
+
+
 def sanitize_news_text(
     raw: str,
     *,
     strict_ticker_guard: bool = True,
+    max_chars: int = DEFAULT_MAX_CHARS,
 ) -> SanitizedText:
     """Run the four-pass sanitiser over a single piece of news text.
 
@@ -367,9 +426,15 @@ def sanitize_news_text(
     raw_len = len(raw)
     raw_hash = _short_sha256(raw)
 
+    # ── Pass 0: strip bidi / format / zero-width control codepoints.
+    # Done first so HTML attribute matching and tokenisation see clean
+    # bytes. Without this, U+202E inside a tag attribute could route the
+    # wrong way through the parser.
+    raw_no_bidi, bidi_removed = _strip_bidi_controls(raw)
+
     # ── Pass 1: belt-and-braces regex strip (before html.parser sees it)
-    pre_parsed = _DISPLAY_NONE_BLOCK_RE.sub("", raw)
-    regex_dropped = 1 if pre_parsed != raw else 0
+    pre_parsed = _DISPLAY_NONE_BLOCK_RE.sub("", raw_no_bidi)
+    regex_dropped = 1 if pre_parsed != raw_no_bidi else 0
 
     # ── Pass 2: visibility-aware HTML parser
     no_html, parser_dropped = _strip_hidden_html(pre_parsed)
@@ -402,6 +467,16 @@ def sanitize_news_text(
     clean = re.sub(r"[ \t]+", " ", clean)
     clean = re.sub(r" *\n *", "\n", clean).strip()
 
+    # ── Pass 5: hard char cap. Prevents an attacker from stuffing the
+    # context window with nonsense to push the system prompt out of the
+    # model's attention. We truncate at a UTF-8-safe boundary; the
+    # cutoff is in characters (Python str length) which maps 1:1 onto
+    # NFKC-normalised content.
+    truncated_to = 0
+    if max_chars and len(clean) > max_chars:
+        truncated_to = max_chars
+        clean = clean[:max_chars].rstrip() + " ⟨TRUNCATED⟩"
+
     clean_hash = _short_sha256(clean)
     return SanitizedText(
         clean=clean,
@@ -409,6 +484,8 @@ def sanitize_news_text(
         clean_length=len(clean),
         dropped_html_blocks=dropped_total,
         normalised_chars=norm_changes,
+        bidi_controls_removed=bidi_removed,
+        truncated_to_chars=truncated_to,
         rejected_tokens=rejected,
         sha256_changed=(raw_hash != clean_hash),
         raw_sha256=raw_hash,

@@ -310,3 +310,50 @@ class TestShockDetectorHostilePolicy:
         intel = detect_live_shock(news)
         assert intel is not None, "minor hostile content should still allow shock"
         assert intel["sanitisation"]["hostile_items_in_window"] == 1
+
+# ────────────────────────────────────────────────────────────────────
+#  Bidi / format-control attacks (added by audit fix C10)
+# ────────────────────────────────────────────────────────────────────
+class TestBidiAndFormatControls:
+    def test_bidi_override_is_stripped(self) -> None:
+        # U+202E RIGHT-TO-LEFT OVERRIDE could visually flip 'LONG' → 'GNOL'
+        # to a human reviewer of the source feed while the LLM tokenizer
+        # ingests the reversed bytes. Sanitiser must drop the codepoint.
+        text = 'Buy AAPL‮ for next quarter'
+        out = sanitize_news_text(text)
+        assert '‮' not in out.clean
+        assert out.bidi_controls_removed >= 1
+
+    def test_zero_width_joiner_removed(self) -> None:
+        text = 'NVIDIA​‌‍chip shortage'
+        out = sanitize_news_text(text)
+        assert '​' not in out.clean
+        assert '‌' not in out.clean
+        assert '‍' not in out.clean
+
+    def test_bom_stripped(self) -> None:
+        text = '﻿TSLA stock down 5 percent today'
+        out = sanitize_news_text(text)
+        assert '﻿' not in out.clean
+
+    def test_isolate_overrides_stripped(self) -> None:
+        # LRI/RLI/FSI/PDI isolate codepoints (U+2066–U+2069).
+        text = 'Bullish⁦ outlook ⁩for AAPL'
+        out = sanitize_news_text(text)
+        assert '⁦' not in out.clean
+        assert '⁩' not in out.clean
+
+    def test_truncation_caps_long_input(self) -> None:
+        # Adversary stuffs the context window to push the system prompt
+        # out of attention. Sanitiser truncates to a fixed character cap.
+        text = 'A' * 50_000
+        out = sanitize_news_text(text, max_chars=8_000)
+        assert out.truncated_to_chars == 8_000
+        assert len(out.clean) <= 8_100  # 8000 + truncation marker
+
+    def test_benign_short_text_not_truncated(self) -> None:
+        text = 'Apple announces new iPhone with strong demand.'
+        out = sanitize_news_text(text)
+        assert out.truncated_to_chars == 0
+        assert 'Apple' in out.clean
+

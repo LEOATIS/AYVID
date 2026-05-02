@@ -203,13 +203,17 @@ def _result_to_outcome_rows(
 def read_outcomes(
     outcomes_path: Path = DEFAULT_OUTCOMES_PATH,
     since: dt.datetime | None = None,
+    until: dt.datetime | None = None,
 ) -> list[dict[str, Any]]:
     """Read every outcome row from the JSONL log.
 
     When ``since`` is provided, rows with a ``timestamp`` strictly
-    earlier than it are filtered out. Malformed lines are silently
-    skipped — we prefer a partial view of reality over crashing the
-    recalibrator on a single bad row.
+    earlier than it are filtered out. When ``until`` is provided, rows
+    with a ``timestamp`` on-or-after it are filtered out — this is the
+    knob that walk-forward uses to fit priors only on the strictly
+    pre-window outcomes. Malformed lines are silently skipped — we
+    prefer a partial view of reality over crashing the recalibrator on
+    a single bad row.
     """
     outcomes_path = Path(outcomes_path)
     if not outcomes_path.exists():
@@ -222,17 +226,21 @@ def read_outcomes(
             continue
         try:
             row = json.loads(line)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            log.warning(
+                f"trade_outcomes: skipping malformed JSONL line in {outcomes_path}: {exc}"
+            )
             continue
-        if since is not None:
-            ts_raw = row.get("timestamp")
-            if ts_raw:
-                try:
-                    ts = dt.datetime.fromisoformat(ts_raw)
-                    if ts < since:
-                        continue
-                except ValueError:
-                    pass
+        ts_raw = row.get("timestamp") if (since is not None or until is not None) else None
+        if ts_raw:
+            try:
+                ts = dt.datetime.fromisoformat(ts_raw)
+                if since is not None and ts < since:
+                    continue
+                if until is not None and ts >= until:
+                    continue
+            except ValueError:
+                pass
         rows.append(row)
     return rows
 
@@ -273,6 +281,7 @@ def rebuild_priors_from_outcomes(
     blocked_sharpe_threshold: float = DEFAULT_BLOCKED_SHARPE,
     source_filter: str | None = None,
     since: dt.datetime | None = None,
+    until: dt.datetime | None = None,
 ) -> dict[str, Any]:
     """Rebuild `priors.json` from the appended trade outcomes log.
 
@@ -296,7 +305,7 @@ def rebuild_priors_from_outcomes(
     Returns the updated priors dict. Also writes it to ``priors_path``
     so the supervisor picks up the change on its next mtime check.
     """
-    rows = read_outcomes(outcomes_path, since=since)
+    rows = read_outcomes(outcomes_path, since=since, until=until)
     if source_filter is not None:
         rows = [r for r in rows if r.get("source") == source_filter]
 
@@ -309,17 +318,20 @@ def rebuild_priors_from_outcomes(
             continue
         try:
             buckets[(strat, regime)].append(float(r.get("realized_r", 0.0)))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as exc:
+            log.warning(
+                f"trade_outcomes: skipping row with non-numeric realized_r "
+                f"({strat}/{regime}: {r.get('realized_r')!r}): {exc}"
+            )
             continue
 
     # Load existing priors (if any) so we can preserve policy fields.
-    existing: dict[str, Any] = {}
-    if priors_path.exists():
-        try:
-            existing = json.loads(priors_path.read_text())
-        except json.JSONDecodeError:
-            log.warning(f"priors.json at {priors_path} is malformed; starting fresh")
-            existing = {}
+    # Falls back to .bak if the primary was left half-written by a crash.
+    from shared.atomic_io import safe_load_json
+    loaded = safe_load_json(priors_path, fallback_to_backup=True)
+    if loaded is None and priors_path.exists():
+        log.warning(f"priors.json at {priors_path} is malformed; starting fresh")
+    existing: dict[str, Any] = loaded if isinstance(loaded, dict) else {}
 
     existing_priors = existing.get("priors", {}) if isinstance(existing, dict) else {}
 
@@ -374,8 +386,8 @@ def rebuild_priors_from_outcomes(
         "_rebuild_newly_unblocked": newly_unblocked,
         "priors": priors,
     }
-    priors_path.parent.mkdir(parents=True, exist_ok=True)
-    priors_path.write_text(json.dumps(payload, indent=2, sort_keys=True))
+    from shared.atomic_io import atomic_write_json
+    atomic_write_json(priors_path, payload, indent=2, sort_keys=True, keep_backup=True)
     try:
         from shared.gcs import sync_artifact
         sync_artifact(priors_path)

@@ -61,9 +61,16 @@ def paper_start(
 
     async def _run():
         from execution_engine.paper_runner import run
+        from shared.config import ExecutionMode, settings
         from shared.exceptions import IBKRDisconnectError
 
-        mode = "shadow" if shadow else "ib_paper"
+        # Mode resolution mirrors paper_runner.run(): explicit --shadow
+        # wins, then settings.EXECUTION_MODE, then default ib_paper.
+        if shadow:
+            mode = "shadow"
+        else:
+            env_mode = getattr(settings, "EXECUTION_MODE", ExecutionMode.IB_PAPER)
+            mode = env_mode.value if hasattr(env_mode, "value") else "ib_paper"
         pipeline_status = (
             f"[green]ON[/green] (every {pipeline_interval}min)" if with_pipeline else "[dim]off[/dim]"
         )

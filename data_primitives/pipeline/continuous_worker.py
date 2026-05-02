@@ -33,6 +33,79 @@ _NER_BATCH_SIZE: int = settings.NER_BATCH_SIZE
 _NER_CONCURRENCY: int = settings.NER_CONCURRENCY
 _TIER2_CYCLE_INTERVAL: int = settings.TIER2_CYCLE_INTERVAL
 
+# Per-process semaphore guarding the LLM orchestrator. The 15-min cycle
+# can iterate over 100+ tickers; if every one fired an LLM call in
+# parallel we'd burn through provider rate limits in the first minute.
+# Lazily initialised on first use so we read the latest setting value
+# (tests mutate settings.LLM_MAX_CONCURRENT_SIGNALS).
+_llm_orchestration_semaphore: asyncio.Semaphore | None = None
+# Lightweight per-cycle telemetry consumed by /api/v1/system/pipeline.
+_last_pipeline_run_at: dt.datetime | None = None
+_last_cycle_signal_count: int = 0
+_last_cycle_orchestration_mode: str = "rule_based"
+
+
+def _get_llm_semaphore() -> asyncio.Semaphore:
+    global _llm_orchestration_semaphore
+    if _llm_orchestration_semaphore is None:
+        _llm_orchestration_semaphore = asyncio.Semaphore(
+            max(1, settings.LLM_MAX_CONCURRENT_SIGNALS)
+        )
+    return _llm_orchestration_semaphore
+
+
+async def _get_signal_for_ticker(ctx: Any) -> Any:
+    """Hybrid dispatch: LLM swarm first, deterministic rule-engine fallback.
+
+    Behaviour:
+      * If ``LLM_ORCHESTRATION_ENABLED`` is True we ask the LangGraph
+        swarm via ``orchestrate_trade``. Bounded by a per-process
+        semaphore so 100 tickers don't simultaneously hammer the LLM
+        provider; capped by ``LLM_SIGNAL_TIMEOUT_SECONDS``.
+      * On timeout, parse error, or any provider exception we fall back
+        to ``rule_based_orchestrate`` and continue the cycle. The LLM is
+        an enhancement, never a hard dependency.
+      * If LLM mode is disabled we go straight to the rule engine. No
+        change in behaviour from the legacy path.
+
+    Returns the same ``TradeDecision`` shape both branches produce, so
+    the caller can stay agnostic about which engine fired.
+    """
+    from graph_intelligence.agents.strategy_orchestrator import (
+        orchestrate_trade,
+        rule_based_orchestrate,
+    )
+
+    if settings.LLM_ORCHESTRATION_ENABLED:
+        try:
+            sem = _get_llm_semaphore()
+            async with sem:
+                decision = await asyncio.wait_for(
+                    orchestrate_trade(ctx),
+                    timeout=settings.LLM_SIGNAL_TIMEOUT_SECONDS,
+                )
+            log.debug(
+                f"llm_signal_generated ticker={ctx.ticker} "
+                f"action={decision.action} direction={decision.direction} "
+                f"conviction={decision.conviction:.2f} strategy={decision.strategy_name}"
+            )
+            return decision
+        except TimeoutError:
+            log.warning(
+                f"llm_orchestration_timeout ticker={ctx.ticker} "
+                f"timeout={settings.LLM_SIGNAL_TIMEOUT_SECONDS}s "
+                f"fallback=rule_based"
+            )
+        except Exception as exc:
+            log.warning(
+                f"llm_orchestration_error ticker={ctx.ticker} "
+                f"error={exc!s} fallback=rule_based"
+            )
+
+    decision = rule_based_orchestrate(ctx)
+    log.debug(f"rule_based_signal ticker={ctx.ticker} action={decision.action}")
+    return decision
+
 
 async def _build_tiered_watchlists() -> tuple[list[str], list[str]]:
     """Build Tier 1 (supply-chain critical) and Tier 2 (broader universe) watchlists
@@ -331,6 +404,57 @@ async def run_ingestion_cycle(
     return result
 
 
+def _read_live_portfolio_value() -> float:
+    """Best-effort live NLV used to size newly-computed signals.
+
+    Source priority:
+      1. ``live/positions.json`` → ``cash`` + sum(market_value) when the
+         paper runner is up.
+      2. ``live/run_meta.json`` → ``initial_equity`` for cold-start.
+      3. ``settings.STARTING_CAPITAL`` (or 1M) as the floor.
+
+    The sizer is forgiving — passing a stale value just changes the
+    ratio of risk-per-trade to NLV; the live execution path always
+    re-checks portfolio risk before routing the order.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    pos = _Path("live/positions.json")
+    if pos.exists():
+        try:
+            data = _json.loads(pos.read_text())
+            if isinstance(data, dict):
+                cash = float(data.get("cash", 0.0) or 0.0)
+                rows = data.get("positions", [])
+                mv = 0.0
+                if isinstance(rows, list):
+                    for r in rows:
+                        if isinstance(r, dict):
+                            try:
+                                mv += float(r.get("market_value") or 0.0)
+                            except (TypeError, ValueError):
+                                pass
+                total = cash + mv
+                if total > 0:
+                    return total
+        except (OSError, ValueError, _json.JSONDecodeError):
+            pass
+
+    meta = _Path("live/run_meta.json")
+    if meta.exists():
+        try:
+            data = _json.loads(meta.read_text())
+            if isinstance(data, dict):
+                init_eq = float(data.get("initial_equity", 0.0) or 0.0)
+                if init_eq > 0:
+                    return init_eq
+        except (OSError, ValueError, _json.JSONDecodeError):
+            pass
+
+    return float(getattr(settings, "STARTING_CAPITAL", 1_000_000.0) or 1_000_000.0)
+
+
 async def pre_compute_signals(equity_tickers: list[str] | None = None) -> int:
     """Pre-compute trading signals for all tradeable indices and top equities.
 
@@ -344,6 +468,8 @@ async def pre_compute_signals(equity_tickers: list[str] | None = None) -> int:
 
     import numpy as np
 
+    from execution_engine.math.kelly import kelly_fraction_single
+    from execution_engine.math.position_sizer import compute_quantity_for_signal
     from execution_engine.math.regime import (
         classify_trend,
         classify_volatility,
@@ -360,10 +486,10 @@ async def pre_compute_signals(equity_tickers: list[str] | None = None) -> int:
     from graph_intelligence.agents.strategy_orchestrator import (
         TRADEABLE_INDEX_SYMBOLS,
         MarketContext,
-        rule_based_orchestrate,
     )
 
     book = get_signal_book()
+    portfolio_value = _read_live_portfolio_value()
     t0 = time.perf_counter()
     computed = 0
 
@@ -439,10 +565,37 @@ async def pre_compute_signals(equity_tickers: list[str] | None = None) -> int:
                 ret_20d=ret_20d,
             )
 
-            decision = rule_based_orchestrate(ctx)
+            decision = await _get_signal_for_ticker(ctx)
 
             if decision.action == "SKIP":
                 continue
+
+            # Pre-compute SL/TP absolute prices so the position sizer
+            # has concrete distances to chew on. PrecomputedSignal's
+            # __post_init__ would also derive these, but we need the
+            # numbers BEFORE construction to size the position.
+            direction_up = str(decision.direction).upper()
+            if direction_up == "LONG":
+                sl_price = price * (1.0 - decision.stop_loss_pct / 100.0)
+            elif direction_up == "SHORT":
+                sl_price = price * (1.0 + decision.stop_loss_pct / 100.0)
+            else:
+                sl_price = price  # HOLD — no risk distance
+
+            kelly_frac = kelly_fraction_single(
+                decision.conviction,
+                max(decision.expected_r, 1.0),
+            )
+            sized = compute_quantity_for_signal(
+                ticker=ticker,
+                asset_class=asset_class,
+                instrument_type=decision.instrument_type,
+                direction=decision.direction,
+                entry_price=price,
+                stop_loss_price=sl_price,
+                portfolio_value=portfolio_value,
+                kelly_fraction=kelly_frac,
+            )
 
             sig = PrecomputedSignal(
                 ticker=ticker,
@@ -461,6 +614,17 @@ async def pre_compute_signals(equity_tickers: list[str] | None = None) -> int:
                 min_r=decision.min_r,
                 entry_price_at_compute=price,
                 second_leg=decision.second_leg or {},
+                # New fields
+                asset_class=asset_class,
+                quantity=sized.quantity,
+                notional_value=sized.notional_value,
+                risk_amount=sized.risk_amount,
+                kelly_fraction=sized.kelly_fraction,
+                lot_size=sized.lot_size,
+                contract_multiplier=sized.contract_multiplier,
+                pip_value=sized.pip_value,
+                margin_required=sized.margin_required,
+                factor_score=float(getattr(decision, "factor_score", 0.0) or 0.0),
             )
             book.upsert(sig)
             computed += 1
@@ -473,11 +637,33 @@ async def pre_compute_signals(equity_tickers: list[str] | None = None) -> int:
     book.record_precompute(elapsed_ms)
     book.save_to_disk()
 
+    global _last_pipeline_run_at, _last_cycle_signal_count, _last_cycle_orchestration_mode
+    _last_pipeline_run_at = dt.datetime.now(dt.UTC)
+    _last_cycle_signal_count = computed
+    _last_cycle_orchestration_mode = (
+        "llm_swarm" if settings.LLM_ORCHESTRATION_ENABLED else "rule_based"
+    )
+
     log.info(
         f"Signal book pre-computed: {computed} signals in {elapsed_ms:.0f}ms "
-        f"(book size={book.size()})"
+        f"(book size={book.size()}, mode={_last_cycle_orchestration_mode})"
     )
     return computed
+
+
+def get_pipeline_telemetry() -> dict[str, Any]:
+    """Snapshot of the most recent pre_compute_signals run.
+
+    Consumed by the /api/v1/system/pipeline endpoint so the console can
+    show what's actually running without inferring it from log files.
+    """
+    return {
+        "last_pipeline_run": (
+            _last_pipeline_run_at.isoformat() if _last_pipeline_run_at else None
+        ),
+        "signals_generated_last_cycle": _last_cycle_signal_count,
+        "orchestration_mode": _last_cycle_orchestration_mode,
+    }
 
 
 def _detect_shock_tickers(events: list[CausalEvent]) -> list[str]:
@@ -535,8 +721,7 @@ async def emergency_recompute(
     results: dict[str, str] = {}
 
     for ticker in shocked_tickers:
-        evicted = book.invalidate(ticker, reason=trigger)
-        book.mark_override_pending(ticker)
+        evicted = book.invalidate_and_mark_override(ticker, reason=trigger)
         log.warning(
             f"SHOCK INTERCEPT: {ticker} — evicted {evicted} stale signals, "
             f"override pending, fast path blocked"
@@ -736,6 +921,8 @@ async def _emergency_recompute_single(
     import numpy as np
 
     from data_primitives.extractors.openbb_client import fetch_ohlcv
+    from execution_engine.math.kelly import kelly_fraction_single
+    from execution_engine.math.position_sizer import compute_quantity_for_signal
     from execution_engine.math.regime import (
         classify_trend,
         classify_volatility,
@@ -751,10 +938,10 @@ async def _emergency_recompute_single(
     from execution_engine.signal_book import PrecomputedSignal, get_signal_book
     from graph_intelligence.agents.strategy_orchestrator import (
         MarketContext,
-        rule_based_orchestrate,
     )
 
     book = get_signal_book()
+    portfolio_value = _read_live_portfolio_value()
 
     # --- Shock event analysis (news-aware, not price-aware) ---
     is_shock, shock_source, shock_magnitude, shock_direction = _analyze_shock_events(
@@ -830,7 +1017,7 @@ async def _emergency_recompute_single(
         shock_magnitude=shock_magnitude,
     )
 
-    decision = rule_based_orchestrate(ctx)
+    decision = await _get_signal_for_ticker(ctx)
 
     # --- Safety net: if the orchestrator returned EXECUTE based on benign
     # technicals despite an active shock, check whether the decision
@@ -871,6 +1058,9 @@ async def _emergency_recompute_single(
                 min_r=0.0,
                 entry_price_at_compute=price,
                 tier3_shock=True,
+                asset_class=asset_class,
+                # HOLD signals carry no quantity — they're signal-only
+                # documentation that the safety net fired.
             )
             book.upsert(sig)
             log.info(
@@ -888,9 +1078,30 @@ async def _emergency_recompute_single(
             return
 
     # --- Standard fast pass: shock-aware orchestrator agreed with events ---
+    standard_dir = decision.direction if decision.action == "EXECUTE" else "HOLD"
+    if standard_dir == "LONG":
+        std_sl = price * (1.0 - decision.stop_loss_pct / 100.0)
+    elif standard_dir == "SHORT":
+        std_sl = price * (1.0 + decision.stop_loss_pct / 100.0)
+    else:
+        std_sl = price
+    std_kelly = kelly_fraction_single(
+        decision.conviction if decision.action == "EXECUTE" else 0.0,
+        max(decision.expected_r, 1.0),
+    )
+    std_sized = compute_quantity_for_signal(
+        ticker=ticker,
+        asset_class=asset_class,
+        instrument_type=decision.instrument_type,
+        direction=standard_dir,
+        entry_price=price,
+        stop_loss_price=std_sl,
+        portfolio_value=portfolio_value,
+        kelly_fraction=std_kelly,
+    )
     sig = PrecomputedSignal(
         ticker=ticker,
-        direction=decision.direction if decision.action == "EXECUTE" else "HOLD",
+        direction=standard_dir,
         instrument_type=decision.instrument_type,
         conviction=decision.conviction if decision.action == "EXECUTE" else 0.0,
         strategy_name=decision.strategy_name,
@@ -911,6 +1122,15 @@ async def _emergency_recompute_single(
         entry_price_at_compute=price,
         second_leg=decision.second_leg or {},
         tier3_shock=True,
+        asset_class=asset_class,
+        quantity=std_sized.quantity,
+        notional_value=std_sized.notional_value,
+        risk_amount=std_sized.risk_amount,
+        kelly_fraction=std_sized.kelly_fraction,
+        lot_size=std_sized.lot_size,
+        contract_multiplier=std_sized.contract_multiplier,
+        pip_value=std_sized.pip_value,
+        margin_required=std_sized.margin_required,
     )
     book.upsert(sig)
     log.info(
@@ -953,7 +1173,32 @@ async def _run_full_llm_pass(
         )
 
         if full_signal and full_signal.confidence > fast_pass_sig.conviction:
+            from execution_engine.math.kelly import kelly_fraction_single
+            from execution_engine.math.position_sizer import (
+                compute_quantity_for_signal,
+            )
+
             direction = full_signal.action.value
+            if direction == "LONG":
+                up_sl = price * (1.0 - fast_pass_sig.stop_loss_pct / 100.0)
+            elif direction == "SHORT":
+                up_sl = price * (1.0 + fast_pass_sig.stop_loss_pct / 100.0)
+            else:
+                up_sl = price
+            up_kelly = kelly_fraction_single(
+                full_signal.confidence,
+                max(fast_pass_sig.expected_r, 1.0),
+            )
+            up_sized = compute_quantity_for_signal(
+                ticker=ticker,
+                asset_class=fast_pass_sig.asset_class,
+                instrument_type=fast_pass_sig.instrument_type,
+                direction=direction,
+                entry_price=price,
+                stop_loss_price=up_sl,
+                portfolio_value=_read_live_portfolio_value(),
+                kelly_fraction=up_kelly,
+            )
             upgraded = PrecomputedSignal(
                 ticker=ticker,
                 direction=direction,
@@ -973,6 +1218,15 @@ async def _run_full_llm_pass(
                 entry_price_at_compute=price,
                 second_leg=fast_pass_sig.second_leg,
                 tier3_shock=True,
+                asset_class=fast_pass_sig.asset_class,
+                quantity=up_sized.quantity,
+                notional_value=up_sized.notional_value,
+                risk_amount=up_sized.risk_amount,
+                kelly_fraction=up_sized.kelly_fraction,
+                lot_size=up_sized.lot_size,
+                contract_multiplier=up_sized.contract_multiplier,
+                pip_value=up_sized.pip_value,
+                margin_required=up_sized.margin_required,
             )
             book.upsert(upgraded)
             log.info(
@@ -987,24 +1241,45 @@ async def start_continuous_pipeline(
     interval_minutes: int = 15,
     watchlist: list[str] | None = None,
 ) -> None:
-    """Run the ingestion pipeline continuously on a schedule."""
+    """Run the ingestion pipeline continuously on a schedule.
+
+    On cancellation (SIGTERM / Ctrl-C) the loop exits cleanly via the
+    ``CancelledError`` branch. Pending Neo4j / Qdrant writes inside the
+    current cycle are not transactional today, but the cycle boundary is
+    a coherent point: by checking the cancel flag between cycles we
+    avoid leaving a half-ingested batch and we let the runtime complete
+    its in-flight ``run_ingestion_cycle`` (which uses asyncio.gather
+    with ``return_exceptions=True`` and is therefore safe to await).
+    """
     global _running
     _running = True
     log.info(f"Starting continuous pipeline (interval={interval_minutes}min)")
 
-    while _running:
-        try:
-            await run_ingestion_cycle(watchlist=watchlist)
-        except Exception as exc:
-            log.error(f"Pipeline cycle failed: {exc}")
+    try:
+        while _running:
+            try:
+                await run_ingestion_cycle(watchlist=watchlist)
+            except Exception as exc:
+                log.error(f"Pipeline cycle failed: {exc}")
 
-        # Weekly critical-node discovery refresh
-        try:
-            await _maybe_refresh_critical_nodes(_cycle_count)
-        except Exception as exc:
-            log.warning(f"Critical-node refresh failed: {exc}")
+            # Weekly critical-node discovery refresh
+            try:
+                await _maybe_refresh_critical_nodes(_cycle_count)
+            except Exception as exc:
+                log.warning(f"Critical-node refresh failed: {exc}")
 
-        await asyncio.sleep(interval_minutes * 60)
+            try:
+                await asyncio.sleep(interval_minutes * 60)
+            except asyncio.CancelledError:
+                log.info("Continuous pipeline received cancel during sleep — exiting cleanly")
+                _running = False
+                raise
+    except asyncio.CancelledError:
+        log.info("Continuous pipeline cancelled — flushing")
+        raise
+    finally:
+        _running = False
+        log.info("Continuous pipeline stopped")
 
 
 _WEEKLY_DISCOVERY_INTERVAL = 7 * 24  # cycles between critical node refresh

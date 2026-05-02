@@ -73,14 +73,41 @@ class RiskMmapBridge:
             max_drawdown_pct,
             max_var_pct,
         )
-        frame = struct.pack(_SEQ_FORMAT, odd_seq) + payload + struct.pack(_SEQ_FORMAT, even_seq)
-        self._mm.seek(0)
-        self._mm.write(frame)
+        seq_odd = struct.pack(_SEQ_FORMAT, odd_seq)
+        seq_even = struct.pack(_SEQ_FORMAT, even_seq)
+
+        # Canonical seqlock write protocol. Each step is a single
+        # 8-byte-aligned slice assignment so the seq counter writes are
+        # byte-atomic on x86-64 / aarch64. flush() between phases pushes
+        # the previous step's bytes through the kernel page cache before
+        # the next phase becomes visible.
+        #
+        #   1. seq_begin := odd     ("write in progress" marker)
+        #   2. payload   := new
+        #   3. seq_end   := even    (footer is now consistent w/ payload)
+        #   4. seq_begin := even    (commit; readers see begin==end and
+        #                            the new payload)
+        #
+        # Worst observable intermediate states:
+        #   - (begin=odd, end=old_even, payload=old):    reader retries
+        #     because begin is odd.
+        #   - (begin=odd, end=old_even, payload=new):    same.
+        #   - (begin=odd, end=even,     payload=new):    same.
+        #   - (begin=even, end=even,    payload=new):    consistent commit.
+        # No path can yield a torn read where the C++ side sees begin=end
+        # but the payload is half-old / half-new, because the begin store
+        # happens *after* the payload and footer are fully visible.
+        # Note: mmap.flush(offset, size) requires page-aligned offsets
+        # on macOS / BSD; passing the full-map flush (no args) keeps the
+        # call portable. The kernel guarantees ordering of stores into
+        # the same page, which is what we rely on between phases.
+        self._mm[0:_SEQ_SIZE] = seq_odd
         self._mm.flush()
-        self._mm.seek(0)
-        self._mm.write(struct.pack(_SEQ_FORMAT, even_seq))
-        self._mm.seek(_SEQ_SIZE + _PAYLOAD_SIZE)
-        self._mm.write(struct.pack(_SEQ_FORMAT, even_seq))
+        self._mm[_SEQ_SIZE:_SEQ_SIZE + _PAYLOAD_SIZE] = payload
+        self._mm.flush()
+        self._mm[_SEQ_SIZE + _PAYLOAD_SIZE:_STRUCT_SIZE] = seq_even
+        self._mm.flush()
+        self._mm[0:_SEQ_SIZE] = seq_even
         self._mm.flush()
         self._seq = even_seq
 

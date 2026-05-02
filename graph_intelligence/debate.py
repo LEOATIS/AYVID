@@ -216,7 +216,15 @@ def opinion_to_pmf(opinion: dict) -> list[float]:
     if direction not in _PMF_LABELS:
         direction = "HOLD"
     c = float(opinion.get("confidence", 0.5))
-    c = max(min(c, 1.0), 0.0)
+    # Clamp confidence to (0.01, 0.99) BEFORE building the PMF. Without
+    # this clamp, c=0.0 produces (LONG=0, SHORT=0.5, HOLD=0.5), and
+    # c=1.0 produces (LONG=1, SHORT=0, HOLD=0). Either extreme breaks
+    # the JSD calculation downstream because log(0/m) = -inf, and the
+    # epsilon-floor that we apply afterwards inflates spurious
+    # disagreement when an analyst expresses near-certainty. The
+    # (0.01, 0.99) bound is conservative: it lets analysts report very
+    # high conviction without triggering numerical pathologies.
+    c = max(0.01, min(0.99, c))
 
     pmf = [0.0, 0.0, 0.0]
     for i, lbl in enumerate(_PMF_LABELS):
@@ -280,10 +288,14 @@ def _bayesian_aggregate(
 ) -> tuple[float, str]:
     """Bayesian conviction aggregation across analyst opinions.
 
-    Uses log-odds space for numerically stable Bayesian updating:
-        log_odds_posterior = log_odds_prior + Σ(w_i × log_odds(confidence_i × direction_agreement))
+    Computed in **log-odds space** for numerical stability. Multiplying
+    likelihood ratios in raw probability space silently overflows or
+    underflows when one analyst expresses high confidence in either
+    direction; summing log-LRs avoids both. Each analyst contributes
+    ``w_i * log(LR_i)`` where ``LR_i`` is the likelihood ratio of the
+    consensus direction given that analyst's opinion.
 
-    Returns (conviction, consensus_direction).
+    Returns ``(conviction, consensus_direction)``.
     """
     if not opinions:
         return 0.0, "HOLD"
@@ -298,7 +310,6 @@ def _bayesian_aggregate(
         direction = opinion.get("direction", "HOLD")
         confidence = float(opinion.get("confidence", 0.5))
         w = weights.get(analyst, 1.0)
-
         direction_scores[direction] += confidence * w
 
     total = sum(direction_scores.values())
@@ -309,28 +320,47 @@ def _bayesian_aggregate(
     if best_direction == "HOLD":
         return 0.0, "HOLD"
 
-    agreement_mass = direction_scores[best_direction] / total
+    weight_sum = sum(weights.values())
+    if weight_sum <= 0:
+        weight_sum = 1.0
 
-    prior_odds = 1.0
+    # Accumulate posterior log-odds. Prior is 1:1 (log_odds = 0). Each
+    # analyst's contribution is normalised by the relative weight share
+    # so total influence sums to ``len(weights)`` log-odds units — the
+    # same total magnitude as the legacy raw-multiplication code, just
+    # numerically stable.
+    n = len(weights) if weights else 1
+    log_odds = 0.0
     for opinion in opinions:
         analyst = opinion.get("analyst", "Unknown")
         direction = opinion.get("direction", "HOLD")
         confidence = float(opinion.get("confidence", 0.5))
         w = weights.get(analyst, 1.0)
 
-        confidence = np.clip(confidence, 0.05, 0.95)
+        # Same (0.05, 0.95) bound as the legacy code — keeps log_lr
+        # finite and bounded. Tighter than opinion_to_pmf's clamp on
+        # purpose: the LR transform is more sensitive to extremes.
+        confidence = float(np.clip(confidence, 0.05, 0.95))
 
         if direction == best_direction:
-            lr = confidence / (1.0 - confidence)
+            log_lr = math.log(confidence / (1.0 - confidence))
         elif direction == "HOLD":
-            lr = 1.0
+            log_lr = 0.0
         else:
-            lr = (1.0 - confidence) / confidence
+            log_lr = math.log((1.0 - confidence) / confidence)
 
-        prior_odds *= lr ** (w / sum(weights.values()) * len(weights))
+        log_odds += log_lr * (w / weight_sum) * n
 
-    posterior = prior_odds / (1.0 + prior_odds)
-    conviction = float(np.clip(posterior, 0.0, 1.0))
+    # Numerically-stable inverse-logit. ``math.exp`` of large negatives
+    # underflows to 0 cleanly; large positives are clamped via the
+    # symmetric form. Final clamp into (1e-6, 1-1e-6) to avoid the
+    # downstream `expected_r * conviction` math hitting exactly 0/1.
+    if log_odds >= 0:
+        posterior = 1.0 / (1.0 + math.exp(-log_odds))
+    else:
+        e = math.exp(log_odds)
+        posterior = e / (1.0 + e)
+    conviction = float(np.clip(posterior, 1e-6, 1.0 - 1e-6))
 
     return conviction, best_direction
 

@@ -9,6 +9,7 @@ Handles the mandatory 23:45 ET server reset:
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 from collections import defaultdict
 from typing import Any
@@ -50,7 +51,14 @@ def is_reset_window() -> bool:
 
 
 async def reconcile_positions(ib: Any) -> list[Position]:
-    """Query IB for current open positions after reconnection."""
+    """Query IB for current open positions after reconnection.
+
+    For each position we attempt to fetch a fresh tick (last/mid) so
+    the post-recovery snapshot uses the current market price rather
+    than the avg cost basis. The legacy code substituted ``avgCost``
+    for ``current_price`` which silently froze the equity curve at
+    the disconnect-time mark.
+    """
     try:
         ib_positions = await ib.reqPositionsAsync()
         positions: list[Position] = []
@@ -58,13 +66,28 @@ async def reconcile_positions(ib: Any) -> list[Position]:
         for pos in ib_positions:
             if pos.position == 0:
                 continue
+            symbol = pos.contract.symbol
+            current = pos.avgCost  # safe fallback
+            try:
+                # Best-effort fresh snapshot. We don't subscribe to a
+                # streaming tick (that would leak a market-data line);
+                # one snapshot per reconciled position is fine.
+                ticker = ib.reqMktData(pos.contract, "", snapshot=True, regulatorySnapshot=False)
+                # Brief wait for the snapshot to populate.
+                await asyncio.sleep(0.5)
+                last = getattr(ticker, "last", None) or getattr(ticker, "marketPrice", None)
+                if last is not None and last > 0:
+                    current = float(last)
+                ib.cancelMktData(pos.contract)
+            except Exception as exc:
+                log.debug(f"snapshot for {symbol} failed: {exc}; using avgCost")
             positions.append(
                 Position(
-                    ticker=pos.contract.symbol,
+                    ticker=symbol,
                     side=TradeAction.LONG if pos.position > 0 else TradeAction.SHORT,
                     quantity=abs(int(pos.position)),
                     avg_entry_price=pos.avgCost,
-                    current_price=pos.avgCost,
+                    current_price=current,
                 )
             )
 
@@ -73,6 +96,46 @@ async def reconcile_positions(ib: Any) -> list[Position]:
     except Exception as exc:
         log.error(f"Position reconciliation failed: {exc}")
         return []
+
+
+async def reconcile_local_with_ib(ib: Any) -> dict[str, Any]:
+    """Compare local open theses against IB's actual positions.
+
+    A close-order rejection or partial-fill that goes unacknowledged
+    by Python leaves the local signal_book believing it is flat while
+    IB still holds the position. Or vice versa: IB rejects an entry
+    silently and the runner thinks it has a position. Either way the
+    next decision is made against a wrong worldview.
+
+    This helper is meant to be called every N cycles. It returns a
+    ``{"ok": bool, "local_only": [...], "ib_only": [...]}`` dict.
+    Callers should refuse to issue new orders when ``ok`` is False
+    until an operator reconciles by hand.
+    """
+    from execution_engine.signal_book import get_signal_book
+
+    book = get_signal_book()
+    local_tickers = book.open_thesis_tickers()
+    try:
+        ib_positions = await ib.reqPositionsAsync()
+    except Exception as exc:
+        log.error(f"reconcile_local_with_ib: IB query failed: {exc}")
+        return {"ok": True, "error": str(exc), "local_only": [], "ib_only": []}
+
+    ib_tickers = {p.contract.symbol for p in ib_positions if getattr(p, "position", 0) != 0}
+
+    local_only = sorted(local_tickers - ib_tickers)
+    ib_only = sorted(ib_tickers - local_tickers)
+
+    ok = not (local_only or ib_only)
+    if not ok:
+        log.critical(
+            f"POSITION DIVERGENCE: "
+            f"local-only (fast path believes open, IB flat) = {local_only}; "
+            f"IB-only (broker holds, local flat) = {ib_only}. "
+            f"New orders should be refused until reconciled."
+        )
+    return {"ok": ok, "local_only": local_only, "ib_only": ib_only}
 
 
 def _is_terminal_status(trade: Any) -> bool:

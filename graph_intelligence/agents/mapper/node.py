@@ -161,12 +161,23 @@ async def mapper_node(state: CausalArbitrageState) -> dict:
 
     trace_msg = AIMessage(content=parsed.model_dump_json())
 
+    # Map compound_risk ∈ [0,1] → conviction via a logistic curve
+    # centred at 0.4 with steepness 5. The legacy ``min(2x, 1)`` linear
+    # transform saturated at compound_risk≥0.5, destroying
+    # discriminative power between strong and very-strong paths. The
+    # logistic preserves ranking everywhere and approaches 1.0
+    # asymptotically without a hard clamp.
+    if compound_risk > 0:
+        import math
+        conviction = 1.0 / (1.0 + math.exp(-5.0 * (compound_risk - 0.4)))
+    else:
+        conviction = 0.5
     return {
         "messages": [trace_msg],
         "target_ticker": target,
         "alpha_horizon": horizon,
         "proposed_action": direction,
         "rationale": parsed.reasoning or "(mapper returned no rationale)",
-        "confidence": min(compound_risk * 2, 1.0) if compound_risk > 0 else 0.5,
+        "confidence": conviction,
         "iteration": state["iteration"] + 1,
     }

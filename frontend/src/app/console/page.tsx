@@ -26,6 +26,7 @@ import {
   useScenarios,
   useSignals,
   useSystemStatus,
+  usePipelineStatus,
 } from "@/lib/hooks";
 import {
   fmtAge,
@@ -36,7 +37,7 @@ import {
   fmtTime,
   fmtUptime,
 } from "@/lib/format";
-import type { BacktestSummary, EquityResponse, ShockScenario, Signal } from "@/lib/api";
+import type { BacktestSummary, EquityResponse, PipelineStatus, ShockScenario, Signal } from "@/lib/api";
 
 export default function Dashboard() {
   const { data: equity } = useEquity(500) as { data?: EquityResponse };
@@ -45,6 +46,7 @@ export default function Dashboard() {
   const { data: backtests } = useBacktests();
   const { data: scenarios } = useScenarios();
   const { data: system } = useSystemStatus();
+  const { data: pipeline } = usePipelineStatus();
 
   const summary = equity?.summary;
   const meta = equity?.meta;
@@ -130,28 +132,80 @@ export default function Dashboard() {
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-3">
         <Card
           className="xl:col-span-2"
-          title="Live equity curve"
+          title={
+            <span className="inline-flex items-center gap-2">
+              Fund Performance
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] font-mono uppercase tracking-[0.08em]"
+                style={{
+                  background: "hsl(var(--pos) / 0.10)",
+                  border: "1px solid hsl(var(--pos) / 0.25)",
+                  color: "hsl(var(--pos))",
+                }}
+              >
+                <span className="dot dot-live pulse-live" />
+                LIVE
+              </span>
+            </span>
+          }
           subtitle={
             summary
-              ? `${summary.snapshots_count} snapshots · last update ${fmtTime(summary.last_timestamp)}`
+              ? `${summary.snapshots_count} snapshots · ${fmtAge(runner?.last_snapshot_age_seconds)} · mode ${runner?.mode ?? "—"}`
               : "Awaiting first snapshot from paper runner"
           }
           right={
-            <span className="inline-flex items-center gap-1.5">
-              <Radio className="h-3.5 w-3.5" />
-              {fmtAge(runner?.last_snapshot_age_seconds)}
-            </span>
+            summary ? (
+              <div className="text-right">
+                <div
+                  className="num font-semibold leading-none"
+                  style={{
+                    fontSize: 22,
+                    letterSpacing: "-0.03em",
+                    color:
+                      (summary.total_return_pct ?? 0) >= 0
+                        ? "hsl(var(--pos))"
+                        : "hsl(var(--neg))",
+                  }}
+                >
+                  {(summary.total_return_pct ?? 0) >= 0 ? "+" : ""}
+                  {(summary.total_return_pct ?? 0).toFixed(3)}%
+                </div>
+                <div className="text-[10px] text-subtle">since inception</div>
+              </div>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-[11px]">
+                <Radio className="h-3.5 w-3.5" />
+                {fmtAge(runner?.last_snapshot_age_seconds)}
+              </span>
+            )
           }
         >
           <EquityChart
             snapshots={equity?.snapshots ?? []}
-            initial={initial || 1_000_000}
+            initial={equity?.summary?.initial_equity ?? initial ?? 1_000_000}
             height={300}
+            showGrid
           />
         </Card>
 
         <Card title="System health" subtitle="API · runner · graph">
           <SystemPanel system={system} runner={runner} />
+        </Card>
+      </section>
+
+      {/* ── Pipeline status ──────────────────────────────────── */}
+      <section className="grid grid-cols-1 gap-5">
+        <Card
+          title="Pipeline status"
+          subtitle="What the engine is doing right now"
+          right={
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-muted">
+              <Radio className="h-3.5 w-3.5" />
+              {pipeline?.snapshot_at ? fmtAge(Math.floor((Date.now() - new Date(pipeline.snapshot_at).getTime()) / 1000)) : "—"}
+            </span>
+          }
+        >
+          <PipelineStatusPanel data={pipeline} />
         </Card>
       </section>
 
@@ -214,6 +268,94 @@ export default function Dashboard() {
 }
 
 /* ─── Sub-components ──────────────────────────────────────────────── */
+
+function PipelineStatusPanel({ data }: { data?: PipelineStatus }) {
+  if (!data) {
+    return <Empty title="Pipeline telemetry unavailable" hint="Worker hasn't reported yet" />;
+  }
+  const allClasses = ["EQUITY", "ETF", "INDEX", "FX", "FUTURE", "COMMODITY", "CRYPTO", "OPTION"] as const;
+  const classColor: Record<string, string> = {
+    EQUITY: "var(--brand)",
+    ETF: "var(--info)",
+    INDEX: "var(--brand)",
+    FX: "var(--pos)",
+    FUTURE: "var(--warn)",
+    COMMODITY: "var(--warn)",
+    CRYPTO: "var(--warn)",
+    OPTION: "var(--neg)",
+  };
+  const isLLM = data.orchestration_mode === "llm_swarm";
+  const isLive = data.execution_mode === "ib_live";
+  const isPaper = data.execution_mode === "ib_paper";
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Mode badges */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[10px] uppercase tracking-wider text-subtle">Signal engine</span>
+          <Badge variant={isLLM ? "info" : "neutral"}>
+            {isLLM ? "◆ LLM swarm" : "◇ Rule-based"}
+          </Badge>
+          <span className="text-[11px] text-muted">
+            timeout {data.llm_signal_timeout_seconds}s · max {data.llm_max_concurrent_signals} concurrent
+          </span>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[10px] uppercase tracking-wider text-subtle">Execution mode</span>
+          <Badge variant={isLive ? "neg" : isPaper ? "pos" : "info"}>
+            {isLive ? "⚠ IB live" : isPaper ? "● IB paper" : "○ Shadow"}
+          </Badge>
+          <span className="text-[11px] text-muted">
+            auto-execute {data.auto_execute ? "ON" : "off"}
+            {isLive ? ` · confirmed ${data.live_confirmed ? "✓" : "✗"}` : ""}
+          </span>
+        </div>
+      </div>
+
+      {/* Counts */}
+      <div className="grid grid-cols-2 gap-3 border-y border-[hsl(var(--border))] py-3 sm:grid-cols-4">
+        {[
+          { label: "Signals ready", value: data.signals_ready },
+          { label: "Waiting", value: data.signals_waiting },
+          { label: "Open positions", value: data.open_positions },
+          { label: "Trades today", value: data.trades_today },
+        ].map((s) => (
+          <div key={s.label} className="text-center">
+            <div className="num text-[18px] font-semibold text-fg">{fmtNumber(s.value)}</div>
+            <div className="text-[10px] uppercase tracking-wider text-subtle">{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Asset classes seen in the live signal book */}
+      <div className="flex flex-wrap gap-1.5">
+        {allClasses.map((ac) => {
+          const active = data.asset_classes_enabled.includes(ac);
+          return (
+            <span
+              key={ac}
+              className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-mono"
+              style={{
+                background: active ? `color-mix(in srgb, ${classColor[ac]} 12%, transparent)` : "hsl(var(--bg-sunken))",
+                border: `1px solid ${active ? `color-mix(in srgb, ${classColor[ac]} 35%, transparent)` : "hsl(var(--border))"}`,
+                color: active ? classColor[ac] : "hsl(var(--fg-muted))",
+                fontWeight: active ? 600 : 400,
+              }}
+            >
+              {active ? "●" : "○"} {ac}
+            </span>
+          );
+        })}
+      </div>
+
+      {/* Last cycle */}
+      <div className="text-[11px] text-muted">
+        Last cycle: {data.last_pipeline_run ? fmtTime(data.last_pipeline_run) : "never"} ·
+        {" "}{fmtNumber(data.signals_generated_last_cycle)} signals minted
+      </div>
+    </div>
+  );
+}
 
 function SystemPanel({
   system,
@@ -481,7 +623,7 @@ function QuickLinks({ headline }: { headline?: BacktestSummary }) {
   return (
     <ul className="space-y-1">
       {links.map((l) => (
-        <li key={l.href}>
+        <li key={`${l.href}::${l.label}`}>
           <Link
             href={l.href}
             className="flex items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-[13px] text-fg hover:bg-[hsl(var(--bg-sunken))]"

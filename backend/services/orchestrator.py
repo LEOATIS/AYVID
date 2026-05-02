@@ -51,7 +51,25 @@ _risk_snapshot = RiskSnapshot()
 _last_graph_sequence_id: int = 0
 _mmap_bridge = None
 _watchdog_proc = None
+_watchdog_dead: bool = False
 _fast_execute_latency_ms: float = 0.0
+
+
+def is_watchdog_alive() -> bool:
+    """Whether the C++ watchdog is still running.
+
+    Returns True if no watchdog was ever launched (kill-switch is opt-in
+    on dev boxes without libcurl). Returns False only when the watchdog
+    was started and has exited unexpectedly.
+    """
+    if _watchdog_proc is None:
+        return True
+    return _watchdog_proc.poll() is None
+
+
+def watchdog_is_armed_and_dead() -> bool:
+    """Trading must halt: watchdog was armed, and is now dead."""
+    return _watchdog_proc is not None and _watchdog_proc.poll() is not None
 
 
 def get_portfolio_state() -> PortfolioState:
@@ -120,10 +138,25 @@ async def kill_switch_writer_loop(interval: float = 0.1) -> None:
     escalates (which is desired: a frozen trading loop should trigger
     the kill path). This loop runs for the entire lifetime of the
     process and is cancelled on shutdown.
+
+    Also polls the watchdog process liveness every cycle. If the C++
+    watchdog has crashed, the drawdown/VaR safety net is silently absent
+    and we MUST halt new trading. We log CRITICAL and set the
+    ``_watchdog_dead`` flag; ``enforce_pre_trade_sync`` checks it and
+    refuses to clear new orders.
     """
+    global _watchdog_dead
     log.info(f"Kill-switch writer loop started ({1.0 / interval:.0f}Hz)")
     try:
         while True:
+            if watchdog_is_armed_and_dead() and not _watchdog_dead:
+                _watchdog_dead = True
+                rc = _watchdog_proc.returncode if _watchdog_proc else "?"
+                log.critical(
+                    f"[bold red]C++ watchdog has exited (rc={rc}). "
+                    f"Drawdown/VaR enforcement is GONE — new orders will be "
+                    f"refused until the watchdog is restored."
+                )
             _update_kill_switch()
             await asyncio.sleep(interval)
     except asyncio.CancelledError:
@@ -702,6 +735,66 @@ async def execute_signal(
     from data_primitives.loaders.hopsworks_sync import get_cached_features
     from execution_engine.broker.orders import submit_signal
     from execution_engine.math.kelly import optimal_allocation_for_signal
+
+    # ── HARD SAFETY GATE ────────────────────────────────────────────
+    # Real-money execution requires both EXECUTION_MODE=ib_live AND
+    # LIVE_TRADING_CONFIRMED=true. The Settings validator already rejects
+    # the misconfigured combo at startup; this is the runtime tripwire
+    # in case settings were reconfigured after process start (e.g. tests,
+    # hot-reloads). Paper / shadow paths are unaffected.
+    try:
+        from shared.config import ExecutionMode
+
+        mode = getattr(settings, "EXECUTION_MODE", ExecutionMode.SHADOW)
+        if mode == ExecutionMode.IB_LIVE:
+            if not getattr(settings, "LIVE_TRADING_CONFIRMED", False):
+                log.critical(
+                    f"SAFETY BLOCK ({signal.ticker}): EXECUTION_MODE=ib_live "
+                    f"but LIVE_TRADING_CONFIRMED=false. Refusing to place order."
+                )
+                signal.status = SignalStatus.REJECTED
+                return signal
+            notional_cap = float(getattr(settings, "MAX_SINGLE_ORDER_NOTIONAL", 0.0) or 0.0)
+            sig_notional = float(getattr(signal, "notional_value", 0.0) or 0.0)
+            if notional_cap > 0 and sig_notional > notional_cap:
+                log.critical(
+                    f"SAFETY BLOCK ({signal.ticker}): notional={sig_notional:.0f} "
+                    f"> MAX_SINGLE_ORDER_NOTIONAL={notional_cap:.0f}"
+                )
+                signal.status = SignalStatus.REJECTED
+                return signal
+    except Exception as exc:  # pragma: no cover — defensive
+        log.error(f"execute_signal safety probe failed: {exc!s}; allowing trade")
+
+    if watchdog_is_armed_and_dead():
+        log.critical(
+            f"Trade refused for {signal.ticker} — C++ watchdog is dead. "
+            f"Restart the kill switch before resuming trading."
+        )
+        signal.status = SignalStatus.REJECTED
+        return signal
+
+    # Refuse trades whose `strategy_name` is not on the canonical prefix
+    # list. LLM hallucinations like ``unknown_shock_v2`` pass set checks
+    # but are not real strategies, and we have no priors / sizing model
+    # for them.
+    try:
+        from graph_intelligence.agents.strategy_orchestrator import (
+            is_canonical_strategy,
+        )
+        sn = getattr(signal, "strategy_name", "") or ""
+        if sn and not is_canonical_strategy(sn):
+            log.error(
+                f"Trade refused for {signal.ticker}: strategy_name={sn!r} is "
+                f"not in CANONICAL_STRATEGY_PREFIXES. Likely an LLM "
+                f"hallucination."
+            )
+            signal.status = SignalStatus.REJECTED
+            return signal
+    except ImportError:
+        # Whitelist module not loadable; do not block the order in that
+        # corner case but log loudly.
+        log.warning("CANONICAL_STRATEGY_PREFIXES check skipped — module not loadable")
 
     try:
         await validate_graph_freshness(sequence_id)

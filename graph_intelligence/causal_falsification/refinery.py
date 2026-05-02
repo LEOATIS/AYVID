@@ -141,6 +141,15 @@ def _edges_to_tuples(proposals: Iterable[EdgeProposal]) -> list[tuple[str, str]]
     return [(e.src, e.dst) for e in proposals]
 
 
+# Minimum confidence the refinery will commit to the graph. The hot
+# path filters at 0.20 (find_hidden_victims, supply chain queries), so
+# anything below that is dead weight that pollutes Neo4j and can leak
+# into downstream queries that forget to filter. 0.15 keeps a small
+# buffer so a marginal edge that climbs to 0.20+ on the next refinery
+# iteration is preserved instead of permanently dropped.
+MIN_EDGE_CONFIDENCE_TO_ACCEPT = 0.15
+
+
 def _apply_decision(
     current: list[EdgeProposal],
     decision: RefinementDecision,
@@ -150,10 +159,20 @@ def _apply_decision(
     - Removed edges are dropped.
     - Refined edges REPLACE any existing entry with the same (src, dst)
       key (so confidence can be updated), or are appended new.
+    - Edges whose confidence is below ``MIN_EDGE_CONFIDENCE_TO_ACCEPT``
+      are dropped: they cannot enter the hot path (cutoff 0.20) and
+      keeping them around just risks a future query that forgets to
+      filter.
     """
     removed_set = {(s, d) for s, d in decision.removed_edges}
     by_key = {(e.src, e.dst): e for e in current if (e.src, e.dst) not in removed_set}
     for e in decision.refined_edges:
+        if float(getattr(e, "confidence", 0.0)) < MIN_EDGE_CONFIDENCE_TO_ACCEPT:
+            log.debug(
+                f"refinery: dropping edge {e.src}→{e.dst} "
+                f"(confidence={e.confidence:.2f} < {MIN_EDGE_CONFIDENCE_TO_ACCEPT})"
+            )
+            continue
         by_key[(e.src, e.dst)] = e
     return list(by_key.values())
 

@@ -535,15 +535,64 @@ def _extract_params_from_config(config: tuple) -> dict[str, float]:
     return {k: v for k, v in config}
 
 
+def _benjamini_hochberg_threshold(p_values: list[float], q: float = 0.10) -> float:
+    """Largest p-value that passes the BH(q) procedure.
+
+    Returns the cutoff: tests with p ≤ cutoff are accepted as
+    significant under the BH false-discovery-rate control. ``q`` is the
+    target FDR (10% by default — looser than 0.05 because in finance we
+    care about ranking accuracy as much as binary acceptance).
+    """
+    n = len(p_values)
+    if n == 0:
+        return 0.0
+    sorted_p = sorted(p_values)
+    cutoff = 0.0
+    for k, p in enumerate(sorted_p, start=1):
+        bh = k / n * q
+        if p <= bh:
+            cutoff = max(cutoff, p)
+    return cutoff
+
+
+def _sharpe_p_value(sharpe: float, n: int) -> float:
+    """One-sided p-value for the null Sharpe = 0.
+
+    Lo (2002) variance ≈ (1 + Sharpe²/2) / n. The t-statistic
+    sqrt(n) × Sharpe / sqrt(1 + Sharpe²/2) is approximately N(0,1)
+    under the null for moderate n; we use the normal-tail
+    approximation rather than the t-distribution to keep this
+    dependency-free.
+    """
+    if n < 2:
+        return 1.0
+    se = math.sqrt((1.0 + 0.5 * sharpe * sharpe) / n)
+    if se <= 0:
+        return 0.0
+    z = sharpe / se
+    # 1 - Phi(z) via complementary erf.
+    return 0.5 * math.erfc(z / math.sqrt(2.0))
+
+
 def aggregate_priors(
     records: list[TradeRecord],
     min_samples: int = MIN_CELL_SAMPLES,
+    *,
+    fdr_q: float = 0.10,
 ) -> dict[str, Any]:
     """Group trades by (strategy, regime) → best config per cell.
 
     Produces the priors.json payload. The "best" config maximises per-
     trade Sharpe with a hard sample-size floor. Cells that never saw a
     positive-Sharpe config are marked `blocked_by_regime: true`.
+
+    Multiple-testing control: with hundreds of (strategy, regime,
+    config) cells evaluated against the null Sharpe ≤ 0, naive selection
+    of "any positive-Sharpe cell" produces ~5% false discoveries by
+    chance. We apply Benjamini-Hochberg at FDR q (default 0.10) to the
+    per-cell p-values and tag each cell with whether it passes that
+    threshold (``bh_passes``). Cells that don't pass are still emitted
+    but with a flag the supervisor can use to size them down.
     """
     # Step 1 — bucket into {(strategy, regime, config): [pnl_pcts]}
     buckets: dict[tuple[str, str, tuple], list[float]] = {}
@@ -556,6 +605,7 @@ def aggregate_priors(
     # Step 2 — for each (strategy, regime) pick the best config.
     priors: dict[str, dict[str, Any]] = {}
     best_per_cell: dict[tuple[str, str], tuple[tuple, float, int, tuple]] = {}
+    cell_p_values: list[float] = []
     for (strategy, regime, config), pnls in buckets.items():
         if len(pnls) < min_samples:
             continue
@@ -564,6 +614,12 @@ def aggregate_priors(
         current = best_per_cell.get((strategy, regime))
         if current is None or sharpe > current[1]:
             best_per_cell[(strategy, regime)] = (config, sharpe, len(pnls), ci)
+    # Compute BH cutoff on the *winners* only — that's the set the
+    # supervisor will read. Winners are unbiased under the null; this
+    # is the right reference set for the multiple-testing correction.
+    for _key, (_, sharpe, n, _) in best_per_cell.items():
+        cell_p_values.append(_sharpe_p_value(sharpe, n))
+    bh_cutoff = _benjamini_hochberg_threshold(cell_p_values, q=fdr_q)
 
     # Step 3 — emit the structured priors payload.
     for (strategy, regime), (config, sharpe, n, ci) in best_per_cell.items():
@@ -574,6 +630,7 @@ def aggregate_priors(
         total_bars = sum(bars_per_scenario.values()) or 1
         trades_per_100 = round(total / total_bars * 100.0, 2)
 
+        cell_p = _sharpe_p_value(sharpe, n)
         priors.setdefault(strategy, {})[regime] = {
             "max_rsi": params.get("max_rsi_entry_long"),
             "max_z": params.get("max_z_entry_long"),
@@ -584,6 +641,9 @@ def aggregate_priors(
             "n": n,
             "win_rate": round(win_rate, 3),
             "trades_per_100bars": trades_per_100,
+            "p_value": round(cell_p, 4),
+            "bh_passes": bool(cell_p <= bh_cutoff) if bh_cutoff > 0 else False,
+            "fdr_q": fdr_q,
         }
 
     # Step 4 — mark (strategy, regime) cells that never produced a

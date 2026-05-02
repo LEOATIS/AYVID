@@ -1,0 +1,10 @@
+{
+  "mode": "shadow",
+  "initial_equity": 1000000.0,
+  "interval_seconds": 15,
+  "started_at": "2026-04-23T00:58:17.630771+00:00",
+  "ib_host": "127.0.0.1",
+  "ib_port": 7497,
+  "auto_execute": true,
+  "paper_trading": false
+}

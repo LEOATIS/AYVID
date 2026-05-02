@@ -1,0 +1,33 @@
+{
+  "as_of": "2026-04-23T01:55:53.606693+00:00",
+  "cash": 947601.88,
+  "positions": {
+    "NVDA": {
+      "entry_price": 202.161,
+      "shares": 247,
+      "entered_at": "2026-04-23T00:51:49.021795+00:00",
+      "rationale": "DeepSeek R1 shock \u2192 US AI capex re-rating; NVDA tier-1 victim with graph-confirmed beneficiary pattern on recovery.",
+      "source": "signal_book",
+      "signal_key": "NVDA|shock_ai_capex_active",
+      "strategy": "ai_capex_shock"
+    },
+    "TSM": {
+      "entry_price": 178.4892,
+      "shares": 266,
+      "entered_at": "2026-04-23T00:51:49.022378+00:00",
+      "rationale": "Tier-2 graph beneficiary: TSMC retains AI fab pricing power regardless of model efficiency.",
+      "source": "signal_book",
+      "signal_key": "TSM|shock_ai_capex_active",
+      "strategy": "ai_capex_shock"
+    },
+    "AMAT": {
+      "entry_price": 391.4242,
+      "shares": -115,
+      "entered_at": "2026-04-23T00:51:49.022818+00:00",
+      "rationale": "Wafer-fab equipment orders most sensitive to AI-capex re-rating shock; mean-reversion SHORT.",
+      "source": "signal_book",
+      "signal_key": "AMAT|shock_ai_capex_active",
+      "strategy": "ai_capex_shock"
+    }
+  }
+}

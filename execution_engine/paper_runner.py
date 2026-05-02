@@ -37,6 +37,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from shared.atomic_io import atomic_write_json
 from shared.config import settings
 from shared.logger import get_logger
 
@@ -119,8 +120,10 @@ def _sync_path_to_gcs(path: Path) -> None:
 
 
 def _write_meta(mode: str, initial_equity: float, interval_seconds: int) -> None:
+    exec_mode = getattr(settings, "EXECUTION_MODE", None)
     meta = {
         "mode": mode,
+        "execution_mode": exec_mode.value if hasattr(exec_mode, "value") else str(exec_mode or mode),
         "initial_equity": initial_equity,
         "interval_seconds": interval_seconds,
         "started_at": dt.datetime.now(dt.UTC).isoformat(),
@@ -128,6 +131,8 @@ def _write_meta(mode: str, initial_equity: float, interval_seconds: int) -> None
         "ib_port": settings.IB_PORT,
         "auto_execute": settings.AUTO_EXECUTE,
         "paper_trading": settings.PAPER_TRADING,
+        "live_trading_confirmed": getattr(settings, "LIVE_TRADING_CONFIRMED", False),
+        "llm_orchestration_enabled": getattr(settings, "LLM_ORCHESTRATION_ENABLED", False),
     }
     RUN_META_PATH.write_text(json.dumps(meta, indent=2))
     _sync_path_to_gcs(RUN_META_PATH)
@@ -183,7 +188,7 @@ async def _snapshot_from_ib(ib: Any, cycle: int, last_equity: float) -> EquitySn
 
 
 async def _run_ib_mode(interval_seconds: int) -> None:
-    from execution_engine.broker.connection import connect
+    from execution_engine.broker.connection import connect, disconnect
 
     ib = await connect()
     log.info(
@@ -193,31 +198,57 @@ async def _run_ib_mode(interval_seconds: int) -> None:
     cycle = 0
     initial_equity = 0.0
     last_equity = 0.0
-    while not _stop_event.is_set():
-        cycle += 1
-        try:
-            snap = await _snapshot_from_ib(ib, cycle, last_equity)
-            if cycle == 1:
-                initial_equity = snap.equity
-                log.info(f"Initial NLV: ${initial_equity:,.2f}")
-            snap.cumulative_pnl = round(snap.equity - initial_equity, 2)
-            snap.cumulative_return_pct = round(
-                (snap.equity / initial_equity - 1) * 100 if initial_equity > 0 else 0.0, 4
-            )
-            _append_jsonl(EQUITY_CURVE_PATH, asdict(snap))
-            log.info(
-                f"[{cycle:>4}] NLV=${snap.equity:,.2f} cash=${snap.cash:,.2f} "
-                f"open={snap.open_positions} daily=${snap.daily_pnl:+,.2f} "
-                f"cum={snap.cumulative_return_pct:+.3f}%"
-            )
-            last_equity = snap.equity
-        except Exception as exc:
-            log.warning(f"cycle {cycle} snapshot failed: {exc}")
+    # Reconcile local open theses with IB-side positions every N cycles.
+    # Catches divergence (failed close orders, silent IB rejections)
+    # before it can produce a wrong-side trade on the next signal.
+    RECONCILE_EVERY = 10
+    try:
+        while not _stop_event.is_set():
+            cycle += 1
+            if cycle % RECONCILE_EVERY == 1:
+                try:
+                    from execution_engine.broker.recovery import reconcile_local_with_ib
+                    await reconcile_local_with_ib(ib)
+                except Exception as exc:
+                    log.warning(f"position reconciliation failed (non-fatal): {exc}")
+            try:
+                snap = await _snapshot_from_ib(ib, cycle, last_equity)
+                if cycle == 1:
+                    initial_equity = snap.equity
+                    log.info(f"Initial NLV: ${initial_equity:,.2f}")
+                snap.cumulative_pnl = round(snap.equity - initial_equity, 2)
+                snap.cumulative_return_pct = round(
+                    (snap.equity / initial_equity - 1) * 100 if initial_equity > 0 else 0.0, 4
+                )
+                _append_jsonl(EQUITY_CURVE_PATH, asdict(snap))
+                log.info(
+                    f"[{cycle:>4}] NLV=${snap.equity:,.2f} cash=${snap.cash:,.2f} "
+                    f"open={snap.open_positions} daily=${snap.daily_pnl:+,.2f} "
+                    f"cum={snap.cumulative_return_pct:+.3f}%"
+                )
+                last_equity = snap.equity
+            except Exception as exc:
+                log.warning(f"cycle {cycle} snapshot failed: {exc}")
 
+            try:
+                await asyncio.wait_for(_stop_event.wait(), timeout=interval_seconds)
+            except TimeoutError:
+                continue
+    finally:
+        # Stop event was set (SIGTERM/SIGINT) OR an unexpected exit.
+        # Either way, we MUST cancel open orders before letting IB drop
+        # the session — leaving brackets live after the runner exits is
+        # the worst-case contract violation.
+        log.warning("IB mode shutting down — cancelling open orders before disconnect.")
         try:
-            await asyncio.wait_for(_stop_event.wait(), timeout=interval_seconds)
+            await asyncio.wait_for(disconnect(cancel_open_orders=True), timeout=4.0)
         except TimeoutError:
-            continue
+            log.error(
+                "IB disconnect timed out after 4s. Open orders may persist; "
+                "verify in IB Gateway and cancel manually if needed."
+            )
+        except Exception as exc:
+            log.error(f"IB disconnect failed: {exc}")
 
 
 # ────────────────────────────────────────────────────────────────
@@ -225,6 +256,397 @@ async def _run_ib_mode(interval_seconds: int) -> None:
 # ────────────────────────────────────────────────────────────────
 
 _SIGNAL_BOOK_PATH = Path("data_store/signal_book.json")
+
+
+# ────────────────────────────────────────────────────────────────
+# Per-asset-class shadow execution
+# ────────────────────────────────────────────────────────────────
+#
+# Each helper takes the signal dict + a mark price and returns a fill
+# dict (or None to reject the signal). The dispatcher in
+# ``_consume_signal_book`` handles dedupe, open-thesis registration,
+# and book-keeping — these helpers ONLY decide qty/notional/cash
+# impact for their asset class.
+#
+# Sizing precedence (per class):
+#   1. ``sig['quantity']`` — emitted by ``compute_quantity_for_signal``
+#      in continuous_worker. Authoritative when present and > 0.
+#   2. Cash-based fallback via Kelly when the signal predates the
+#      sizer (signal-book entries from older cycles).
+# Cash semantics differ by class: equity / crypto debit full notional,
+# futures / FX debit margin only, options handle premium credit/debit.
+
+_INSTRUMENT_TO_ASSET_CLASS = {
+    "EQUITY": "EQUITY",
+    "ETF": "ETF",
+    "FX": "FX",
+    "COMMODITY": "COMMODITY",
+    "COMMODITY_FUTURE": "COMMODITY",
+    "RATE_FUTURE": "FUTURE",
+    "INDEX_FUTURE": "FUTURE",
+    "FUTURE": "FUTURE",
+    "CRYPTO": "CRYPTO",
+    "BOND": "BOND",
+    "OPTION": "OPTION",
+}
+
+_SLIPPAGE_BPS = {
+    "EQUITY": 0.0005,
+    "ETF": 0.0005,
+    "BOND": 0.0005,
+    "FX": 0.0001,
+    "CRYPTO": 0.0010,
+    "COMMODITY": 0.0003,
+    "FUTURE": 0.0002,
+    "OPTION": 0.0050,
+}
+
+
+def _build_position_record(
+    *,
+    ticker: str,
+    asset_class: str,
+    side: str,
+    qty: float,
+    entry_price: float,
+    notional: float,
+    margin_used: float,
+    sig: dict[str, Any],
+    key: str,
+    cycle: int,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Build the position record and trade row for any asset class.
+
+    Returns ``(position_dict, trade_dict)``. Cash/state mutation is the
+    caller's job — these are pure builders so per-class helpers stay
+    short and parallel.
+    """
+    intent_id = f"shadow|{key}|{cycle}"
+    signed_qty = qty if side == "BUY" else -qty
+    position = {
+        "asset_class": asset_class,
+        "entry_price": round(entry_price, 6),
+        "shares": signed_qty,
+        "qty": signed_qty,
+        "direction": "LONG" if side == "BUY" else "SHORT",
+        "notional": round(notional, 2),
+        "margin_used": round(margin_used, 2),
+        "stop_loss_price": sig.get("stop_loss_price"),
+        "take_profit_price": sig.get("take_profit_price"),
+        "stop_loss_pct": sig.get("stop_loss_pct"),
+        "take_profit_pct": sig.get("take_profit_pct"),
+        "contract_multiplier": float(sig.get("contract_multiplier") or 1.0),
+        "pip_value": float(sig.get("pip_value") or 0.0),
+        "entered_at": dt.datetime.now(dt.UTC).isoformat(),
+        "rationale": str(sig.get("rationale") or "signal_book entry"),
+        "source": "signal_book",
+        "signal_key": key,
+        "intent_id": intent_id,
+        "strategy": sig.get("strategy_name"),
+        "strategy_name": sig.get("strategy_name"),
+    }
+    trade = {
+        "timestamp": dt.datetime.now(dt.UTC).isoformat(),
+        "mode": "shadow",
+        "ticker": ticker,
+        "asset_class": asset_class,
+        "side": side,
+        "shares": qty,
+        "qty": qty,
+        "fill_price": round(entry_price, 6),
+        "notional": round(notional, 2),
+        "margin_used": round(margin_used, 2),
+        "rationale": str(sig.get("rationale") or "signal_book entry"),
+        "strategy": sig.get("strategy_name"),
+        "conviction": float(sig.get("conviction") or 0.0),
+        "expected_r": float(sig.get("expected_r") or 0.0),
+        "source": "signal_book",
+        "signal_key": key,
+        "cycle": cycle,
+        "status": "FILLED",
+    }
+    return position, trade
+
+
+def _sized_qty(sig: dict[str, Any], cash: float, mark: float, kelly_cap: float = 0.05) -> float:
+    """Resolve the order quantity for a signal.
+
+    Prefer the pre-sized ``quantity`` emitted by
+    ``compute_quantity_for_signal`` in the worker; fall back to a
+    Kelly-fraction × cash sizer for legacy signal-book entries that
+    pre-date the sizer.
+    """
+    qty = float(sig.get("quantity") or 0.0)
+    if qty > 0:
+        return qty
+    from execution_engine.math.kelly import (
+        compute_position_size,
+        kelly_fraction_single,
+    )
+
+    conv = float(sig.get("conviction") or 0.0)
+    exp_r = max(float(sig.get("expected_r") or 1.0), 1.0)
+    frac = min(kelly_fraction_single(conv, exp_r), kelly_cap)
+    shares = compute_position_size(cash, frac, mark)
+    return float(shares) if shares >= 1 else 0.0
+
+
+def _execute_equity_or_etf(
+    *, sig: dict, mark: float, side: str, asset_class: str,
+    state: ShadowState, key: str, cycle: int,
+) -> dict | None:
+    qty = _sized_qty(sig, state.cash, mark)
+    if qty < 1:
+        return None
+    slip_bps = _SLIPPAGE_BPS.get(asset_class, 0.0005)
+    slip = (1.0 + slip_bps) if side == "BUY" else (1.0 - slip_bps)
+    entry = mark * slip
+    notional = entry * qty
+    if side == "BUY" and notional > state.cash:
+        return None
+    if notional > state.cash * 0.4:
+        return None
+    state.cash += -notional if side == "BUY" else notional
+    pos, trade = _build_position_record(
+        ticker=str(sig.get("ticker", "")).upper(), asset_class=asset_class, side=side,
+        qty=qty, entry_price=entry, notional=notional, margin_used=notional,
+        sig=sig, key=key, cycle=cycle,
+    )
+    state.positions[trade["ticker"]] = pos
+    return trade
+
+
+def _execute_future(
+    *, sig: dict, mark: float, side: str, state: ShadowState,
+    key: str, cycle: int,
+) -> dict | None:
+    """Index futures / commodity futures.
+
+    Margin is the cash impact, NOT notional — futures are leveraged
+    instruments. We approximate maintenance margin at 5% of notional
+    when the signal doesn't carry a margin_required field.
+    """
+    qty = _sized_qty(sig, state.cash, mark)
+    if qty < 1:
+        return None
+    qty = float(int(qty))  # whole contracts only
+    multiplier = float(sig.get("contract_multiplier") or 1.0)
+    slip_bps = _SLIPPAGE_BPS["FUTURE"]
+    slip = (1.0 + slip_bps) if side == "BUY" else (1.0 - slip_bps)
+    entry = mark * slip
+    notional = entry * qty * multiplier
+    margin = float(sig.get("margin_required") or notional * 0.05)
+    if margin > state.cash:
+        log.info(f"shadow: insufficient margin for {sig.get('ticker')} (need {margin:.0f}, have {state.cash:.0f})")
+        return None
+    state.cash -= margin
+    pos, trade = _build_position_record(
+        ticker=str(sig.get("ticker", "")).upper(), asset_class="FUTURE", side=side,
+        qty=qty, entry_price=entry, notional=notional, margin_used=margin,
+        sig=sig, key=key, cycle=cycle,
+    )
+    state.positions[trade["ticker"]] = pos
+    return trade
+
+
+def _execute_fx(
+    *, sig: dict, mark: float, side: str, state: ShadowState,
+    key: str, cycle: int,
+) -> dict | None:
+    """FX pairs. Quantity is in standard lots (100k units)."""
+    lots = _sized_qty(sig, state.cash, mark)
+    if lots <= 0:
+        return None
+    notional = lots * 100_000.0 * mark
+    margin = float(sig.get("margin_required") or notional * 0.02)
+    if margin > state.cash:
+        return None
+    slip_bps = _SLIPPAGE_BPS["FX"]
+    slip = (1.0 + slip_bps) if side == "BUY" else (1.0 - slip_bps)
+    entry = mark * slip
+    state.cash -= margin
+    pos, trade = _build_position_record(
+        ticker=str(sig.get("ticker", "")).upper(), asset_class="FX", side=side,
+        qty=lots, entry_price=entry, notional=notional, margin_used=margin,
+        sig=sig, key=key, cycle=cycle,
+    )
+    state.positions[trade["ticker"]] = pos
+    return trade
+
+
+def _execute_crypto(
+    *, sig: dict, mark: float, side: str, state: ShadowState,
+    key: str, cycle: int,
+) -> dict | None:
+    qty = _sized_qty(sig, state.cash, mark)
+    if qty <= 0:
+        return None
+    slip_bps = _SLIPPAGE_BPS["CRYPTO"]
+    slip = (1.0 + slip_bps) if side == "BUY" else (1.0 - slip_bps)
+    entry = mark * slip
+    notional = entry * qty
+    fee = notional * 0.001  # 0.1% taker
+    if side == "BUY" and (notional + fee) > state.cash:
+        return None
+    if (notional + fee) > state.cash * 0.4:
+        return None
+    state.cash += -(notional + fee) if side == "BUY" else (notional - fee)
+    pos, trade = _build_position_record(
+        ticker=str(sig.get("ticker", "")).upper(), asset_class="CRYPTO", side=side,
+        qty=qty, entry_price=entry, notional=notional, margin_used=notional,
+        sig=sig, key=key, cycle=cycle,
+    )
+    pos["fee_paid"] = round(fee, 4)
+    trade["fee"] = round(fee, 4)
+    state.positions[trade["ticker"]] = pos
+    return trade
+
+
+def _execute_option(
+    *, sig: dict, mark: float, side: str, state: ShadowState,
+    key: str, cycle: int,
+) -> dict | None:
+    """Options. Multiplier 100; premium drives cash impact."""
+    qty = float(sig.get("quantity") or 0.0)
+    if qty < 1:
+        return None
+    qty = float(int(qty))
+    premium = float(sig.get("entry_price") or sig.get("entry_price_at_compute") or mark)
+    multiplier = 100.0
+    cost_basis = premium * qty * multiplier
+    strategy = str(sig.get("strategy_name") or "").lower()
+    is_credit = "iron_condor" in strategy or "credit" in strategy
+    if is_credit:
+        # Selling premium → cash credit; max-loss reserved as margin
+        max_loss = float(sig.get("max_loss") or cost_basis * 2.0)
+        state.cash += cost_basis  # credit received
+        margin_used = max_loss
+    else:
+        # Buying option → debit
+        if cost_basis > state.cash:
+            return None
+        state.cash -= cost_basis
+        margin_used = cost_basis
+    pos, trade = _build_position_record(
+        ticker=str(sig.get("ticker", "")).upper(), asset_class="OPTION",
+        side="SELL" if is_credit else "BUY", qty=qty, entry_price=premium,
+        notional=cost_basis, margin_used=margin_used, sig=sig, key=key, cycle=cycle,
+    )
+    pos["option_type"] = sig.get("option_type")
+    pos["strike"] = sig.get("strike")
+    pos["expiry_date"] = sig.get("expiry_date")
+    pos["leg_2_strike"] = sig.get("leg_2_strike")
+    pos["is_credit"] = is_credit
+    state.positions[f"{trade['ticker']}_OPT"] = pos
+    return trade
+
+
+def _check_sl_tp_exits(
+    state: ShadowState,
+    latest_close: dict[str, float],
+    *,
+    cycle: int,
+) -> list[dict[str, Any]]:
+    """Close any open position that breached its stored SL or TP.
+
+    Runs every cycle for every asset class. The position record carries
+    ``stop_loss_price`` / ``take_profit_price`` (set when the signal
+    fills) and ``direction`` (LONG vs SHORT) so this check works for
+    long shorts symmetrically. Options skip price-based SL/TP and rely
+    on the readiness checker / external monitor (handled in
+    `_execute_option`'s margin reservation).
+    """
+    if not state.positions:
+        return []
+
+    closed: list[dict[str, Any]] = []
+    to_close: list[tuple[str, dict, float, str]] = []
+    for sym, pos in state.positions.items():
+        ac = str(pos.get("asset_class") or "EQUITY").upper()
+        if ac == "OPTION":
+            continue  # premium-based exits live elsewhere
+        # FX symbols (e.g. EURUSD) are not always in latest_close;
+        # without a fresh mark we cannot safely evaluate exit gates.
+        mark = latest_close.get(sym.replace("_OPT", ""))
+        if mark is None or mark <= 0:
+            continue
+        sl = pos.get("stop_loss_price")
+        tp = pos.get("take_profit_price")
+        direction = str(pos.get("direction") or "LONG").upper()
+        reason: str | None = None
+        if sl:
+            if direction == "LONG" and mark <= float(sl):
+                reason = "stop_loss_hit"
+            elif direction == "SHORT" and mark >= float(sl):
+                reason = "stop_loss_hit"
+        if reason is None and tp:
+            if direction == "LONG" and mark >= float(tp):
+                reason = "take_profit_hit"
+            elif direction == "SHORT" and mark <= float(tp):
+                reason = "take_profit_hit"
+        if reason:
+            to_close.append((sym, pos, mark, reason))
+
+    for sym, pos, mark, reason in to_close:
+        ac = str(pos.get("asset_class") or "EQUITY").upper()
+        qty = float(pos.get("qty", pos.get("shares", 0.0)) or 0.0)
+        entry = float(pos.get("entry_price") or mark)
+        multiplier = float(pos.get("contract_multiplier") or 1.0)
+        margin_used = float(pos.get("margin_used") or 0.0)
+        # P&L: signed-qty × (mark − entry) × multiplier. Equity uses
+        # multiplier=1; futures use the contract multiplier embedded
+        # at fill time.
+        pnl = qty * (mark - entry) * multiplier
+        # Cash impact:
+        #   * Equity / crypto: reverse the entry — credit notional back
+        #     (less the realised P&L sign convention is already in pnl).
+        #   * Futures / FX: release margin, add P&L.
+        #   * Options: handled separately above (excluded from this loop).
+        if ac in ("EQUITY", "ETF", "BOND", "INDEX", "CRYPTO"):
+            # Long close = sell |qty|@mark (credit). Short close = buy
+            # |qty|@mark (debit). Realised P&L is implicit in the
+            # entry-vs-mark difference, so we don't need to add `pnl`
+            # separately — that would double-count.
+            if qty > 0:
+                state.cash += abs(qty) * mark
+            else:
+                state.cash -= abs(qty) * mark
+        else:  # FUTURE / FX — release reserved margin, book P&L
+            state.cash += margin_used + pnl
+        closed.append({
+            "timestamp": dt.datetime.now(dt.UTC).isoformat(),
+            "mode": "shadow",
+            "ticker": sym,
+            "asset_class": ac,
+            "side": "SELL" if qty > 0 else "BUY",
+            "qty": abs(qty),
+            "fill_price": round(mark, 6),
+            "notional": round(abs(qty) * mark * multiplier, 2),
+            "realized_pnl": round(pnl, 2),
+            "reason": reason,
+            "strategy": pos.get("strategy"),
+            "source": "sl_tp_exit",
+            "signal_key": pos.get("signal_key"),
+            "intent_id": pos.get("intent_id"),
+            "cycle": cycle,
+            "status": "FILLED",
+        })
+        log.info(
+            f"shadow exit ({ac}): {sym} {reason} @ {mark:.4f} "
+            f"(entry={entry:.4f}, pnl={pnl:+,.2f})"
+        )
+        # Free the open thesis so a new signal can land next cycle.
+        try:
+            from execution_engine.signal_book import get_signal_book
+            sb = get_signal_book()
+            intent = pos.get("intent_id")
+            if intent:
+                sb.close_open_thesis(intent)
+        except Exception as exc:  # pragma: no cover — defensive
+            log.debug(f"close_open_thesis failed for {sym}: {exc}")
+        del state.positions[sym]
+
+    return closed
 
 
 def _consume_signal_book(
@@ -235,16 +657,10 @@ def _consume_signal_book(
 ) -> list[dict[str, Any]]:
     """Turn live signal-book entries into shadow fills.
 
-    Contract:
-      * All asset classes are accepted (EQUITY, ETF, FX, COMMODITY,
-        CRYPTO, FUTURE, BOND, INDEX_FUTURE). Crypto signals are
-        tracked as signal-only since IBKR Paper doesn't support Paxos.
-      * LONG → BUY, SHORT → SELL. We allow SHORT in shadow because the
-        cost model already handles both sides.
-      * Sizing uses the signal's conviction + expected_r with a single
-        Kelly fraction, capped at 5% of cash.
-      * Each (ticker, regime_fingerprint) key fires at most once per
-        runner lifetime; the `consumed_signals` set is the dedupe guard.
+    Routes by asset class to per-class executors. The router handles
+    dedupe, readiness gating, HOLD short-circuit, open-thesis pinning,
+    and signal-book registration. Per-class executors only decide
+    qty/notional/cash semantics.
     """
     if not _SIGNAL_BOOK_PATH.exists():
         return []
@@ -255,10 +671,13 @@ def _consume_signal_book(
     if not isinstance(book, dict) or not book:
         return []
 
-    from execution_engine.math.kelly import (
-        compute_position_size,
-        kelly_fraction_single,
+    from execution_engine.signal_book import (
+        compose_thesis_signature,
+        get_signal_book,
     )
+
+    sb = get_signal_book()
+    sb_open_tickers = sb.open_thesis_tickers()
 
     fills: list[dict[str, Any]] = []
     for key, sig in book.items():
@@ -266,75 +685,100 @@ def _consume_signal_book(
             continue
         if key in state.consumed_signals:
             continue
-        # Accept all asset classes — multi-asset routing
-        inst_type = str(sig.get("instrument_type", "EQUITY")).upper()
-        if inst_type not in ("EQUITY", "ETF", "FX", "COMMODITY", "CRYPTO", "FUTURE", "BOND", "INDEX_FUTURE"):
+
+        # Asset-class normalisation. Prefer the explicit asset_class
+        # field (set by the worker for every new signal); fall back to
+        # instrument_type for backward compat with older book entries.
+        ac_raw = str(
+            sig.get("asset_class")
+            or sig.get("instrument_type")
+            or "EQUITY"
+        ).upper()
+        asset_class = _INSTRUMENT_TO_ASSET_CLASS.get(ac_raw, ac_raw)
+        if asset_class not in {"EQUITY", "ETF", "FX", "COMMODITY", "CRYPTO", "FUTURE", "BOND", "INDEX", "OPTION"}:
             continue
+
         ticker = str(sig.get("ticker") or "").upper()
-        if not ticker or ticker in state.positions:
+        if not ticker:
             continue
+        # Options key under "<TICKER>_OPT" so they don't collide with the
+        # equity position; everything else collides as expected.
+        position_key = f"{ticker}_OPT" if asset_class == "OPTION" else ticker
+        if position_key in state.positions:
+            continue
+        if ticker in sb_open_tickers:
+            log.info(
+                f"shadow: refusing duplicate position on {ticker} — "
+                f"open thesis already registered in signal_book"
+            )
+            continue
+
+        readiness_status = str(sig.get("readiness_status", "WAITING")).upper()
+        if readiness_status in ("EXPIRED", "CANCELLED"):
+            continue
+        if readiness_status == "WAITING":
+            log.debug(
+                f"shadow: filling {ticker} despite WAITING readiness "
+                f"(checker may not have evaluated yet)"
+            )
 
         direction = str(sig.get("direction", "LONG")).upper()
+        if direction == "HOLD":
+            continue
         side = "SELL" if direction == "SHORT" else "BUY"
 
-        # Prefer the current mark so the fill is honest vs. "now". Fall
-        # back to the signal's committed entry_price_at_compute if we
-        # have no local bar for this symbol (e.g. universe drift).
-        mark = latest_close.get(ticker) or float(sig.get("entry_price_at_compute") or 0.0)
+        mark = (
+            latest_close.get(ticker)
+            or float(sig.get("entry_price") or 0.0)
+            or float(sig.get("entry_price_at_compute") or 0.0)
+        )
         if mark <= 0:
             continue
 
-        conv = float(sig.get("conviction", 0.0) or 0.0)
-        exp_r = max(float(sig.get("expected_r", 1.0) or 1.0), 1.0)
-        frac = min(kelly_fraction_single(conv, exp_r), 0.05)
-        shares = compute_position_size(state.cash, frac, mark)
-        if shares < 1 or shares * mark > state.cash * 0.4:
+        try:
+            if asset_class in ("EQUITY", "ETF", "BOND", "INDEX"):
+                trade = _execute_equity_or_etf(
+                    sig=sig, mark=mark, side=side, asset_class=asset_class,
+                    state=state, key=key, cycle=cycle,
+                )
+            elif asset_class in ("FUTURE", "COMMODITY"):
+                trade = _execute_future(
+                    sig=sig, mark=mark, side=side, state=state, key=key, cycle=cycle,
+                )
+            elif asset_class == "FX":
+                trade = _execute_fx(
+                    sig=sig, mark=mark, side=side, state=state, key=key, cycle=cycle,
+                )
+            elif asset_class == "CRYPTO":
+                trade = _execute_crypto(
+                    sig=sig, mark=mark, side=side, state=state, key=key, cycle=cycle,
+                )
+            elif asset_class == "OPTION":
+                trade = _execute_option(
+                    sig=sig, mark=mark, side=side, state=state, key=key, cycle=cycle,
+                )
+            else:  # pragma: no cover — unreachable after the filter above
+                trade = None
+        except Exception as exc:
+            log.warning(f"shadow: per-class executor failed for {ticker} ({asset_class}): {exc}")
+            trade = None
+
+        if trade is None:
             continue
 
-        # Asset-class-specific slippage
-        _slip_map = {"FX": 0.0001, "CRYPTO": 0.0010, "COMMODITY": 0.0003, "FUTURE": 0.0002}
-        slip_bps = _slip_map.get(inst_type, 0.0005)
-        slip = (1 + slip_bps) if side == "BUY" else (1 - slip_bps)
-        entry = mark * slip
-        cost = entry * shares
-        if side == "BUY" and cost > state.cash:
-            continue
-
-        # Cash semantics: BUY debits, SELL (short) credits proceeds into cash.
-        # Mark-to-market in the cycle handler reconciles the final equity.
-        state.cash += -cost if side == "BUY" else cost
-        state.positions[ticker] = {
-            "entry_price": round(entry, 4),
-            "shares": shares if side == "BUY" else -shares,
-            "entered_at": dt.datetime.now(dt.UTC).isoformat(),
-            "rationale": str(sig.get("rationale") or "signal_book entry"),
-            "source": "signal_book",
-            "signal_key": key,
-            "strategy": sig.get("strategy_name"),
-        }
-        state.consumed_signals.add(key)
-        fills.append(
-            {
-                "timestamp": dt.datetime.now(dt.UTC).isoformat(),
-                "mode": "shadow",
-                "ticker": ticker,
-                "side": side,
-                "shares": shares,
-                "fill_price": round(entry, 4),
-                "notional": round(entry * shares, 2),
-                "rationale": str(sig.get("rationale") or "signal_book entry"),
-                "strategy": sig.get("strategy_name"),
-                "conviction": conv,
-                "expected_r": exp_r,
-                "source": "signal_book",
-                "signal_key": key,
-                "cycle": cycle,
-                "status": "FILLED",
-            }
+        signature = compose_thesis_signature(sig.get("causal_intel"))
+        sb.register_open_thesis(
+            trade.get("intent_id") or f"shadow|{key}|{cycle}",
+            ticker,
+            thesis_signature=signature,
         )
+        sb_open_tickers.add(ticker)
+        state.consumed_signals.add(key)
+        fills.append(trade)
         log.info(
-            f"shadow fill (signal_book): {side} {shares} {ticker} @ ${entry:.2f} "
-            f"(conv={conv:.2f}, exp_r={exp_r:.1f}, key={key})"
+            f"shadow fill ({asset_class}): {trade['side']} {trade['qty']} {ticker} "
+            f"@ {trade['fill_price']:.4f} (notional={trade['notional']:.0f}, "
+            f"margin={trade['margin_used']:.0f}, key={key})"
         )
 
     return fills
@@ -394,13 +838,67 @@ async def _shadow_cycle(state: ShadowState) -> EquitySnapshot:
         )
 
     latest_close: dict[str, float] = {}
+    mark_meta: dict[str, dict[str, Any]] = {}
+    _INTRADAY_DIR = Path("data_store/intraday")
+    now_utc = dt.datetime.now(dt.UTC)
     for sym in available:
-        bars = _load_local_bars(sym)
-        if not bars:
-            continue
-        latest_close[sym] = bars[-1].close
+        # Prefer intraday 5-min bars when available; they are typically
+        # 5–15 minutes fresher than the EOD jsonl. Fall back to EOD
+        # otherwise. Always record the bar's timestamp and source so the
+        # UI can warn on staleness.
+        intraday_path = _INTRADAY_DIR / f"{sym}_5m.jsonl"
+        chosen_ts: str | None = None
+        chosen_src: str | None = None
+        chosen_price: float | None = None
+        if intraday_path.exists() and intraday_path.stat().st_size > 0:
+            try:
+                with intraday_path.open() as fh:
+                    last_line = ""
+                    for line in fh:
+                        if line.strip():
+                            last_line = line
+                if last_line:
+                    rec = json.loads(last_line)
+                    chosen_price = float(rec.get("close", 0.0)) or None
+                    chosen_ts = rec.get("timestamp")
+                    chosen_src = "ohlcv_intraday_5m"
+            except (OSError, ValueError, json.JSONDecodeError):
+                chosen_price = None
+        if chosen_price is None:
+            bars = _load_local_bars(sym)
+            if not bars:
+                continue
+            chosen_price = bars[-1].close
+            chosen_ts = getattr(bars[-1], "timestamp", None)
+            chosen_ts = chosen_ts.isoformat() if hasattr(chosen_ts, "isoformat") else str(chosen_ts)
+            chosen_src = "ohlcv_eod"
+        latest_close[sym] = chosen_price
+        # Compute age (best-effort). Cap at a sane bound so a malformed
+        # timestamp does not produce an absurd age.
+        age_seconds: float | None = None
+        if chosen_ts:
+            try:
+                ts = dt.datetime.fromisoformat(chosen_ts)
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=dt.UTC)
+                age_seconds = max(0.0, (now_utc - ts).total_seconds())
+            except (TypeError, ValueError):
+                age_seconds = None
+        mark_meta[sym] = {
+            "mark_price_timestamp": chosen_ts,
+            "mark_price_source": chosen_src,
+            "mark_age_seconds": round(age_seconds, 1) if age_seconds is not None else None,
+        }
 
     new_fills: list[dict[str, Any]] = []
+
+    # 0) Close any position that breached its SL/TP since the last
+    #    cycle. Doing this BEFORE consuming new signals frees up cash /
+    #    margin and clears the open-thesis pin so a fresh signal in
+    #    the same regime can replace the stopped trade in the same
+    #    tick.
+    exit_fills = _check_sl_tp_exits(state, latest_close, cycle=state.cycle)
+    new_fills.extend(exit_fills)
 
     # 1) Consume pre-computed signal book. This is the "morning meeting"
     #    path — heavy LLM analysis already landed a trade decision; shadow
@@ -416,12 +914,15 @@ async def _shadow_cycle(state: ShadowState) -> EquitySnapshot:
     # 2) Fall back to fresh orchestrator scan on local bars — useful when
     #    the signal book is empty (cold start) or only covers symbols we
     #    already hold.
+    from execution_engine.signal_book import get_signal_book
+    sb_for_scan = get_signal_book()
+    sb_open_for_scan = sb_for_scan.open_thesis_tickers()
     for sym in available[:10]:
         bars = _load_local_bars(sym)
         if len(bars) < 30:
             continue
         last_bar = bars[-1]
-        if sym in state.positions:
+        if sym in state.positions or sym in sb_open_for_scan:
             continue
 
         closes = [b.close for b in bars[-30:]]
@@ -452,13 +953,8 @@ async def _shadow_cycle(state: ShadowState) -> EquitySnapshot:
         if decision.instrument_type not in ("EQUITY", "ETF", "FX", "COMMODITY_FUTURE", "CRYPTO", "RATE_FUTURE", "INDEX_FUTURE", "FUTURE", "BOND"):
             continue
 
-        frac = kelly_fraction_single(decision.conviction, max(decision.expected_r, 1.0))
-        frac = min(frac, 0.05)
-        shares = compute_position_size(state.cash, frac, last_bar.close)
-        if shares < 1 or shares * last_bar.close > state.cash * 0.4:
-            continue
-
-        # Portfolio-level risk check
+        # Portfolio-level risk gate. Run BEFORE per-class sizing so we
+        # can reject quickly if the portfolio is already at limits.
         from execution_engine.math.portfolio_risk import get_portfolio_risk_manager
 
         risk_mgr = get_portfolio_risk_manager()
@@ -470,58 +966,147 @@ async def _shadow_cycle(state: ShadowState) -> EquitySnapshot:
             ),
             peak_equity=getattr(state, "peak_equity", state.cash),
         )
+        proposed_notional = compute_position_size(state.cash, 0.05, last_bar.close) * last_bar.close
         risk_check = risk_mgr.check_risk(
             ticker=sym,
             asset_class=decision.instrument_type or "EQUITY",
-            proposed_notional=shares * last_bar.close,
+            proposed_notional=proposed_notional,
         )
         if not risk_check.allowed:
             log.info(f"[RISK-GATE] {sym} blocked: {risk_check.reason}")
             continue
-        if risk_check.size_reduction < 1.0:
-            shares = max(1, int(shares * risk_check.size_reduction))
 
-        # Apply asset-class-specific slippage for shadow fill.
-        _orch_slip = {"FX": 0.0001, "CRYPTO": 0.0010, "COMMODITY_FUTURE": 0.0003, "ETF": 0.0003}
-        slip_bps = _orch_slip.get(decision.instrument_type, 0.0005)
-        entry = last_bar.close * (1 + slip_bps)
-        cost = entry * shares
-        if cost > state.cash:
-            continue
+        # Build a synthetic signal-book row and route through the SAME
+        # per-class executors that consume the LLM signal book. This
+        # eliminates the previous gap where this fallback path debited
+        # full notional for futures (instead of margin) and produced
+        # positions without SL/TP fields the exit checker needs.
+        from execution_engine.math.position_sizer import compute_quantity_for_signal
 
-        state.cash -= cost
-        state.positions[sym] = {
-            "entry_price": round(entry, 4),
-            "shares": shares,
-            "entered_at": last_bar.timestamp.isoformat(),
-            "rationale": decision.rationale,
-            "source": "orchestrator_scan",
-        }
-        new_fills.append(
-            {
-                "timestamp": dt.datetime.now(dt.UTC).isoformat(),
-                "mode": "shadow",
-                "ticker": sym,
-                "side": "BUY",
-                "shares": shares,
-                "fill_price": round(entry, 4),
-                "notional": round(entry * shares, 2),
-                "rationale": decision.rationale,
-                "source": "orchestrator_scan",
-                "cycle": state.cycle,
-                "status": "FILLED",
-            }
+        kelly_frac = min(
+            kelly_fraction_single(decision.conviction, max(decision.expected_r, 1.0)),
+            0.05,
         )
+        ac_norm = _INSTRUMENT_TO_ASSET_CLASS.get(
+            (decision.instrument_type or "EQUITY").upper(),
+            "EQUITY",
+        )
+
+        # SL/TP absolute prices, direction-aware (LONG below / SHORT above).
+        direction_up = str(decision.direction).upper()
+        sl_pct = float(decision.stop_loss_pct or 0.0) / 100.0
+        tp_pct = float(decision.take_profit_pct or 0.0) / 100.0
+        if direction_up == "LONG":
+            sl_price = last_bar.close * (1.0 - sl_pct)
+            tp_price = last_bar.close * (1.0 + tp_pct)
+        elif direction_up == "SHORT":
+            sl_price = last_bar.close * (1.0 + sl_pct)
+            tp_price = last_bar.close * (1.0 - tp_pct)
+        else:
+            sl_price = last_bar.close
+            tp_price = last_bar.close
+
+        sized = compute_quantity_for_signal(
+            ticker=sym,
+            asset_class=ac_norm,
+            instrument_type=decision.instrument_type,
+            direction=decision.direction,
+            entry_price=last_bar.close,
+            stop_loss_price=sl_price,
+            portfolio_value=state.cash,
+            kelly_fraction=kelly_frac,
+        )
+        if sized.quantity <= 0:
+            continue
+        applied_qty = sized.quantity
+        if risk_check.size_reduction < 1.0:
+            applied_qty = max(1.0, applied_qty * risk_check.size_reduction)
+
+        synthetic_sig: dict[str, Any] = {
+            "ticker": sym,
+            "asset_class": ac_norm,
+            "instrument_type": decision.instrument_type,
+            "direction": decision.direction,
+            "quantity": applied_qty,
+            "entry_price": last_bar.close,
+            "entry_price_at_compute": last_bar.close,
+            "stop_loss_price": sl_price,
+            "take_profit_price": tp_price,
+            "notional_value": sized.notional_value,
+            "margin_required": sized.margin_required,
+            "contract_multiplier": sized.contract_multiplier,
+            "pip_value": sized.pip_value,
+            "lot_size": sized.lot_size,
+            "kelly_fraction": kelly_frac,
+            "rationale": decision.rationale,
+            "strategy_name": decision.strategy_name,
+            "conviction": decision.conviction,
+            "expected_r": decision.expected_r,
+            "readiness_status": "READY",  # cold-start path bypasses checker
+        }
+        side = "SELL" if direction_up == "SHORT" else "BUY"
+        scan_key = f"orch_scan|{sym}|{state.cycle}"
+
+        if ac_norm in ("EQUITY", "ETF", "BOND", "INDEX"):
+            trade = _execute_equity_or_etf(
+                sig=synthetic_sig, mark=last_bar.close, side=side,
+                asset_class=ac_norm, state=state, key=scan_key, cycle=state.cycle,
+            )
+        elif ac_norm in ("FUTURE", "COMMODITY"):
+            trade = _execute_future(
+                sig=synthetic_sig, mark=last_bar.close, side=side,
+                state=state, key=scan_key, cycle=state.cycle,
+            )
+        elif ac_norm == "FX":
+            trade = _execute_fx(
+                sig=synthetic_sig, mark=last_bar.close, side=side,
+                state=state, key=scan_key, cycle=state.cycle,
+            )
+        elif ac_norm == "CRYPTO":
+            trade = _execute_crypto(
+                sig=synthetic_sig, mark=last_bar.close, side=side,
+                state=state, key=scan_key, cycle=state.cycle,
+            )
+        elif ac_norm == "OPTION":
+            trade = _execute_option(
+                sig=synthetic_sig, mark=last_bar.close, side=side,
+                state=state, key=scan_key, cycle=state.cycle,
+            )
+        else:
+            trade = None
+
+        if trade is not None:
+            trade["source"] = "orchestrator_scan"
+            new_fills.append(trade)
 
     # 3) Mark every position (including freshly-opened ones) to the
     #    current close using SIGNED share counts, so shorts produce
     #    negative position value and correctly net against the cash
     #    credit we booked on entry. Running this AFTER both fill
     #    sources keeps equity accounting coherent regardless of mix.
+    #
+    #    Position-value semantics:
+    #      EQUITY/ETF/CRYPTO/BOND : last × signed_qty
+    #        (entry already debited cash, mark gives current value)
+    #      FUTURE / FX            : margin_used + (last - entry) × signed_qty × multiplier
+    #        (entry only locked margin; equity reflects unrealised P&L)
     position_value = 0.0
     for sym, pos in state.positions.items():
-        last = latest_close.get(sym, pos["entry_price"])
-        position_value += last * pos["shares"]
+        ac = str(pos.get("asset_class") or "EQUITY").upper()
+        signed_qty = float(pos.get("shares", pos.get("qty", 0.0)) or 0.0)
+        # Look up under both raw and de-suffixed key for options.
+        last = latest_close.get(sym) or latest_close.get(sym.replace("_OPT", "")) or float(pos.get("entry_price", 0.0))
+        if ac in ("FUTURE", "COMMODITY", "FX"):
+            entry_p = float(pos.get("entry_price", 0.0))
+            mult = float(pos.get("contract_multiplier") or 1.0)
+            margin_used = float(pos.get("margin_used") or 0.0)
+            position_value += margin_used + (last - entry_p) * signed_qty * mult
+        elif ac == "OPTION":
+            # Premium-based; mark-to-market needs option chain data we
+            # don't fetch in shadow mode. Carry at entry cost basis.
+            position_value += float(pos.get("notional") or 0.0) * (1 if signed_qty > 0 else -1)
+        else:
+            position_value += last * signed_qty
 
     for fill in new_fills:
         _append_jsonl(TRADES_PATH, fill)
@@ -531,40 +1116,70 @@ async def _shadow_cycle(state: ShadowState) -> EquitySnapshot:
     # dict (state.positions) as the source of truth for execution
     # logic; serialize a denormalized view for the UI.
     position_rows: list[dict[str, Any]] = []
+    max_age = 0.0
     for sym, pos in state.positions.items():
         shares = float(pos.get("shares", 0))
         entry = float(pos.get("entry_price", 0.0))
-        mark = float(latest_close.get(sym, entry))
+        if sym in latest_close:
+            mark = float(latest_close[sym])
+            meta = mark_meta.get(sym, {})
+        else:
+            # No bar at all → fall back to entry price; flag the source.
+            mark = entry
+            meta = {
+                "mark_price_timestamp": None,
+                "mark_price_source": "fallback_entry_price",
+                "mark_age_seconds": None,
+            }
         mv = mark * shares
         upnl = (mark - entry) * shares
+        if isinstance(meta.get("mark_age_seconds"), (int, float)):
+            max_age = max(max_age, float(meta["mark_age_seconds"]))
         position_rows.append(
             {
                 "ticker": sym,
+                "asset_class": pos.get("asset_class"),
                 "quantity": shares,
                 "side": "LONG" if shares >= 0 else "SHORT",
                 "avg_price": round(entry, 4),
+                "avg_cost": round(entry, 4),
                 "market_price": round(mark, 4),
+                "mark_price_timestamp": meta.get("mark_price_timestamp"),
+                "mark_price_source": meta.get("mark_price_source"),
+                "mark_age_seconds": meta.get("mark_age_seconds"),
                 "market_value": round(mv, 2),
                 "unrealized_pnl": round(upnl, 2),
                 "realized_pnl": 0.0,
+                "stop_loss_price": pos.get("stop_loss_price"),
+                "take_profit_price": pos.get("take_profit_price"),
+                "stop_loss_pct": pos.get("stop_loss_pct"),
+                "take_profit_pct": pos.get("take_profit_pct"),
+                "contract_multiplier": pos.get("contract_multiplier"),
+                "margin_used": pos.get("margin_used"),
+                "notional": pos.get("notional"),
                 "entered_at": pos.get("entered_at"),
                 "strategy": pos.get("strategy"),
+                "strategy_name": pos.get("strategy_name"),
                 "source": pos.get("source"),
                 "rationale": pos.get("rationale"),
                 "signal_key": pos.get("signal_key"),
             }
         )
 
-    POSITIONS_PATH.write_text(
-        json.dumps(
-            {
-                "as_of": dt.datetime.now(dt.UTC).isoformat(),
-                "cash": round(state.cash, 2),
-                "positions": position_rows,
-            },
-            indent=2,
-            default=str,
-        )
+    atomic_write_json(
+        POSITIONS_PATH,
+        {
+            "as_of": dt.datetime.now(dt.UTC).isoformat(),
+            "cash": round(state.cash, 2),
+            # Mode tells the UI whether marks are EOD-shadow, IB-delayed,
+            # or live. Worst-case mark age across rows lets the UI render
+            # a single header badge instead of one per row.
+            "mode": "shadow",
+            "max_mark_age_seconds": round(max_age, 1) if max_age else None,
+            "positions": position_rows,
+        },
+        indent=2,
+        default=str,
     )
     _sync_path_to_gcs(POSITIONS_PATH)
 
@@ -589,7 +1204,11 @@ async def _shadow_cycle(state: ShadowState) -> EquitySnapshot:
     )
 
 
-async def _run_shadow_mode(initial_equity: float, interval_seconds: int) -> None:
+async def _run_shadow_mode(
+    initial_equity: float,
+    interval_seconds: int,
+    state_holder: dict[str, ShadowState] | None = None,
+) -> None:
     log.info(
         f"Shadow mode: ${initial_equity:,.0f} initial equity, "
         f"polling every {interval_seconds}s (no IB connection)"
@@ -597,6 +1216,8 @@ async def _run_shadow_mode(initial_equity: float, interval_seconds: int) -> None
     state = ShadowState(
         initial_equity=initial_equity, cash=initial_equity, last_equity=initial_equity
     )
+    if state_holder is not None:
+        state_holder["state"] = state
 
     while not _stop_event.is_set():
         state.cycle += 1
@@ -637,11 +1258,31 @@ async def run(
     concurrently alongside the trading loop. This is the production
     configuration: signals are continuously refreshed from live data
     and the runner consumes them each cycle.
+
+    Mode resolution priority:
+        1. Explicit ``shadow=True`` (e.g. CLI ``--shadow``)
+        2. ``settings.EXECUTION_MODE`` (env-driven, set in compute.tf)
+        3. Default to ib_paper.
     """
     global _stop_event
     _stop_event = asyncio.Event()
     _ensure_dirs()
-    mode = "shadow" if shadow else "ib_paper"
+
+    # Explicit --shadow flag wins. Otherwise consult the env-driven
+    # EXECUTION_MODE so a deploy that sets EXECUTION_MODE=shadow doesn't
+    # silently start trying to talk to a non-existent IB Gateway.
+    from shared.config import ExecutionMode
+
+    env_mode = getattr(settings, "EXECUTION_MODE", ExecutionMode.IB_PAPER)
+    if shadow:
+        mode = "shadow"
+    elif env_mode == ExecutionMode.SHADOW:
+        mode = "shadow"
+        shadow = True  # re-route through the shadow branch below
+    elif env_mode == ExecutionMode.IB_LIVE:
+        mode = "ib_live"
+    else:
+        mode = "ib_paper"
     _write_meta(mode, initial_equity, interval_seconds)
 
     loop = asyncio.get_event_loop()
@@ -667,10 +1308,16 @@ async def run(
             )
         )
 
+    # Shared mutable handle so the readiness checker can read live
+    # shadow state without a global. Filled by ``_run_shadow_mode``.
+    shadow_state_holder: dict[str, ShadowState] = {}
+
     if shadow:
         tasks.append(
             asyncio.create_task(
-                _run_shadow_mode(initial_equity, interval_seconds),
+                _run_shadow_mode(
+                    initial_equity, interval_seconds, shadow_state_holder
+                ),
                 name="shadow_runner",
             )
         )
@@ -682,8 +1329,119 @@ async def run(
             )
         )
 
+    # Trade-readiness checker — promotes WAITING → READY when the live
+    # tape enters the entry zone for any cached signal. Runs alongside
+    # the runner so the frontend Signals page reflects live readiness
+    # without waiting for the next 60s runner cycle.
+    tasks.append(
+        asyncio.create_task(
+            _run_readiness_loop(shadow=shadow, shadow_state_holder=shadow_state_holder),
+            name="trade_readiness_checker",
+        )
+    )
+
     await asyncio.gather(*tasks)
     log.info("Paper runner stopped.")
+
+
+async def _run_readiness_loop(
+    *,
+    shadow: bool,
+    shadow_state_holder: dict[str, ShadowState] | None = None,
+) -> None:
+    """Run the TradeReadinessChecker until the runner stops.
+
+    The checker is plugged with closures over the runner's live state
+    so the WAITING → READY gates reflect actual position holdings,
+    cash, and risk in either shadow or IB mode.
+    """
+    from execution_engine.signal_book import get_signal_book
+    from execution_engine.trade_readiness import TradeReadinessChecker
+
+    book = get_signal_book()
+    # Make sure the on-disk book is loaded — the worker writes through
+    # save_to_disk; the runner may have started after a write.
+    try:
+        book.load_from_disk()
+    except Exception as exc:
+        log.warning(f"readiness loader: signal book load failed: {exc}")
+
+    def _has_open_position(ticker: str) -> bool:
+        # Shadow mode: consult the in-memory positions dict
+        if shadow and shadow_state_holder is not None:
+            state = shadow_state_holder.get("state")
+            if state is not None and ticker in state.positions:
+                return True
+        # Always also check the persisted open-thesis set so that an
+        # IB-side position survives restarts of the runner.
+        try:
+            return ticker in book.open_thesis_tickers()
+        except Exception:
+            return False
+
+    def _portfolio_value() -> float:
+        if shadow and shadow_state_holder is not None:
+            state = shadow_state_holder.get("state")
+            if state is not None:
+                return float(state.last_equity or state.initial_equity or state.cash)
+        # Fallback: read the latest run_meta initial_equity.
+        try:
+            if RUN_META_PATH.exists():
+                meta = json.loads(RUN_META_PATH.read_text())
+                return float(meta.get("initial_equity") or 0.0)
+        except (OSError, ValueError, json.JSONDecodeError):
+            pass
+        return 0.0
+
+    def _portfolio_open_risk() -> float:
+        # Sum risk across all open positions: |entry − SL| × quantity.
+        # In shadow mode we don't track SL on the position record yet,
+        # so approximate via 5% of notional per open name (conservative).
+        if shadow and shadow_state_holder is not None:
+            state = shadow_state_holder.get("state")
+            if state is not None:
+                total = 0.0
+                for pos in state.positions.values():
+                    qty = abs(float(pos.get("shares", 0) or 0))
+                    entry = float(pos.get("entry_price", 0.0) or 0.0)
+                    total += qty * entry * 0.05
+                return total
+        return 0.0
+
+    def _portfolio_available_capital() -> float:
+        if shadow and shadow_state_holder is not None:
+            state = shadow_state_holder.get("state")
+            if state is not None:
+                return float(state.cash or 0.0)
+        return 0.0
+
+    checker = TradeReadinessChecker(
+        signal_book=book,
+        has_open_position=_has_open_position,
+        portfolio_value=_portfolio_value,
+        portfolio_open_risk=_portfolio_open_risk,
+        portfolio_available_capital=_portfolio_available_capital,
+    )
+
+    log.info("readiness checker spawned alongside paper runner")
+    while not (_stop_event is not None and _stop_event.is_set()):
+        try:
+            await checker.tick()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # pragma: no cover
+            log.warning(f"readiness tick error: {exc}")
+        try:
+            if _stop_event is None:
+                await asyncio.sleep(checker.check_interval_seconds)
+            else:
+                await asyncio.wait_for(
+                    _stop_event.wait(),
+                    timeout=checker.check_interval_seconds,
+                )
+        except TimeoutError:
+            continue
+    log.info("readiness checker stopped")
 
 
 async def _run_pipeline_loop(interval_minutes: int) -> None:

@@ -3,106 +3,247 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { useMemo } from "react";
 import type { EquitySnapshot } from "@/lib/api";
-import { fmtMoney, fmtTime, fmtDate } from "@/lib/format";
+import {
+  computeChartDomain,
+  fmtChartAxis,
+  fmtMoney,
+} from "@/lib/format";
 
 interface Props {
   snapshots: EquitySnapshot[];
   initial: number;
   height?: number;
+  showGrid?: boolean;
 }
 
-export function EquityChart({ snapshots, initial, height = 280 }: Props) {
-  if (!snapshots.length) {
+interface ChartTooltipProps {
+  active?: boolean;
+  payload?: ReadonlyArray<{ value?: number | string | Array<number | string> | undefined }>;
+  label?: string | number;
+  initial: number;
+}
+
+function ChartTooltip({ active, payload, label, initial }: ChartTooltipProps) {
+  if (!active || !payload?.length) return null;
+  const raw = payload[0]?.value;
+  const equity = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(equity)) return null;
+  const pnl = equity - initial;
+  const pnlPct = initial > 0 ? ((equity - initial) / initial) * 100 : 0;
+  const positive = pnl >= 0;
+
+  return (
+    <div
+      style={{
+        background: "hsl(var(--panel))",
+        border: "1px solid hsl(var(--border))",
+        borderRadius: 10,
+        padding: "10px 14px",
+        boxShadow: "0 8px 28px hsl(var(--shadow) / 0.32)",
+        minWidth: 200,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          fontFamily: "var(--font-mono, monospace)",
+          color: "hsl(var(--fg-muted))",
+          letterSpacing: "0.06em",
+          marginBottom: 8,
+        }}
+      >
+        {label
+          ? new Date(label).toLocaleString(undefined, {
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : "—"}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 24 }}>
+          <span style={{ fontSize: 11, color: "hsl(var(--fg-muted))" }}>Portfolio</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "hsl(var(--fg))" }}>
+            {fmtMoney(equity)}
+          </span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 24 }}>
+          <span style={{ fontSize: 11, color: "hsl(var(--fg-muted))" }}>P&L</span>
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: positive ? "hsl(var(--pos))" : "hsl(var(--neg))",
+            }}
+          >
+            {positive ? "+" : ""}
+            {fmtMoney(pnl)}
+          </span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 24 }}>
+          <span style={{ fontSize: 11, color: "hsl(var(--fg-muted))" }}>Return</span>
+          <span
+            style={{
+              fontSize: 11,
+              color: positive ? "hsl(var(--pos))" : "hsl(var(--neg))",
+            }}
+          >
+            {positive ? "+" : ""}
+            {pnlPct.toFixed(3)}%
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function EquityChart({ snapshots, initial, height = 300, showGrid = true }: Props) {
+  const data = useMemo(
+    () =>
+      snapshots.map((s) => ({
+        t: new Date(s.timestamp).getTime(),
+        equity: s.equity,
+      })),
+    [snapshots],
+  );
+
+  const equityValues = useMemo(() => data.map((d) => d.equity), [data]);
+
+  // Adaptive domain — never flat
+  const [domainMin, domainMax] = useMemo(
+    () => computeChartDomain(equityValues, 0.005),
+    [equityValues],
+  );
+  const range = domainMax - domainMin;
+
+  const lastEquity = equityValues[equityValues.length - 1] ?? initial;
+  const positive = lastEquity >= initial;
+  const lineColor = positive ? "hsl(var(--pos))" : "hsl(var(--neg))";
+  const fillId = positive ? "fund-fill-pos" : "fund-fill-neg";
+
+  const timeSpanMs = data.length > 1 ? data[data.length - 1].t - data[0].t : 0;
+  const xFormatter = (ts: number) => {
+    const d = new Date(ts);
+    if (timeSpanMs < 86_400_000) {
+      return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    }
+    if (timeSpanMs < 7 * 86_400_000) {
+      return (
+        d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
+        " " +
+        d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+      );
+    }
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  };
+
+  if (!data.length) {
     return (
       <div
         className="grid place-items-center text-xs text-muted"
-        style={{ height }}
+        style={{
+          height,
+          fontFamily: "var(--font-mono, monospace)",
+          letterSpacing: "0.08em",
+        }}
+        aria-label="fund performance chart awaiting snapshot"
       >
-        No live snapshots yet.
+        AWAITING FIRST SNAPSHOT
       </div>
     );
   }
 
-  const data = snapshots.map((s) => ({
-    t: new Date(s.timestamp).getTime(),
-    equity: s.equity,
-    pnl: s.equity - initial,
-  }));
-
-  const span = data[data.length - 1].t - data[0].t;
-  const sameDay = span < 86_400_000;
-
-  const last = data[data.length - 1].equity;
-  const positive = last >= initial;
-  const stroke = positive ? "hsl(var(--pos))" : "hsl(var(--neg))";
-
   return (
-    <div style={{ width: "100%", height }}>
+    <div
+      style={{ width: "100%", height }}
+      role="img"
+      aria-label="fund performance chart"
+    >
       <ResponsiveContainer>
         <AreaChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
           <defs>
-            <linearGradient id="equityFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={stroke} stopOpacity={0.28} />
-              <stop offset="100%" stopColor={stroke} stopOpacity={0} />
+            <linearGradient id="fund-fill-pos" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="hsl(var(--pos))" stopOpacity={0.22} />
+              <stop offset="85%" stopColor="hsl(var(--pos))" stopOpacity={0.02} />
+              <stop offset="100%" stopColor="hsl(var(--pos))" stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id="fund-fill-neg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="hsl(var(--neg))" stopOpacity={0.22} />
+              <stop offset="85%" stopColor="hsl(var(--neg))" stopOpacity={0.02} />
+              <stop offset="100%" stopColor="hsl(var(--neg))" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 6" vertical={false} />
+
+          {showGrid && (
+            <CartesianGrid
+              strokeDasharray="2 4"
+              stroke="hsl(var(--border))"
+              vertical={false}
+            />
+          )}
+
           <XAxis
             dataKey="t"
             type="number"
+            scale="time"
             domain={["dataMin", "dataMax"]}
-            tickFormatter={(v) => (sameDay ? fmtTime(new Date(v).toISOString()) : fmtDate(new Date(v).toISOString()))}
-            tick={{ fill: "hsl(var(--fg-muted))", fontSize: 11 }}
-            axisLine={{ stroke: "hsl(var(--border))" }}
-            tickLine={false}
-            minTickGap={64}
-          />
-          <YAxis
-            dataKey="equity"
-            domain={["auto", "auto"]}
-            tickFormatter={(v) => fmtMoney(v, { compact: true, decimals: 0 })}
+            tickFormatter={xFormatter}
             tick={{ fill: "hsl(var(--fg-muted))", fontSize: 11 }}
             axisLine={false}
             tickLine={false}
-            width={64}
+            tickCount={6}
+            minTickGap={60}
           />
+
+          <YAxis
+            dataKey="equity"
+            domain={[domainMin, domainMax]}
+            tickFormatter={(v) => fmtChartAxis(v, range)}
+            tick={{ fill: "hsl(var(--fg-muted))", fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+            width={72}
+            tickCount={5}
+          />
+
+          <ReferenceLine
+            y={initial}
+            stroke="hsl(var(--border-strong))"
+            strokeDasharray="3 4"
+            strokeWidth={1}
+          />
+
           <Tooltip
-            cursor={{ stroke: "hsl(var(--border-strong))", strokeWidth: 1 }}
-            contentStyle={{
-              background: "hsl(var(--panel))",
-              border: "1px solid hsl(var(--border))",
-              borderRadius: 10,
-              fontSize: 12,
-              padding: "10px 12px",
-              boxShadow: "0 6px 18px hsl(var(--shadow) / 0.18)",
+            content={(props) => <ChartTooltip {...props} initial={initial} />}
+            cursor={{
+              stroke: "hsl(var(--border-strong))",
+              strokeWidth: 1,
+              strokeDasharray: "3 3",
             }}
-            labelStyle={{ color: "hsl(var(--fg-muted))", fontSize: 11, marginBottom: 4 }}
-            formatter={(value: number, name: string) => {
-              if (name === "equity") return [fmtMoney(value), "Equity"];
-              return [value, name];
-            }}
-            labelFormatter={(v: number) =>
-              new Date(v).toLocaleString("en-US", {
-                month: "short",
-                day: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              })
-            }
           />
+
           <Area
             type="monotone"
             dataKey="equity"
-            stroke={stroke}
-            strokeWidth={2}
-            fill="url(#equityFill)"
+            stroke={lineColor}
+            strokeWidth={1.6}
+            fill={`url(#${fillId})`}
+            dot={false}
+            activeDot={{
+              r: 4,
+              fill: lineColor,
+              stroke: "hsl(var(--bg))",
+              strokeWidth: 2,
+            }}
             isAnimationActive={false}
           />
         </AreaChart>

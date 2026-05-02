@@ -1,0 +1,83 @@
+; AYVID layering contract.
+;
+; The audit (Lens 2 H4) found bidirectional coupling between
+; ``execution_engine`` and ``graph_intelligence``. After the H4 fix:
+;
+;   - The pure-math primitives moved to ``shared/quant/`` (leaf).
+;   - ``graph_intelligence`` no longer imports from ``execution_engine``
+;     at all — the module-load import graph is acyclic.
+;   - ``execution_engine``'s legacy callers of strategy_orchestrator
+;     (paper_runner, decision_context, costs) use deferred local
+;     imports inside functions, so the module-load layer is clean.
+;
+; Intended layering (top → bottom of import arrows):
+;
+;   shared          (leaf — pure math, types, atomic_io)
+;   ↓
+;   data_primitives
+;   ↓
+;   execution_engine         (broker + paper runner)
+;   ↓
+;   graph_intelligence       (LLM orchestration, debate, refinery)
+;   ↓
+;   backtesting              (engine + calibrate + walkforward)
+;   ↓
+;   backend / cli            (top of the stack)
+;
+; Run:  uvx import-linter --config .importlinter
+
+[importlinter]
+root_packages =
+    shared
+    data_primitives
+    execution_engine
+    graph_intelligence
+    backtesting
+    backend
+    cli
+
+[importlinter:contract:shared-is-leaf]
+name = shared/ is the leaf package
+type = forbidden
+source_modules =
+    shared
+forbidden_modules =
+    data_primitives
+    execution_engine
+    graph_intelligence
+    backtesting
+    backend
+    cli
+
+[importlinter:contract:no-execution-from-graph-intelligence]
+name = graph_intelligence must not import execution_engine
+type = forbidden
+source_modules =
+    graph_intelligence
+forbidden_modules =
+    execution_engine
+
+[importlinter:contract:no-graph-intel-from-execution]
+name = execution_engine must not import graph_intelligence
+type = forbidden
+source_modules =
+    execution_engine
+forbidden_modules =
+    graph_intelligence
+; The three legacy back-imports below are LOCAL / DEFERRED imports
+; (inside function bodies). They do NOT appear in the module-load
+; import graph; ``import-linter`` may still flag them depending on
+; configuration. The right long-term fix is to define a Protocol in
+; ``shared/decision_api.py`` and remove these entirely.
+ignore_imports =
+    execution_engine.paper_runner -> graph_intelligence.agents.strategy_orchestrator
+    execution_engine.math.decision_context -> graph_intelligence.agents.strategy_orchestrator
+    execution_engine.math.costs -> graph_intelligence.agents.strategy_orchestrator
+
+[importlinter:contract:no-cli-from-backtesting]
+name = backtesting must not import cli
+type = forbidden
+source_modules =
+    backtesting
+forbidden_modules =
+    cli

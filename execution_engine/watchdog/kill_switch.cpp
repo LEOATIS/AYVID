@@ -217,11 +217,19 @@ static void terminate_process(pid_t pid) {
     log_msg("CRITICAL", "sending SIGTERM to PID %d", pid);
     kill(pid, SIGTERM);
 
-    for (int i = 0; i < 20 && process_alive(pid); ++i)
+    // 8 second grace window. Python must use this to:
+    //   1. Set the asyncio stop_event so loops exit.
+    //   2. Issue ib_async.reqGlobalCancel() so IB cancels brackets.
+    //   3. Close the IB session cleanly.
+    // 2s was too tight for an in-flight bracket submission; 8s is enough
+    // for the standard IB ack window without making operators wait
+    // forever during a real breach. Polled in 100ms increments so we
+    // escalate as soon as the runner is gone.
+    for (int i = 0; i < 80 && process_alive(pid); ++i)
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     if (process_alive(pid)) {
-        log_msg("CRITICAL", "process %d still alive after 2s — sending SIGKILL", pid);
+        log_msg("CRITICAL", "process %d still alive after 8s — sending SIGKILL", pid);
         kill(pid, SIGKILL);
     }
 }

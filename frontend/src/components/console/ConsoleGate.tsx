@@ -75,7 +75,7 @@ export function ConsoleGate({ children }: { children: ReactNode }) {
             <span className="text-muted">Internal access only.</span>
           </h1>
           <p className="lede mt-6">
-            Beyond this page lies the live trading surface — equity curves, open positions,
+            Beyond this page lies the live trading surface — fund performance, open positions,
             the active signal book, the shock catalog, and the demo replay. We don&rsquo;t
             publish that to the open internet, the same way Renaissance, Jane Street, and
             Citadel don&rsquo;t.

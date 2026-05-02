@@ -79,7 +79,7 @@ export default function ContactPage() {
               Already been given the passphrase?
             </h2>
             <p className="prose-body mt-4 max-w-2xl">
-              The internal control surface — equity curve, signal book, shock
+              The internal control surface — fund performance, signal book, shock
               catalog, demo replay — is one click away.
             </p>
           </div>

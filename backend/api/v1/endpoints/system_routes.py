@@ -1,0 +1,167 @@
+"""System-level diagnostics — lets the console verify the pipeline is
+actually running, in which mode, and across which asset classes.
+
+Mounted at ``/api/v1/system``. Read-only, gated by ``verify_api_key``
+the same way the live routes are.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import json
+from pathlib import Path
+from typing import Any
+
+from fastapi import APIRouter, Depends
+
+from backend.core.security import verify_api_key
+from shared.config import ExecutionMode, settings
+from shared.logger import get_logger
+
+log = get_logger("api.system")
+
+router = APIRouter(dependencies=[Depends(verify_api_key)])
+
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+LIVE_DIR = PROJECT_ROOT / "live"
+SIGNAL_BOOK = PROJECT_ROOT / "data_store" / "signal_book.json"
+
+
+def _count_trades_today() -> int:
+    path = LIVE_DIR / "trades.jsonl"
+    if not path.exists():
+        return 0
+    today = dt.datetime.now(dt.UTC).date().isoformat()
+    count = 0
+    try:
+        with path.open() as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                ts = str(rec.get("timestamp") or rec.get("ts") or "")
+                if ts.startswith(today):
+                    count += 1
+    except OSError:
+        return 0
+    return count
+
+
+def _signal_book_counts() -> dict[str, int]:
+    """Count signals by readiness status + open position count."""
+    if not SIGNAL_BOOK.exists():
+        return {"waiting": 0, "ready": 0, "expired": 0, "cancelled": 0, "total": 0}
+    try:
+        book = json.loads(SIGNAL_BOOK.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {"waiting": 0, "ready": 0, "expired": 0, "cancelled": 0, "total": 0}
+    if not isinstance(book, dict):
+        return {"waiting": 0, "ready": 0, "expired": 0, "cancelled": 0, "total": 0}
+    counts = {"waiting": 0, "ready": 0, "expired": 0, "cancelled": 0, "total": 0}
+    classes: set[str] = set()
+    for sig in book.values():
+        if not isinstance(sig, dict):
+            continue
+        counts["total"] += 1
+        status = str(sig.get("readiness_status", "WAITING")).upper()
+        if status == "READY":
+            counts["ready"] += 1
+        elif status == "EXPIRED":
+            counts["expired"] += 1
+        elif status == "CANCELLED":
+            counts["cancelled"] += 1
+        else:
+            counts["waiting"] += 1
+        ac = str(sig.get("asset_class") or sig.get("instrument_type") or "EQUITY").upper()
+        classes.add(ac)
+    counts["__classes"] = sorted(classes)  # type: ignore[assignment]
+    return counts
+
+
+def _open_position_count() -> int:
+    path = LIVE_DIR / "positions.json"
+    if not path.exists():
+        return 0
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return 0
+    if isinstance(data, dict):
+        positions = data.get("positions")
+        if isinstance(positions, list):
+            return len(positions)
+    return 0
+
+
+@router.get("/pipeline")
+async def get_pipeline_status() -> dict[str, Any]:
+    """Snapshot of what the AYVID pipeline is doing right now.
+
+    Combines:
+      * Worker telemetry (last cycle time, signal count, orchestration mode)
+      * Settings (execution mode, AUTO_EXECUTE, LIVE_TRADING_CONFIRMED)
+      * Signal-book aggregates (counts by status, asset classes seen)
+      * Live artefacts (open positions, trades today)
+
+    All fields are best-effort — the endpoint never fails just because
+    one source file is missing on a fresh checkout.
+    """
+    try:
+        from data_primitives.pipeline.continuous_worker import (
+            get_pipeline_telemetry,
+        )
+        worker_state = get_pipeline_telemetry()
+    except Exception:  # pragma: no cover — defensive
+        worker_state = {
+            "last_pipeline_run": None,
+            "signals_generated_last_cycle": 0,
+            "orchestration_mode": "rule_based",
+        }
+
+    counts = _signal_book_counts()
+    book_classes = counts.pop("__classes", []) if "__classes" in counts else []  # type: ignore[arg-type]
+
+    # Asset classes the worker actively scans every 15-min cycle. The
+    # signal-book snapshot might be empty on a cold start, so we union
+    # what the book actually contains with the configured universe so
+    # the console shows "FX is live" before the first FX signal lands.
+    configured_classes = ["EQUITY", "INDEX", "FX", "FUTURE", "COMMODITY", "CRYPTO", "ETF"]
+    classes = sorted(set(book_classes) | set(configured_classes))
+
+    mode = getattr(settings, "EXECUTION_MODE", ExecutionMode.SHADOW)
+    mode_value = mode.value if hasattr(mode, "value") else str(mode)
+
+    return {
+        # Signal generation
+        "orchestration_mode": worker_state.get("orchestration_mode"),
+        "llm_orchestration_enabled": bool(settings.LLM_ORCHESTRATION_ENABLED),
+        "llm_signal_timeout_seconds": int(settings.LLM_SIGNAL_TIMEOUT_SECONDS),
+        "llm_max_concurrent_signals": int(settings.LLM_MAX_CONCURRENT_SIGNALS),
+        "last_pipeline_run": worker_state.get("last_pipeline_run"),
+        "signals_generated_last_cycle": int(
+            worker_state.get("signals_generated_last_cycle") or 0
+        ),
+        # Execution
+        "execution_mode": mode_value,
+        "auto_execute": bool(getattr(settings, "AUTO_EXECUTE", False)),
+        "live_confirmed": bool(getattr(settings, "LIVE_TRADING_CONFIRMED", False)),
+        "max_single_order_notional": float(
+            getattr(settings, "MAX_SINGLE_ORDER_NOTIONAL", 0.0)
+        ),
+        # Asset classes seen in the current signal book
+        "asset_classes_enabled": classes,
+        # Counts
+        "open_positions": _open_position_count(),
+        "signals_total": counts.get("total", 0),
+        "signals_waiting": counts.get("waiting", 0),
+        "signals_ready": counts.get("ready", 0),
+        "signals_expired": counts.get("expired", 0),
+        "signals_cancelled": counts.get("cancelled", 0),
+        "trades_today": _count_trades_today(),
+        # Snapshot timestamp so the UI can show "as of XX seconds ago"
+        "snapshot_at": dt.datetime.now(dt.UTC).isoformat(),
+    }

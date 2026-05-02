@@ -49,6 +49,14 @@ _INTRADAY_DIR = Path("data_store/intraday")
 RISK_PER_TRADE_PCT = 0.02
 MAX_PORTFOLIO_RISK_PCT = 0.30
 
+# Per-track capital split. Track 1 = F&O / index derivatives; Track 2 =
+# equity longs/shorts. The two ledgers are mutually fenced: a loss in
+# one track cannot starve sizing in the other. This is what the audit
+# flagged — the legacy single-`cash` accumulator made Track 1 / Track 2
+# isolation a fiction. Override via env var or settings if a different
+# split is desired (e.g. equity-heavy paper deployments).
+TRACK1_BUDGET_PCT = 0.50  # F&O budget as fraction of initial equity
+
 # ── Named Historical Shock Scenarios ──────────────────────────
 # DEPRECATED: This static dictionary is retained only for the YC
 # benchmark report (`cli.app data report --scenarios all`) and for
@@ -1224,6 +1232,7 @@ async def run_backtest(
     forbidden_strategies: list[str] | None = None,
     strategy_parameters: dict[str, float] | None = None,
     risk_multiplier: float = 1.0,
+    require_point_in_time_universe: bool = False,
 ) -> BacktestResult:
     """Multi-asset institutional backtest engine (6 asset classes).
 
@@ -1331,29 +1340,64 @@ async def run_backtest(
     # biased (curated US mega caps) — it is a dev convenience, not
     # a validation-ready universe.
     if tickers is None:
-        available = sorted(p.stem for p in _DATA_DIR.glob("*.jsonl") if p.stat().st_size > 0)
-        if available:
-            tickers = available
-            log.warning(
-                "Backtest universe auto-discovered from local cache "
-                "(N=%d) — SURVIVORSHIP BIAS: delisted/merged names "
-                "are absent. Pass `tickers=<historical constituents>` "
-                "for validation-quality results.",
-                len(available),
-            )
-        else:
-            from data_primitives.extractors.universe_builder import GLOBAL_EQUITY_SCREENS
+        # Prefer point-in-time S&P 500 constituents for the simulation
+        # start date when available. ``require_point_in_time_universe``
+        # turns "no PIT data" into a hard error so the audit's worst
+        # case (silently using today's S&P 500 list for a 2018 backtest)
+        # cannot happen.
+        pit_tickers: list[str] | None = None
+        if _start_dt is not None:
+            try:
+                from data_primitives.extractors.universe_builder import (
+                    discover_sp500_constituents,
+                )
+                pit_tickers = await discover_sp500_constituents(
+                    as_of=_start_dt,
+                    require_point_in_time=require_point_in_time_universe,
+                )
+                if pit_tickers:
+                    log.info(
+                        "Backtest universe loaded as-of %s "
+                        "(N=%d, PIT constituents — survivorship-bias-corrected)",
+                        _start_dt,
+                        len(pit_tickers),
+                    )
+            except Exception as exc:
+                if require_point_in_time_universe:
+                    raise
+                log.warning(
+                    f"PIT universe load failed ({exc}); falling back to "
+                    f"local cache. Survivorship bias applies."
+                )
 
-            tickers = (
-                GLOBAL_EQUITY_SCREENS.get("US_MEGA_CAP", [])
-                + GLOBAL_EQUITY_SCREENS.get("MAJOR_ETFS", [])[:15]
-                + GLOBAL_EQUITY_SCREENS.get("SUPPLY_CHAIN_CRITICAL", [])[:10]
-            )
-            tickers = sorted(set(tickers))
-            log.warning(
-                "Backtest universe fell back to GLOBAL_EQUITY_SCREENS "
-                "(curated survivors) — SURVIVORSHIP BIAS applies."
-            )
+        if pit_tickers:
+            # Filter to symbols we actually have local data for.
+            cached = {p.stem for p in _DATA_DIR.glob("*.jsonl") if p.stat().st_size > 0}
+            tickers = sorted(set(pit_tickers) & cached) or sorted(pit_tickers)
+        else:
+            available = sorted(p.stem for p in _DATA_DIR.glob("*.jsonl") if p.stat().st_size > 0)
+            if available:
+                tickers = available
+                log.warning(
+                    "Backtest universe auto-discovered from local cache "
+                    "(N=%d) — SURVIVORSHIP BIAS: delisted/merged names "
+                    "are absent. Pass `tickers=<historical constituents>` "
+                    "for validation-quality results.",
+                    len(available),
+                )
+            else:
+                from data_primitives.extractors.universe_builder import GLOBAL_EQUITY_SCREENS
+
+                tickers = (
+                    GLOBAL_EQUITY_SCREENS.get("US_MEGA_CAP", [])
+                    + GLOBAL_EQUITY_SCREENS.get("MAJOR_ETFS", [])[:15]
+                    + GLOBAL_EQUITY_SCREENS.get("SUPPLY_CHAIN_CRITICAL", [])[:10]
+                )
+                tickers = sorted(set(tickers))
+                log.warning(
+                    "Backtest universe fell back to GLOBAL_EQUITY_SCREENS "
+                    "(curated survivors) — SURVIVORSHIP BIAS applies."
+                )
 
     equity_data: dict[str, list[OHLCVBar]] = {}
     _needs_fetch: list[str] = []
@@ -1467,7 +1511,15 @@ async def run_backtest(
             final_equity=initial_equity,
         )
 
-    cash = initial_equity
+    # Per-track ledgers. ``cash`` is kept as a thin alias = sum of the
+    # two tracks; existing read-only consumers (e.g. equity-curve
+    # snapshots) treat it as total available cash. Mutations now go
+    # through ``cash_track1`` (F&O) and ``cash_track2`` (equity)
+    # explicitly.
+    track1_budget = float(getattr(settings, "TRACK1_BUDGET_PCT", TRACK1_BUDGET_PCT))
+    track1_budget = max(0.0, min(1.0, track1_budget))
+    cash_track1 = initial_equity * track1_budget
+    cash_track2 = initial_equity * (1.0 - track1_budget)
     equity_positions: list[BacktestTrade] = []
     fno_trades: list[FnOTrade] = []
     closed_equity: list[BacktestTrade] = []
@@ -1492,7 +1544,35 @@ async def run_backtest(
     def _get_bars_up_to(
         data: dict[str, list[OHLCVBar]], ticker: str, date: dt.date
     ) -> list[OHLCVBar]:
+        """Return all bars whose timestamp.date() is on-or-before ``date``.
+
+        Convention: AYVID is a **close-decided, close-filled** simulator.
+        On each simulated date T:
+          1. We see the bar T's close (i.e. the close-of-day OHLC).
+          2. We make a decision using indicators computed off bars
+             through-and-including T.
+          3. We fill the entry at T's close.
+
+        This is internally consistent — the data we use for the decision
+        is the same data we transact at — and rules out the worst form
+        of lookahead bias (deciding at close T, filling at open T).
+        Strategies that need a strictly-prior bar window (signal at T
+        with fill at T+1's open) MUST use ``_bars_strictly_before`` and
+        fill at the next bar's open price; never mix.
+        """
         return [b for b in data.get(ticker, []) if b.timestamp.date() <= date]
+
+    def _bars_strictly_before(
+        data: dict[str, list[OHLCVBar]], ticker: str, date: dt.date
+    ) -> list[OHLCVBar]:
+        """Bars whose ``timestamp.date()`` is strictly before ``date``.
+
+        Use this for strategies that decide at the open of T using only
+        information that was available at the close of T-1. Combine with
+        an entry price taken from T's open (not T's close) to avoid
+        lookahead.
+        """
+        return [b for b in data.get(ticker, []) if b.timestamp.date() < date]
 
     # ── Autonomous shock detection: if a news feed is supplied, run the
     # NER-based detector and let any dynamic signal override the static
@@ -1642,7 +1722,17 @@ async def run_backtest(
         # timer's not up. Max hold also scales with alpha_horizon so
         # 4th-order trades don't auto-close at 20 days.
         def _hold_bounds(pos: BacktestTrade) -> tuple[int, int]:
-            """Return (min_hold_days, max_hold_days) for this position's horizon."""
+            """Return (min_hold_days, max_hold_days) for this position's horizon.
+
+            Adaptive overlay: when the signal carries a meaningful
+            ``expected_r`` and conviction, derive a target hold from the
+            signal's effective Sharpe (``conv × √expected_r``) using the
+            heuristic ``target ≈ 5 × Sharpe`` (capped to the horizon's
+            band). Strong-edge signals are allowed to close sooner —
+            mean reversion eats most of the alpha after the half-life
+            anyway. Weaker-edge signals stay closer to the legacy
+            horizon max so a barely-positive edge has time to play out.
+            """
             horizon = getattr(pos.signal, "alpha_horizon", None)
             hv = horizon.value if horizon is not None else "2nd_order"
             # (min, max) pairs mirror strategy docs:
@@ -1656,7 +1746,23 @@ async def run_backtest(
                 "3rd_order": (5, 15),
                 "4th_order": (14, 42),
             }
-            return bounds.get(hv, (1, 20))
+            min_h, max_h = bounds.get(hv, (1, 20))
+
+            sig = pos.signal
+            alpha = getattr(sig, "alpha_score", None)
+            conv = float(getattr(alpha, "unified_conviction", 0.0)) if alpha is not None else 0.0
+            exp_r = float(getattr(alpha, "expected_r", 0.0)) if alpha is not None else 0.0
+            if conv > 0.5 and exp_r > 0.5:
+                # Bound effective Sharpe in [0.2, 4.0] so we don't get
+                # absurd holds at extreme inputs (Pydantic clamps
+                # already, but belt-and-braces).
+                eff_sharpe = max(0.2, min(4.0, conv * (exp_r ** 0.5)))
+                target = int(round(5.0 * eff_sharpe))
+                # Adaptive cap respects the horizon's hard ceiling but
+                # tightens it when the edge is strong. Floor stays at
+                # the legacy minimum so we don't churn out too early.
+                max_h = max(min_h + 1, min(max_h, target))
+            return min_h, max_h
 
         # Batch-2/E trailing-stop pyramid.
         # Given a LONG entry at `E` with initial stop `SL0`, one-R is
@@ -1781,7 +1887,7 @@ async def run_backtest(
         for i in sorted(set(to_close), reverse=True):
             closed_equity.append(equity_positions.pop(i))
             t = closed_equity[-1]
-            cash += t.shares * (t.exit_price or t.entry_price)
+            cash_track2 += t.shares * (t.exit_price or t.entry_price)
 
         if not open_new:
             # Last 5 days: only manage existing, don't open new
@@ -1789,7 +1895,7 @@ async def run_backtest(
                 p.shares * date_eq_prices.get(p.signal.ticker, p.entry_price)
                 for p in equity_positions
             )
-            equity_curve.append(cash + position_value)
+            equity_curve.append(cash_track1 + cash_track2 + position_value)
             equity_dates.append(date.isoformat())
             continue
 
@@ -1843,11 +1949,11 @@ async def run_backtest(
                 signals_filtered += 1
                 continue
 
-            # F&O capital cap: max 50% of portfolio in F&O at risk
-            fno_cap = cash * FNO_CAPITAL_CAP
-            available_capital = max(
-                min(cash - fno_capital_at_risk, fno_cap - fno_capital_at_risk), 0.0
-            )
+            # F&O capital cap: Track 1 budget is reserved exclusively
+            # for F&O. The legacy ``cash * FNO_CAPITAL_CAP`` heuristic
+            # cross-contaminated the two tracks; per-track ledgers make
+            # the cap exactly Track 1's available cash.
+            available_capital = max(cash_track1 - fno_capital_at_risk, 0.0)
             if available_capital < 1000:
                 continue
 
@@ -2493,9 +2599,11 @@ async def run_backtest(
             frac = kelly_fraction_single(decision.conviction, max(rr, 0.3))
             frac = min(frac, max_position_pct / 100.0)
 
-            shares = compute_position_size(cash, frac, price)
-            if shares > 0 and price * shares < cash * 0.80:
-                cash -= shares * price
+            # Equity opens come out of Track 2 — the F&O budget is
+            # reserved and cannot be touched here.
+            shares = compute_position_size(cash_track2, frac, price)
+            if shares > 0 and price * shares < cash_track2 * 0.80:
+                cash_track2 -= shares * price
                 # NB: the legacy kwargs `signal_id` / `action` / `confidence`
                 # are now read-only properties on TradeIntent. Constructing
                 # with them raises ValidationError (the bug that broke the
@@ -2589,7 +2697,7 @@ async def run_backtest(
                     continue
                 fx_conv = 0.65
                 fx_r = 1.8
-                fx_lots = max(0.1, min(cash * 0.01 / 100_000, 2.0))
+                fx_lots = max(0.1, min(cash_track1 * 0.01 / 100_000, 2.0))
                 fx_cost_val = _fx_costs(pair, fx_lots, holding_days=3)
                 # Simulate FX PnL: 0.5% move in AI's predicted direction, minus costs
                 fx_pnl = fx_lots * 100_000 * 0.005
@@ -2662,7 +2770,7 @@ async def run_backtest(
             for symbol in causal.get("crypto_targets", []):
                 if not _sim_available(f"crypto_{symbol}", 3):
                     continue
-                crypto_alloc = cash * 0.005  # 0.5% per crypto position
+                crypto_alloc = cash_track1 * 0.005  # 0.5% of Track 1 per crypto position
                 crypto_cost_val = _crypto_costs(crypto_alloc)
                 # Simulate: 2% move in AI's predicted direction, minus costs
                 crypto_pnl = crypto_alloc * 0.02
@@ -2696,7 +2804,7 @@ async def run_backtest(
             for symbol in causal.get("etf_targets", []):
                 if not _sim_available(f"etf_{symbol}", 5):
                     continue
-                etf_alloc = cash * 0.01
+                etf_alloc = cash_track1 * 0.01
                 etf_price = 100.0  # placeholder
                 etf_shares = max(1, int(etf_alloc / max(etf_price, 1)))
                 etf_cost = equity_costs(etf_price, etf_price * 1.01, etf_shares)
@@ -2771,7 +2879,7 @@ async def run_backtest(
             ft for ft in fno_trades if ft.exit_date == date and ft.trade_id not in _settled_fno
         ]
         for ft in newly_settled:
-            cash += ft.pnl
+            cash_track1 += ft.pnl
             fno_capital_at_risk = max(fno_capital_at_risk - ft.entry_cost, 0)
             _settled_fno.add(ft.trade_id)
 
@@ -2788,7 +2896,7 @@ async def run_backtest(
         position_value = sum(
             p.shares * date_eq_prices.get(p.signal.ticker, p.entry_price) for p in equity_positions
         )
-        equity_curve.append(cash + position_value)
+        equity_curve.append(cash_track1 + cash_track2 + position_value)
         equity_dates.append(date.isoformat())
 
     # ── Close remaining equity positions ──
@@ -2797,7 +2905,7 @@ async def run_backtest(
         last_price = ticker_bars[-1].close if ticker_bars else pos.entry_price
         _close_position(pos, last_price, sorted_dates[-1])
         closed_equity.append(pos)
-        cash += pos.shares * last_price
+        cash_track2 += pos.shares * last_price
 
     all_closed_equity = closed_equity
     all_fno = [t for t in fno_trades if t.exit_date is not None]

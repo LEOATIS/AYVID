@@ -27,6 +27,26 @@ _last_client_id_collision = False
 # `full_recovery_sequence` runs racing on `discard` of orphans.
 _recovery_task: asyncio.Task | None = None
 
+# IB Gateway has a soft cap of ~50 simultaneous reqMktData / order
+# operations. Bursts above that limit are silently dropped, so we
+# serialise through a process-wide semaphore. 40 leaves headroom for
+# IB's own bookkeeping requests.
+_IB_CALL_SEMAPHORE: asyncio.Semaphore | None = None
+_IB_MAX_CONCURRENT_CALLS = 40
+
+
+def get_ib_semaphore() -> asyncio.Semaphore:
+    """Process-wide cap on concurrent IB API calls.
+
+    Use ``async with get_ib_semaphore():`` around any reqMktData /
+    placeOrder / cancelOrder burst to avoid Gateway's silent drop.
+    Lazy-init so this module stays importable without an event loop.
+    """
+    global _IB_CALL_SEMAPHORE
+    if _IB_CALL_SEMAPHORE is None:
+        _IB_CALL_SEMAPHORE = asyncio.Semaphore(_IB_MAX_CONCURRENT_CALLS)
+    return _IB_CALL_SEMAPHORE
+
 
 async def connect(connect_timeout: float = 8.0, max_client_id_retries: int = 10) -> Any:
     """Establish connection to IB Gateway / TWS.
@@ -88,6 +108,30 @@ async def connect(connect_timeout: float = 8.0, max_client_id_retries: int = 10)
                 f"(clientId={client_id}, account={account or 'default'})"
             )
 
+            # Explicitly select market-data feed type. Without this call
+            # IB Gateway defaults to delayed quotes for paper accounts
+            # silently — the operator never sees a warning, and every
+            # mark in the UI is 15–20 minutes behind. Set to 1 if a live
+            # subscription is paid for, else 3 (delayed-frozen) so at
+            # least the staleness is documented in logs and visible in
+            # the mark_price_source field.
+            #   1 = real-time (paid subscription)
+            #   2 = frozen (last cached real-time)
+            #   3 = delayed (15-min)
+            #   4 = delayed-frozen
+            mkt_data_type = int(getattr(settings, "IB_MARKET_DATA_TYPE", 3) or 3)
+            try:
+                _ib.reqMarketDataType(mkt_data_type)
+                _kind = {1: "live", 2: "frozen", 3: "delayed", 4: "delayed-frozen"}.get(
+                    mkt_data_type, str(mkt_data_type)
+                )
+                log.info(
+                    f"reqMarketDataType({mkt_data_type}) → {_kind}. "
+                    f"Set IB_MARKET_DATA_TYPE in settings to override."
+                )
+            except Exception as exc:
+                log.warning(f"reqMarketDataType({mkt_data_type}) failed: {exc}")
+
             # Wait briefly for ib_async to populate the local account-values
             # cache so the first poll cycle has real data, not zeros.
             try:
@@ -137,15 +181,32 @@ def _safe_disconnect() -> None:
         pass
 
 
-async def disconnect() -> None:
+async def disconnect(*, cancel_open_orders: bool = True) -> None:
     """Cleanly disconnect from IB.
 
     Detaches the disconnectedEvent handler first so we don't trigger the
     auto-recovery loop when the disconnect was intentional (Ctrl-C, end
     of a script, etc.).
+
+    When ``cancel_open_orders=True`` (default), issues a global-cancel
+    so IB does not leave bracket orders working after the Python process
+    exits. This is the safety contract: a SIGTERM to the runner must NOT
+    leave money at risk on the broker.
     """
     global _ib, _connected
     if _ib:
+        if cancel_open_orders:
+            try:
+                _ib.reqGlobalCancel()
+                log.info("Issued reqGlobalCancel — IB will cancel all open orders.")
+                # Brief grace for IB to acknowledge before we drop the
+                # session. Bounded so SIGTERM→SIGKILL window stays sane.
+                await asyncio.sleep(0.5)
+            except Exception as exc:
+                log.error(
+                    f"reqGlobalCancel failed during disconnect: {exc}. "
+                    f"Open orders may persist on IB until manual cancel."
+                )
         try:
             _ib.disconnectedEvent -= _on_disconnect
         except Exception:

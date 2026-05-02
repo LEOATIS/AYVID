@@ -112,6 +112,20 @@ resource "google_compute_instance" "execution" {
     # look at the same source of truth.
     printf 'AYVID_LIVE_GCS_BUCKET=%s\n' "${var.project_id}-tfstate" >> $SECRETS_FILE
     printf 'AYVID_LIVE_GCS_PREFIX=%s\n' "live_state" >> $SECRETS_FILE
+
+    # Execution + orchestration knobs. These were previously implicit
+    # defaults (AUTO_EXECUTE=False, no LLM swarm); pin them here so the
+    # paper VM continuously generates LLM signals AND fills them on a
+    # paper IB account. IB_LIVE requires flipping EXECUTION_MODE +
+    # LIVE_TRADING_CONFIRMED both, deliberately.
+    printf 'EXECUTION_MODE=%s\n'             "ib_paper"  >> $SECRETS_FILE
+    printf 'AUTO_EXECUTE=%s\n'               "true"      >> $SECRETS_FILE
+    printf 'LIVE_TRADING_CONFIRMED=%s\n'     "false"     >> $SECRETS_FILE
+    printf 'CONTINUOUS_PIPELINE_ENABLED=%s\n' "true"     >> $SECRETS_FILE
+    printf 'LLM_ORCHESTRATION_ENABLED=%s\n'  "true"      >> $SECRETS_FILE
+    printf 'LLM_SIGNAL_TIMEOUT_SECONDS=%s\n' "45"        >> $SECRETS_FILE
+    printf 'LLM_MAX_CONCURRENT_SIGNALS=%s\n' "5"         >> $SECRETS_FILE
+
     chmod 600 $SECRETS_FILE
 
     # --- IB Gateway container ----------------------------------------------

@@ -1,0 +1,51 @@
+{
+  "as_of": "2026-04-29T19:03:28.280120+00:00",
+  "cash": 857718.47,
+  "positions": [
+    {
+      "ticker": "NVDA",
+      "quantity": 440,
+      "side": "LONG",
+      "avg_price": 113.76,
+      "market_price": 117.12,
+      "market_value": 51532.8,
+      "unrealized_pnl": 1478.4,
+      "realized_pnl": 0.0,
+      "entered_at": "2026-04-25T14:32:08.119000+00:00",
+      "strategy": "ai_capex_beta",
+      "source": "signal_book",
+      "rationale": "Tier-1 AI-capex beneficiary; graph-confirmed recovery pattern on sector weakness. Neo4j 2-hop supply chain dependency from TSM fab expansion confirms structural demand.",
+      "signal_key": "NVDA|ai_capex_beta__TREND_UP__CALM"
+    },
+    {
+      "ticker": "TSM",
+      "quantity": 280,
+      "side": "LONG",
+      "avg_price": 178.49,
+      "market_price": 181.58,
+      "market_value": 50842.4,
+      "unrealized_pnl": 865.2,
+      "realized_pnl": 0.0,
+      "entered_at": "2026-04-25T14:32:08.220000+00:00",
+      "strategy": "semi_supply_chain",
+      "source": "signal_book",
+      "rationale": "Semi supply-chain anchor; retains pricing power across cycles. Neo4j graph shows 47 downstream dependencies with avg revenue_dependency > 12%.",
+      "signal_key": "TSM|semi_supply_chain__TREND_UP__CALM"
+    },
+    {
+      "ticker": "KLAC",
+      "quantity": 68,
+      "side": "LONG",
+      "avg_price": 735.57,
+      "market_price": 743.29,
+      "market_value": 50543.72,
+      "unrealized_pnl": 524.96,
+      "realized_pnl": 0.0,
+      "entered_at": "2026-04-25T14:32:08.318000+00:00",
+      "strategy": "equipment_rotation",
+      "source": "signal_book",
+      "rationale": "Wafer-inspection rotation; capex tailwind from Asian fab builds. Graph-intelligence confirms 3-hop causal path from CHIPS Act funding.",
+      "signal_key": "KLAC|equipment_rotation__TREND_UP__CALM"
+    }
+  ]
+}

@@ -33,14 +33,14 @@ def _make_signal(ticker: str = "AAPL", direction: str = "LONG") -> PrecomputedSi
         direction=direction,
         instrument_type="EQUITY",
         conviction=0.8,
-        strategy_name="test_strategy",
+        strategy_name="momentum_equity_long",
         strike=None,
         expiry_date="",
         stop_loss_pct=3.0,
         take_profit_pct=6.0,
-        rationale="Test signal",
+        rationale="Test fixture signal",
         computed_at=dt.datetime.now(dt.UTC).isoformat(),
-        regime_fingerprint="test_fp",
+        regime_fingerprint="trend_up_calm",
         expected_r=2.0,
         min_r=1.5,
         entry_price_at_compute=150.0,
@@ -196,10 +196,10 @@ async def test_openbb_timeout_during_precompute():
 
     assert book.size() >= 1, "Pre-existing signals should survive OpenBB timeout"
     # P0-C: strict (ticker, regime) lookup — the fixture stores MSFT under
-    # regime_fingerprint="test_fp" (see `_make_signal`), so we must look
+    # regime_fingerprint="trend_up_calm" (see `_make_signal`), so we must look
     # up under the same fingerprint. The cross-regime fallback that used
     # to paper over this was the exact silent-bug vector audit P0-C flagged.
-    msft_sig = book.lookup("MSFT", "test_fp")
+    msft_sig = book.lookup("MSFT", "trend_up_calm")
     assert msft_sig is not None, "MSFT signal should still be in book"
 
 
@@ -267,7 +267,7 @@ async def test_total_outage_system_stays_alive():
         assert isinstance(stats, dict), "get_stats() should return a dict"
 
         # P0-C: strict regime lookup — matches the `_make_signal` fixture.
-        sig = book.lookup("NVDA", "test_fp")
+        sig = book.lookup("NVDA", "trend_up_calm")
         assert sig is not None, "Existing signals should be readable"
 
         book.save_to_disk()

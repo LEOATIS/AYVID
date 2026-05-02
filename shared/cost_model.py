@@ -18,15 +18,95 @@ References (public, as of 2026):
 
 from __future__ import annotations
 
+import datetime as dt
 from dataclasses import dataclass
 
 # ── Commission rates (per contract / per share, USD) ──────────
+# Module-level constants reflect today's IBKR Pro Tiered schedule. For
+# historical backtests use ``rates_for(as_of)`` which returns the
+# epoch-correct schedule. IBKR has changed pricing meaningfully:
+#   2018-01-01 : pre-Tiered, higher per-share, $1.00 minimum
+#   2019-06-01 : current Tiered structure, $0.0035/share, $0.35 min
+#   2022-04-01 : option contract floor reduced to $0.65 from $0.70
 COMMISSION_PER_OPTION_CONTRACT = 0.65
 COMMISSION_PER_FUTURE_CONTRACT = 0.85
 COMMISSION_PER_NON_US_FUTURE_CONTRACT = 1.20
 COMMISSION_PER_SHARE = 0.0035
 COMMISSION_MIN_EQUITY = 0.35
 COMMISSION_MAX_EQUITY_PCT = 0.01
+
+
+@dataclass(frozen=True)
+class CommissionSchedule:
+    """Snapshot of IBKR Pro Tiered rates effective on a given date.
+
+    Used for historical-cost-correct backtests. A simulated 2018 trade
+    should debit 2018's higher per-share commission, not 2026's. Pass
+    the simulated date to ``rates_for(...)`` and use the resulting
+    schedule's fields to override module-level defaults at the call
+    site. Without this, pre-2019 backtests systematically under-cost
+    by ~20–30% and inflate Sharpe by ~0.3–0.5.
+    """
+
+    effective_from: dt.date
+    per_option_contract: float
+    per_future_contract: float
+    per_non_us_future_contract: float
+    per_share: float
+    min_equity: float
+    max_equity_pct: float
+
+
+_COMMISSION_HISTORY: tuple[CommissionSchedule, ...] = (
+    # Earliest known schedule; pre-Tiered "Fixed" plus options.
+    CommissionSchedule(
+        effective_from=dt.date(2017, 1, 1),
+        per_option_contract=0.70,
+        per_future_contract=0.85,
+        per_non_us_future_contract=1.20,
+        per_share=0.005,
+        min_equity=1.00,
+        max_equity_pct=0.01,
+    ),
+    # Tiered restructuring; per-share dropped to 0.0035, min to 0.35.
+    CommissionSchedule(
+        effective_from=dt.date(2019, 6, 1),
+        per_option_contract=0.70,
+        per_future_contract=0.85,
+        per_non_us_future_contract=1.20,
+        per_share=0.0035,
+        min_equity=0.35,
+        max_equity_pct=0.01,
+    ),
+    # Option contract floor reduction.
+    CommissionSchedule(
+        effective_from=dt.date(2022, 4, 1),
+        per_option_contract=0.65,
+        per_future_contract=0.85,
+        per_non_us_future_contract=1.20,
+        per_share=0.0035,
+        min_equity=0.35,
+        max_equity_pct=0.01,
+    ),
+)
+
+
+def rates_for(as_of: dt.date | None = None) -> CommissionSchedule:
+    """Return the commission schedule effective on ``as_of`` (or today).
+
+    Picks the latest schedule whose ``effective_from`` is on-or-before
+    the requested date. With no argument returns the most recent
+    schedule — equivalent to today's behaviour.
+    """
+    if as_of is None:
+        return _COMMISSION_HISTORY[-1]
+    effective: CommissionSchedule = _COMMISSION_HISTORY[0]
+    for sched in _COMMISSION_HISTORY:
+        if sched.effective_from <= as_of:
+            effective = sched
+        else:
+            break
+    return effective
 
 # ── Slippage assumptions (in price-points, per side) ──────────
 # Index options: half a tick on the bid/ask is typical for liquid
@@ -71,9 +151,17 @@ def option_costs(
     lots: int,
     multiplier: float,
     usd_rate: float,
+    *,
+    as_of: dt.date | None = None,
 ) -> TradeCosts:
-    """Round-trip cost for an index option (single leg)."""
-    commission = 2 * COMMISSION_PER_OPTION_CONTRACT * lots
+    """Round-trip cost for an index option (single leg).
+
+    When ``as_of`` is supplied, uses the IBKR commission schedule
+    effective on that date instead of today's. This is what makes
+    historical backtests cost-correct.
+    """
+    sched = rates_for(as_of)
+    commission = 2 * sched.per_option_contract * lots
     slip_pct = SLIPPAGE_OPTION_PCT_OF_PREMIUM
     if underlying in ILLIQUID_INDEX_SYMBOLS:
         slip_pct *= ILLIQUID_SLIPPAGE_MULTIPLIER
@@ -94,9 +182,12 @@ def spread_costs(
     lots: int,
     multiplier: float,
     usd_rate: float,
+    *,
+    as_of: dt.date | None = None,
 ) -> TradeCosts:
     """Round-trip cost for a vertical spread (two legs each side)."""
-    commission = 4 * COMMISSION_PER_OPTION_CONTRACT * lots
+    sched = rates_for(as_of)
+    commission = 4 * sched.per_option_contract * lots
     slip_pct = SLIPPAGE_OPTION_PCT_OF_PREMIUM * 1.5
     if underlying in ILLIQUID_INDEX_SYMBOLS:
         slip_pct *= ILLIQUID_SLIPPAGE_MULTIPLIER
@@ -117,12 +208,15 @@ def future_costs(
     lots: int,
     multiplier: float,
     usd_rate: float,
+    *,
+    as_of: dt.date | None = None,
 ) -> TradeCosts:
     """Round-trip cost for an index future."""
+    sched = rates_for(as_of)
     per_contract = (
-        COMMISSION_PER_FUTURE_CONTRACT
+        sched.per_future_contract
         if _is_us_index(underlying)
-        else COMMISSION_PER_NON_US_FUTURE_CONTRACT
+        else sched.per_non_us_future_contract
     )
     commission = 2 * per_contract * lots
     slip_pct = SLIPPAGE_FUTURE_PCT_OF_PRICE
@@ -142,17 +236,21 @@ def equity_costs(
     entry_price: float,
     exit_price: float,
     shares: int,
+    *,
+    as_of: dt.date | None = None,
 ) -> TradeCosts:
     """Round-trip cost for a single equity position.
 
-    Applies IBKR Tiered: $0.0035/share, $0.35 min per side,
-    capped at 1% of notional per side.
+    Uses the IBKR Tiered schedule effective on ``as_of`` (or today's
+    when omitted). 2018 backtests should pass the simulated date so
+    the higher pre-Tiered per-share rate is applied.
     """
+    sched = rates_for(as_of)
 
     def _side_commission(price: float) -> float:
-        raw = COMMISSION_PER_SHARE * shares
-        cap = COMMISSION_MAX_EQUITY_PCT * price * shares
-        return min(max(raw, COMMISSION_MIN_EQUITY), cap)
+        raw = sched.per_share * shares
+        cap = sched.max_equity_pct * price * shares
+        return min(max(raw, sched.min_equity), cap)
 
     commission = _side_commission(entry_price) + _side_commission(exit_price)
     slip_entry = entry_price * SLIPPAGE_EQUITY_PCT_OF_PRICE * shares

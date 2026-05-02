@@ -27,12 +27,21 @@ Design rules:
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from shared.config import settings
 from shared.logger import get_logger
 
 log = get_logger("shared.llm")
+
+
+# Per-call wall-clock timeout. A stalled stream from either provider
+# would otherwise block an entire agent chain forever; the LangGraph
+# pipeline has no global timeout so this single-call ceiling is what
+# bounds the worst case. 30s is comfortably above p99 normal latency
+# (~3–6s) and well below the orchestrator's per-decision budget.
+DEFAULT_LLM_TIMEOUT_SEC: float = 30.0
 
 
 _openai_client: Any = None
@@ -80,33 +89,45 @@ async def json_call(
     max_tokens: int = 1500,
     temperature: float = 0.0,
     model: str | None = None,
+    timeout: float | None = None,
 ) -> str:
     """Run a JSON-mode completion against the configured provider.
 
     Returns the raw JSON string (no post-parsing). Callers that need a
     dict should wrap with `_parse_llm_json` helpers at their use-site —
     those are free to raise or fall back on malformed output.
+
+    Every call is wrapped in ``asyncio.wait_for(timeout=...)`` so a
+    stalled provider cannot block the orchestrator; on timeout we
+    raise ``asyncio.TimeoutError`` and let the caller fall back.
     """
+    deadline = timeout if timeout is not None else DEFAULT_LLM_TIMEOUT_SEC
     if _use_anthropic():
         client = _get_anthropic_client()
-        response = await client.messages.create(
-            model=model or settings.ANTHROPIC_MODEL,
-            max_tokens=max_tokens,
-            system=system + _JSON_ONLY_SUFFIX,
-            messages=[{"role": "user", "content": user}],
-            temperature=temperature,
+        response = await asyncio.wait_for(
+            client.messages.create(
+                model=model or settings.ANTHROPIC_MODEL,
+                max_tokens=max_tokens,
+                system=system + _JSON_ONLY_SUFFIX,
+                messages=[{"role": "user", "content": user}],
+                temperature=temperature,
+            ),
+            timeout=deadline,
         )
         return response.content[0].text if response.content else "{}"
 
     client = _get_openai_client()
-    response = await client.chat.completions.create(
-        model=model or settings.OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        temperature=temperature,
-        response_format={"type": "json_object"},
+    response = await asyncio.wait_for(
+        client.chat.completions.create(
+            model=model or settings.OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=temperature,
+            response_format={"type": "json_object"},
+        ),
+        timeout=deadline,
     )
     return response.choices[0].message.content or "{}"
 
@@ -121,29 +142,37 @@ async def chat(
     max_tokens: int = 2000,
     temperature: float = 0.0,
     model: str | None = None,
+    timeout: float | None = None,
 ) -> str:
     """Run a free-form (non-JSON) completion. Used by agents that need
     natural-language rationale (auditor, pattern-agent vision, etc.).
     """
+    deadline = timeout if timeout is not None else DEFAULT_LLM_TIMEOUT_SEC
     if _use_anthropic():
         client = _get_anthropic_client()
-        response = await client.messages.create(
-            model=model or settings.ANTHROPIC_MODEL,
-            max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-            temperature=temperature,
+        response = await asyncio.wait_for(
+            client.messages.create(
+                model=model or settings.ANTHROPIC_MODEL,
+                max_tokens=max_tokens,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+                temperature=temperature,
+            ),
+            timeout=deadline,
         )
         return response.content[0].text if response.content else ""
 
     client = _get_openai_client()
-    response = await client.chat.completions.create(
-        model=model or settings.OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        temperature=temperature,
+    response = await asyncio.wait_for(
+        client.chat.completions.create(
+            model=model or settings.OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=temperature,
+        ),
+        timeout=deadline,
     )
     return response.choices[0].message.content or ""
 

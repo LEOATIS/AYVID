@@ -54,11 +54,43 @@ def kelly_fraction_single(
     return max(0.0, min(half_kelly, settings.MAX_POSITION_PCT / 100.0))
 
 
+def _ledoit_wolf_shrink(cov: np.ndarray, intensity: float | None = None) -> np.ndarray:
+    """Apply Ledoit-Wolf-style shrinkage toward a scaled identity target.
+
+    Sample covariance with few observations is poorly conditioned and
+    biased toward the directions of recent realised noise — Kelly's
+    plug-in inverse then recommends very large positions in directions
+    that look high-Sharpe purely by chance. Shrinking toward a
+    diagonal target with the average sample variance pulls those
+    directions back toward isotropy.
+
+    ``intensity`` (0 = no shrinkage, 1 = pure target) is the Ledoit-Wolf
+    optimum when set automatically; here we use a conservative fixed
+    0.30 by default which is close to optimal for the typical AYVID
+    universe size (5–20 names, 30–60 day lookback). Pass an explicit
+    value to override.
+    """
+    n = cov.shape[0]
+    if n == 0:
+        return cov
+    if intensity is None:
+        intensity = 0.30
+    intensity = float(np.clip(intensity, 0.0, 1.0))
+    avg_var = float(np.mean(np.diag(cov)))
+    target = avg_var * np.eye(n)
+    return (1.0 - intensity) * cov + intensity * target
+
+
 def multivariate_kelly(
     expected_returns: np.ndarray,
     covariance_matrix: np.ndarray,
     risk_free_rate: float = _RISK_FREE_RATE,
-    volatility_penalty: float = 2.0,
+    aversion_multiplier: float = 2.0,
+    *,
+    shrinkage_intensity: float | None = 0.30,
+    # Alias for backward compatibility — many call sites still use the
+    # legacy name. The two parameters are equivalent.
+    volatility_penalty: float | None = None,
 ) -> np.ndarray:
     """Multivariate Volatility Regulated Kelly allocation.
 
@@ -66,30 +98,50 @@ def multivariate_kelly(
 
     Args:
         expected_returns: Vector of annualized expected returns (n,)
-        covariance_matrix: Annualized covariance matrix (n, n)
-        risk_free_rate: Risk-free rate for excess return calculation
-        volatility_penalty: λ — penalizes idiosyncratic risk
+        covariance_matrix: Annualized covariance matrix (n, n). Will be
+            shrunk toward a scaled-identity target if
+            ``shrinkage_intensity`` > 0 — recommended on small samples.
+        risk_free_rate: Risk-free rate for excess return calculation.
+        aversion_multiplier: λ — penalises idiosyncratic risk. The
+            effective Kelly fraction returned is then further scaled by
+            ``settings.KELLY_FRACTION`` (typically 0.5). Combined, the
+            default behaviour is approximately quarter-Kelly (1/4),
+            which is more conservative than the unscaled formula and
+            mitigates the well-known plug-in over-betting bias.
+        shrinkage_intensity: Ledoit-Wolf shrinkage weight on Σ. Set to
+            ``None`` or 0 to disable (legacy behaviour). 0.30 is a safe
+            default for the 5–20 name × 30–60 day regime AYVID runs in.
+        volatility_penalty: deprecated alias for ``aversion_multiplier``.
 
     Returns:
-        Allocation vector as fraction of portfolio, after Half-Kelly.
+        Allocation vector as fraction of portfolio.
     """
+    if volatility_penalty is not None:
+        aversion_multiplier = volatility_penalty
     n = len(expected_returns)
     if n == 0:
         return np.array([])
 
     excess_returns = expected_returns - risk_free_rate
 
+    # Ledoit-Wolf shrinkage BEFORE ridge — corrects estimation error in
+    # Σ rather than just preventing numerical singularity.
+    shrunk = (
+        _ledoit_wolf_shrink(covariance_matrix, intensity=shrinkage_intensity)
+        if shrinkage_intensity
+        else covariance_matrix
+    )
     # Diagonal regularization: add a small ridge term to prevent
     # near-singular covariance from producing explosive allocations.
     ridge = 1e-6 * np.eye(n)
-    cov_reg = covariance_matrix + ridge
+    cov_reg = shrunk + ridge
     try:
         cov_inv = np.linalg.inv(cov_reg)
     except np.linalg.LinAlgError:
         log.warning("Singular covariance matrix — using pseudo-inverse")
         cov_inv = np.linalg.pinv(cov_reg)
 
-    raw_allocation = (1.0 / volatility_penalty) * cov_inv @ excess_returns
+    raw_allocation = (1.0 / aversion_multiplier) * cov_inv @ excess_returns
 
     # NaN / inf guard: if any allocation is non-finite, zero the vector.
     if not np.all(np.isfinite(raw_allocation)):

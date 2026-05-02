@@ -43,6 +43,16 @@ from shared.logger import get_logger
 log = get_logger("walkforward")
 
 
+class _NoOpCtx:
+    """Trivial context manager used when no priors override is needed."""
+
+    def __enter__(self) -> _NoOpCtx:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        return None
+
+
 # ── Shock-driven helpers ─────────────────────────────────────────
 def _filter_to_cached(tickers: list[str], indices: list[str]) -> tuple[list[str], list[str]]:
     """Drop scenario tickers/indices we don't have in data_store/.
@@ -134,15 +144,79 @@ class WindowResult:
     final_equity: float
     total_return_pct: float
     sharpe_ratio: float
-    max_drawdown_pct: float
-    win_rate: float
-    profit_factor: float
-    total_trades: int
-    fno_trades: int
-    equity_trades: int
-    fno_pnl: float
-    cost_drag_pct: float
+    sharpe_ci_low: float = 0.0
+    sharpe_ci_high: float = 0.0
+    sharpe_ci_spans_zero: bool = True
+    max_drawdown_pct: float = 0.0
+    win_rate: float = 0.0
+    profit_factor: float = 0.0
+    total_trades: int = 0
+    fno_trades: int = 0
+    equity_trades: int = 0
+    fno_pnl: float = 0.0
+    cost_drag_pct: float = 0.0
     notes: str = ""
+
+
+def _annualised_sharpe(daily_returns: np.ndarray) -> float:
+    if daily_returns.size < 2:
+        return 0.0
+    sd = float(np.std(daily_returns, ddof=1))
+    if sd < 1e-12:
+        return 0.0
+    return float(np.mean(daily_returns) / sd) * float(np.sqrt(252))
+
+
+def block_bootstrap_sharpe_ci(
+    daily_returns: np.ndarray,
+    *,
+    block_size: int = 5,
+    n_resamples: int = 500,
+    seed: int = 42,
+) -> tuple[float, float]:
+    """95% confidence interval on the annualised Sharpe via stationary
+    block bootstrap.
+
+    The naive ``mean/std × sqrt(252)`` Sharpe estimate assumes IID
+    Gaussian returns, which is wrong on three counts: returns are
+    autocorrelated (mean-reverting at 1–5 day horizons), heavy-tailed
+    (kurtosis well above 3), and asymmetric under stop-loss exits
+    (positive skew). The block bootstrap respects autocorrelation by
+    resampling contiguous blocks of length ``block_size``.
+
+    Returns ``(lower, upper)`` of the empirical 2.5%/97.5% percentiles.
+    """
+    n = daily_returns.size
+    if n < block_size * 2:
+        return (0.0, 0.0)
+    rng = np.random.default_rng(seed)
+    sharpes = np.empty(n_resamples, dtype=float)
+    n_blocks = max(1, n // block_size)
+    for i in range(n_resamples):
+        # Sample block start indices uniformly with replacement.
+        starts = rng.integers(0, n - block_size + 1, size=n_blocks)
+        sample = np.concatenate([daily_returns[s : s + block_size] for s in starts])
+        sharpes[i] = _annualised_sharpe(sample)
+    return (float(np.quantile(sharpes, 0.025)), float(np.quantile(sharpes, 0.975)))
+
+
+def _daily_returns_from_curve(curve: list[dict[str, Any]] | list[float]) -> np.ndarray:
+    """Best-effort extraction of a daily-return series from the
+    backtest's equity curve. Tolerates the two on-disk shapes
+    (list[dict{equity}] and list[float]) we have seen historically.
+    """
+    if not curve:
+        return np.empty(0, dtype=float)
+    if isinstance(curve[0], dict):
+        values = np.asarray(
+            [float(p.get("equity", p.get("value", 0.0))) for p in curve],
+            dtype=float,
+        )
+    else:
+        values = np.asarray(curve, dtype=float)
+    if values.size < 2 or np.any(values[:-1] <= 0):
+        return np.empty(0, dtype=float)
+    return np.diff(values) / values[:-1]
 
 
 @dataclass
@@ -222,6 +296,7 @@ async def run_walk_forward(
     output_dir: Path = Path("."),
     min_conviction: float | None = None,
     report_filename: str = "walkforward_report",
+    require_point_in_time_universe: bool = False,
 ) -> WalkForwardSummary:
     """Run an out-of-sample walk-forward across a historical span.
 
@@ -244,16 +319,55 @@ async def run_walk_forward(
     results: list[WindowResult] = []
     compounded_equity = initial_equity
 
+    # Per-window priors. Each window gets its own priors file built from
+    # outcomes whose timestamp is strictly before the window start. This
+    # is what makes the walk-forward genuinely out-of-sample with respect
+    # to the priors layer; calibrating priors once on the full span (the
+    # legacy behaviour) leaks future information into the gates.
+    from backtesting.trade_outcomes import (
+        DEFAULT_OUTCOMES_PATH,
+        rebuild_priors_from_outcomes,
+    )
+    from graph_intelligence.agents.strategy_orchestrator import priors_override
+
+    priors_dir = output_dir / "priors_per_window"
+    priors_dir.mkdir(parents=True, exist_ok=True)
+
     for i, (ws, we) in enumerate(windows, 1):
         log.info(f"[{i}/{len(windows)}] window {ws} → {we}")
+        window_priors_path = priors_dir / f"priors_{ws.isoformat()}.json"
         try:
-            r = await run_backtest(
-                tickers=universe,
-                initial_equity=initial_equity,
-                start_date=ws.isoformat(),
-                end_date=we.isoformat(),
-                min_conviction=min_conviction,
+            window_start_utc = dt.datetime.combine(ws, dt.time.min, tzinfo=dt.UTC)
+            # Use only outcomes that pre-date the window start.
+            try:
+                rebuild_priors_from_outcomes(
+                    outcomes_path=DEFAULT_OUTCOMES_PATH,
+                    priors_path=window_priors_path,
+                    until=window_start_utc,
+                )
+            except Exception as exc:
+                log.warning(
+                    f"per-window priors rebuild failed ({exc}); "
+                    f"window will use whatever priors.json existed."
+                )
+        except Exception as exc:
+            log.warning(f"priors path setup failed: {exc}")
+
+        try:
+            ctx = (
+                priors_override(window_priors_path)
+                if window_priors_path.exists()
+                else _NoOpCtx()
             )
+            with ctx:
+                r = await run_backtest(
+                    tickers=universe,
+                    initial_equity=initial_equity,
+                    start_date=ws.isoformat(),
+                    end_date=we.isoformat(),
+                    min_conviction=min_conviction,
+                    require_point_in_time_universe=require_point_in_time_universe,
+                )
         except Exception as exc:
             log.warning(f"window {ws} → {we} failed: {exc}")
             results.append(
@@ -279,6 +393,15 @@ async def run_walk_forward(
 
         tx = r.extra_stats.get("transaction_costs", {}) or {}
         compounded_equity *= 1.0 + r.total_return_pct / 100.0
+        # Bootstrap 95% CI on the annualised Sharpe. Windows whose CI
+        # spans zero are flagged so the user can downweight them — the
+        # point estimate is unreliable on those.
+        rets = _daily_returns_from_curve(r.equity_curve)
+        if rets.size >= 10:
+            ci_low, ci_high = block_bootstrap_sharpe_ci(rets)
+        else:
+            ci_low, ci_high = 0.0, 0.0
+        ci_spans_zero = (ci_low <= 0.0 <= ci_high) or (ci_low == ci_high == 0.0)
         results.append(
             WindowResult(
                 start_date=ws.isoformat(),
@@ -287,6 +410,9 @@ async def run_walk_forward(
                 final_equity=round(r.final_equity, 2),
                 total_return_pct=round(r.total_return_pct, 2),
                 sharpe_ratio=round(r.sharpe_ratio, 2),
+                sharpe_ci_low=round(ci_low, 2),
+                sharpe_ci_high=round(ci_high, 2),
+                sharpe_ci_spans_zero=ci_spans_zero,
                 max_drawdown_pct=round(r.max_drawdown_pct, 2),
                 win_rate=round(r.win_rate, 2),
                 profit_factor=round(r.profit_factor, 2),

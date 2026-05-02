@@ -1,0 +1,10 @@
+{
+  "mode": "ib_paper",
+  "initial_equity": 1000000.0,
+  "interval_seconds": 60,
+  "started_at": "2026-04-19T14:09:55.259676+00:00",
+  "ib_host": "127.0.0.1",
+  "ib_port": 7497,
+  "auto_execute": false,
+  "paper_trading": true
+}

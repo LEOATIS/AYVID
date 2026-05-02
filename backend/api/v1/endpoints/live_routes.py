@@ -262,7 +262,14 @@ async def positions() -> dict[str, Any]:
     Source: ``live/positions.json`` if present, else empty list.
     """
     path = LIVE_DIR / "positions.json"
-    empty = {"positions": [], "count": 0, "as_of": None, "cash": None}
+    empty = {
+        "positions": [],
+        "count": 0,
+        "as_of": None,
+        "cash": None,
+        "mode": None,
+        "max_mark_age_seconds": None,
+    }
     text = _read_text_any(path)
     if not text:
         return empty
@@ -277,6 +284,8 @@ async def positions() -> dict[str, Any]:
             "count": len(data),
             "as_of": None,
             "cash": None,
+            "mode": None,
+            "max_mark_age_seconds": None,
         }
     if not isinstance(data, dict):
         return empty
@@ -314,14 +323,28 @@ async def positions() -> dict[str, Any]:
                     "quantity": qty_num,
                     "side": "LONG" if qty_num >= 0 else "SHORT",
                     "avg_price": entry_price,
+                    "avg_cost": pos.get("avg_cost", entry_price),
                     "market_price": market_price,
+                    "mark_price_timestamp": pos.get("mark_price_timestamp"),
+                    "mark_price_source": pos.get("mark_price_source"),
+                    "mark_age_seconds": pos.get("mark_age_seconds"),
                     "market_value": mv,
                     "unrealized_pnl": pos.get("unrealized_pnl", round(upnl, 2)),
                     "realized_pnl": pos.get("realized_pnl", 0.0),
+                    "stop_loss_price": pos.get("stop_loss_price"),
+                    "take_profit_price": pos.get("take_profit_price"),
+                    "stop_loss_pct": pos.get("stop_loss_pct"),
+                    "take_profit_pct": pos.get("take_profit_pct"),
+                    "asset_class": pos.get("asset_class"),
+                    "contract_multiplier": pos.get("contract_multiplier"),
+                    "margin_used": pos.get("margin_used"),
+                    "notional": pos.get("notional"),
                     "entered_at": pos.get("entered_at"),
                     "strategy": pos.get("strategy"),
+                    "strategy_name": pos.get("strategy_name"),
                     "source": pos.get("source"),
                     "rationale": pos.get("rationale"),
+                    "signal_key": pos.get("signal_key"),
                 }
             )
 
@@ -330,32 +353,115 @@ async def positions() -> dict[str, Any]:
         "count": len(rows),
         "as_of": data.get("as_of") or data.get("timestamp"),
         "cash": data.get("cash"),
+        "mode": data.get("mode"),
+        "max_mark_age_seconds": data.get("max_mark_age_seconds"),
     }
+
+
+_SIGNAL_DTO_KEYS = (
+    # Identity
+    "ticker", "asset_class", "instrument_type", "strategy_name", "direction",
+    # Pricing
+    "entry_price", "current_price", "stop_loss_price", "take_profit_price",
+    "stop_loss_pct", "take_profit_pct", "risk_reward_ratio",
+    "distance_to_entry_pct", "entry_zone_low", "entry_zone_high",
+    "entry_price_at_compute",
+    # Sizing
+    "quantity", "notional_value", "risk_amount", "kelly_fraction",
+    "lot_size", "contract_multiplier", "pip_value", "margin_required",
+    # Options
+    "strike", "expiry_date", "option_type", "leg_2_strike", "leg_2_expiry",
+    "second_leg",
+    # Quality
+    "conviction", "factor_score", "expected_r", "min_r", "rationale",
+    # Readiness
+    "readiness_status", "readiness_reason", "readiness_checked_at",
+    # Timestamps + metadata
+    "computed_at", "expires_at", "ttl_minutes", "regime_fingerprint",
+    "thesis_signature", "tier3_shock", "price_at_compute",
+)
+
+
+def _signal_to_dto(raw: dict[str, Any]) -> dict[str, Any]:
+    """Project the disk-shape signal into the public API DTO.
+
+    Read-only — never mutates the input. Missing fields are filled
+    with sensible defaults (``None`` / ``0`` / ``"WAITING"``) so the
+    frontend type-system has a stable shape regardless of which
+    pipeline-version wrote the entry.
+    """
+    out: dict[str, Any] = {}
+    for k in _SIGNAL_DTO_KEYS:
+        out[k] = raw.get(k)
+    # Default readiness for legacy entries that pre-date the field.
+    if not out.get("readiness_status"):
+        out["readiness_status"] = "WAITING"
+    if out.get("readiness_reason") is None:
+        out["readiness_reason"] = ""
+    return out
 
 
 @router.get("/signals")
 async def signals() -> dict[str, Any]:
-    """Latest pre-computed signal book entries.
+    """Latest pre-computed signal book entries with readiness state.
 
-    Source: ``data_store/signal_book.json``.
+    Source: ``data_store/signal_book.json``. Each entry carries
+    everything the trading view needs — entry price, SL/TP, quantity,
+    notional, R:R, plus the live readiness gate (READY / WAITING /
+    EXPIRED / CANCELLED) maintained by ``TradeReadinessChecker``.
     """
     text = _read_text_any(SIGNAL_BOOK)
     if not text:
-        return {"signals": [], "count": 0}
+        return {
+            "signals": [],
+            "count": 0,
+            "ready_count": 0,
+            "waiting_count": 0,
+            "expired_count": 0,
+            "cancelled_count": 0,
+            "total": 0,
+            "snapshot_at": None,
+        }
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        return {"signals": [], "count": 0}
-    signals_list: list[dict[str, Any]] = []
+        return {
+            "signals": [],
+            "count": 0,
+            "ready_count": 0,
+            "waiting_count": 0,
+            "expired_count": 0,
+            "cancelled_count": 0,
+            "total": 0,
+            "snapshot_at": None,
+        }
+
+    raw_list: list[dict[str, Any]] = []
     if isinstance(data, dict):
-        signals_list = list(data.values())
+        raw_list = [r for r in data.values() if isinstance(r, dict)]
     elif isinstance(data, list):
-        signals_list = data
-    signals_list.sort(
-        key=lambda s: s.get("computed_at", "") if isinstance(s, dict) else "",
-        reverse=True,
-    )
-    return {"signals": signals_list, "count": len(signals_list)}
+        raw_list = [r for r in data if isinstance(r, dict)]
+
+    dtos = [_signal_to_dto(r) for r in raw_list]
+    dtos.sort(key=lambda s: s.get("computed_at") or "", reverse=True)
+
+    ready = sum(1 for s in dtos if s.get("readiness_status") == "READY")
+    waiting = sum(1 for s in dtos if s.get("readiness_status") == "WAITING")
+    expired = sum(1 for s in dtos if s.get("readiness_status") == "EXPIRED")
+    cancelled = sum(1 for s in dtos if s.get("readiness_status") == "CANCELLED")
+
+    import datetime as _dt
+
+    return {
+        "signals": dtos,
+        "count": len(dtos),
+        "ready_count": ready,
+        "waiting_count": waiting,
+        "expired_count": expired,
+        "cancelled_count": cancelled,
+        "total": len(dtos),
+        "snapshot_at": _dt.datetime.now(_dt.UTC).isoformat(),
+    }
 
 
 def _list_backtest_files_gcs() -> list[tuple[str, str]]:
@@ -680,6 +786,117 @@ async def get_risk_status():
 
     mgr = get_portfolio_risk_manager()
     return mgr.get_stats()
+
+
+# ── SSE Signal Readiness Stream ─────────────────────────────────────
+
+
+@router.get("/signals/stream")
+async def signals_stream():
+    """Server-Sent Events stream of signal readiness changes.
+
+    Polls ``data_store/signal_book.json`` every 2 seconds and emits
+    one event per ticker whose ``readiness_status`` flipped since
+    the last tick (e.g. WAITING → READY when the live mark crosses
+    into the entry zone). The frontend Signals page subscribes to
+    this stream so the UI reflects readiness in near-real-time
+    without polling the full book.
+    """
+    import asyncio as _asyncio
+
+    async def event_generator():
+        last_states: dict[str, str] = {}
+        # Send a snapshot of current readiness on connect so the UI
+        # can flash any signals that are already READY.
+        snapshot = await signals()
+        for sig in snapshot.get("signals", []):
+            ticker = sig.get("ticker") or ""
+            fp = sig.get("regime_fingerprint") or ""
+            key = f"{ticker}|{fp}"
+            status = sig.get("readiness_status") or "WAITING"
+            last_states[key] = status
+            yield (
+                "data: "
+                + json.dumps(
+                    {
+                        "type": "snapshot",
+                        "ticker": ticker,
+                        "asset_class": sig.get("asset_class"),
+                        "direction": sig.get("direction"),
+                        "readiness_status": status,
+                        "readiness_reason": sig.get("readiness_reason"),
+                        "current_price": sig.get("current_price"),
+                        "entry_price": sig.get("entry_price"),
+                        "stop_loss_price": sig.get("stop_loss_price"),
+                        "take_profit_price": sig.get("take_profit_price"),
+                        "quantity": sig.get("quantity"),
+                        "distance_to_entry_pct": sig.get("distance_to_entry_pct"),
+                        "conviction": sig.get("conviction"),
+                        "strategy_name": sig.get("strategy_name"),
+                    }
+                )
+                + "\n\n"
+            )
+
+        # Heartbeat / diff loop. Keep-alive every 30s in case nothing
+        # has changed; readiness diffs are emitted as they happen.
+        while True:
+            await _asyncio.sleep(2.0)
+            try:
+                snap = await signals()
+            except Exception as exc:
+                log.warning(f"signals_stream snapshot failed: {exc}")
+                continue
+            seen: set[str] = set()
+            for sig in snap.get("signals", []):
+                ticker = sig.get("ticker") or ""
+                fp = sig.get("regime_fingerprint") or ""
+                key = f"{ticker}|{fp}"
+                seen.add(key)
+                status = sig.get("readiness_status") or "WAITING"
+                if last_states.get(key) == status:
+                    continue
+                last_states[key] = status
+                yield (
+                    "data: "
+                    + json.dumps(
+                        {
+                            "type": "readiness_change",
+                            "ticker": ticker,
+                            "asset_class": sig.get("asset_class"),
+                            "direction": sig.get("direction"),
+                            "readiness_status": status,
+                            "readiness_reason": sig.get("readiness_reason"),
+                            "current_price": sig.get("current_price"),
+                            "entry_price": sig.get("entry_price"),
+                            "stop_loss_price": sig.get("stop_loss_price"),
+                            "take_profit_price": sig.get("take_profit_price"),
+                            "quantity": sig.get("quantity"),
+                            "distance_to_entry_pct": sig.get("distance_to_entry_pct"),
+                            "conviction": sig.get("conviction"),
+                            "strategy_name": sig.get("strategy_name"),
+                        }
+                    )
+                    + "\n\n"
+                )
+            # Drop stale keys that no longer appear in the book so the
+            # in-memory dict doesn't grow unbounded across long runs.
+            for k in list(last_states.keys()):
+                if k not in seen:
+                    del last_states[k]
+
+            # Keep-alive ping so proxies don't kill idle connections.
+            yield 'data: {"type":"heartbeat"}\n\n'
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ── SSE Agent Activity Feed ─────────────────────────────────────────

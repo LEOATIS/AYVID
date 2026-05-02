@@ -196,8 +196,8 @@ async def _compute_quant_block(ticker: str) -> str:
 
         from data_primitives.extractors.openbb_client import fetch_ohlcv
         from data_primitives.loaders.hopsworks_sync import get_cached_features
-        from execution_engine.math.regime import classify_regime
-        from execution_engine.math.signals import score_signal
+        from shared.quant.regime import classify_regime
+        from shared.quant.signals import score_signal
 
         bars = await fetch_ohlcv(ticker, days=90)
         if len(bars) < 30:

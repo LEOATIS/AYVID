@@ -205,8 +205,11 @@ def compute_bracket_levels(
 
     target_r = _target_r_for_signal(signal)
 
-    # Fallback path — no usable history for ATR.
-    if not bars or len(bars) < 15 or entry_price <= 0:
+    # Fallback path — no usable history for ATR. Penny stocks (price
+    # below $0.50) are routed here too; ATR divisions on near-zero
+    # prices produce absurd stop multipliers, and IB rejects most
+    # orders on sub-$1 names anyway.
+    if not bars or len(bars) < 15 or entry_price <= 0.50:
         legacy_stop = float(settings.BRACKET_STOP_LOSS_PCT)
         legacy_tp = float(
             settings.BRACKET_TAKE_PROFIT_PCT_LONG_HORIZON

@@ -286,7 +286,7 @@ function Comparison() {
       them: { title: "Human in the loop",        body: "Analysts hand-off to traders. Latency in seconds-to-minutes. Behavioural drift in execution." },
     },
     {
-      us:   { title: "Verifiable in operations",  body: "Live shock catalog, walk-forward equity curves, runner status — all reproducible from the console." },
+      us:   { title: "Verifiable in operations",  body: "Live shock catalog, walk-forward fund performance, runner status — all reproducible from the console." },
       them: { title: "Quarterly tear sheets",     body: "Aggregated, smoothed, lagged. Hard to attribute alpha to actual decisions." },
     },
   ];
