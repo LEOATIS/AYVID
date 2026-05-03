@@ -1013,6 +1013,39 @@ async def _shadow_cycle(state: ShadowState) -> EquitySnapshot:
             "mark_age_seconds": round(age_seconds, 1) if age_seconds is not None else None,
         }
 
+    # Live-quote overlay for open positions. The OHLCV loop above only
+    # marks the ~30 symbols present in data_store/. Positions on tickers
+    # that AYVID does not ingest locally (ASML, TSM, IFNNY, MC.PA, …)
+    # would otherwise fall through to mark_price_source=fallback_entry_price
+    # and the Fund Performance chart would sit dead flat at $1M because
+    # no MtM can move. Even for US tickers we have OHLCV for, the file
+    # is EOD-stale by hours during the trading day; yfinance fast_info
+    # gives a sub-minute mark. We fetch concurrently and let any
+    # individual failure fall through to the OHLCV/entry-price path.
+    from data_primitives.extractors.live_quote import fetch_live_quote
+    open_position_marks = [
+        (sym, str(pos.get("asset_class") or "EQUITY"))
+        for sym, pos in state.positions.items()
+    ]
+    if open_position_marks:
+        try:
+            live_results = await asyncio.gather(
+                *(fetch_live_quote(sym, ac) for sym, ac in open_position_marks),
+                return_exceptions=True,
+            )
+        except Exception as exc:
+            log.debug(f"live_quote_overlay_failed cycle={state.cycle}: {exc}")
+            live_results = [None] * len(open_position_marks)
+        for (sym, _ac), price in zip(open_position_marks, live_results):
+            if isinstance(price, Exception) or price is None or price <= 0:
+                continue
+            latest_close[sym] = float(price)
+            mark_meta[sym] = {
+                "mark_price_timestamp": dt.datetime.now(dt.UTC).isoformat(),
+                "mark_price_source": "live_quote",
+                "mark_age_seconds": 0.0,
+            }
+
     new_fills: list[dict[str, Any]] = []
 
     # 0) Close any position that breached its SL/TP since the last
