@@ -48,20 +48,42 @@ echo "[vm_redeploy] pulling image..."
 sudo docker --config "$DOCKER_CONFIG_DIR" pull "$IMAGE"
 
 # Refresh secrets file in case any rotated since boot.
+#
+# History: the prior implementation parsed the Secret Manager JSON
+# response with sed regexes assuming compact JSON ("name":"…"). The
+# real API returns pretty-printed JSON ("name": "…") with whitespace
+# after every colon, so the regex matched zero secrets — every cycle
+# the runner booted with no API keys, ALL LLM calls 401'd, and the
+# pipeline minted 0 signals from real news. (May 3 incident, after
+# the OpenBB chown fix unmasked the LLM auth failure.) Switched to
+# python3 for both the listing and the per-secret access response —
+# any whitespace / paginated / re-ordered response shape works as
+# long as the JSON is valid. python3 is already used elsewhere in
+# this script (URL-encoding) so no new dep on COS.
+#
+# Requires the VM service account to have BOTH
+# roles/secretmanager.secretAccessor (read values) AND
+# roles/secretmanager.viewer (list — secrets.list permission). The
+# accessor role alone returns 403 on the `secrets` list endpoint.
 echo "[vm_redeploy] refreshing secrets file..."
 sudo bash -c ": > $SECRETS_FILE"
-for secret_id in $(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" \
-    "https://secretmanager.googleapis.com/v1/projects/${PROJECT}/secrets" \
-    | sed -n 's/.*"name":"projects\/[^/]*\/secrets\/\(ayvid-[^"]*\)".*/\1/p' | sort -u); do
+SECRET_IDS=$(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" \
+    "https://secretmanager.googleapis.com/v1/projects/${PROJECT}/secrets?pageSize=200" \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); [print(n["name"].split("/")[-1]) for n in d.get("secrets",[]) if n["name"].split("/")[-1].startswith("ayvid-")]')
+SECRET_COUNT=$(echo "$SECRET_IDS" | grep -c .)
+echo "[vm_redeploy] discovered ${SECRET_COUNT} ayvid-* secrets"
+SECRET_OK=0; SECRET_FAIL=0
+for secret_id in $SECRET_IDS; do
     env_name=$(echo "$secret_id" | sed 's/^ayvid-//' | tr '[:lower:]-' '[:upper:]_')
     encoded=$(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" \
         "https://secretmanager.googleapis.com/v1/projects/${PROJECT}/secrets/${secret_id}/versions/latest:access" \
-        | tr -d '\n' \
-        | sed -n 's/.*"data"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-    [ -z "$encoded" ] && continue
+        | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("payload",{}).get("data",""))')
+    if [ -z "$encoded" ]; then SECRET_FAIL=$((SECRET_FAIL+1)); continue; fi
     value=$(echo "$encoded" | base64 -d)
     printf '%s=%s\n' "$env_name" "$value" | sudo tee -a "$SECRETS_FILE" >/dev/null
+    SECRET_OK=$((SECRET_OK+1))
 done
+echo "[vm_redeploy] secrets written ok=${SECRET_OK} failed=${SECRET_FAIL}"
 
 # Plaintext config env vars. compute.tf writes these on FIRST boot only;
 # without re-injecting them on every redeploy, vm_redeploy.sh's

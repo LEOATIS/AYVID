@@ -26,6 +26,17 @@ live/
 *.png
 *.svg
 
+# Runtime state — must come from GCS / the VM bind-mount, never the
+# image. Baking signal_book.json into the Cloud Run image meant
+# `_read_text_any` found a stale local copy first and never queried
+# GCS, so the dashboard kept serving 7 zombie READY signals from an
+# April backfill weeks after they should have expired. Reference data
+# in data_store/ (ohlcv, intraday, indices) is still bundled because
+# the bind-mount seeding step in vm_redeploy.sh depends on it.
+data_store/signal_book.json
+data_store/signal_book.json.bak
+data_store/signal_history.jsonl
+
 # Frontend (built separately by frontend/Dockerfile)
 frontend/
 

@@ -92,15 +92,22 @@ resource "google_compute_instance" "execution" {
     # Pull every secret into env-file form for the container. We hit
     # the Secret Manager REST API directly with the same access token
     # because gcloud is unavailable on COS.
+    #
+    # JSON parsing uses python3 (already present on COS) instead of a
+    # sed regex. The previous regex assumed compact `"data":"..."`
+    # JSON, but the API returns pretty-printed `"data": "..."` with a
+    # space after the colon — so the sed never matched and EVERY
+    # secret silently fell through to "empty payload", leaving the
+    # runner with zero API keys. Same fix applied in
+    # scripts/vm_redeploy.sh — see the comment block there for the
+    # incident history.
     SECRETS_FILE=/var/run/ayvid.env
     : > $SECRETS_FILE
     for secret_id in ${join(" ", [for s in google_secret_manager_secret.ayvid : s.secret_id])}; do
         env_name=$(echo "$secret_id" | sed 's/^ayvid-//' | tr '[:lower:]-' '[:upper:]_')
-        # `access` returns a JSON object with base64-encoded data; decode it.
         encoded=$(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" \
             "https://secretmanager.googleapis.com/v1/projects/$PROJECT/secrets/$secret_id/versions/latest:access" \
-            | tr -d '\n' \
-            | sed -n 's/.*"data"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("payload",{}).get("data",""))')
         if [ -z "$encoded" ]; then
             echo "WARN: secret $secret_id returned empty payload" >&2
             continue

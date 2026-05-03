@@ -194,6 +194,23 @@ resource "google_secret_manager_secret_iam_member" "backend_can_read_secrets" {
   member    = "serviceAccount:${var.service_account_email}"
 }
 
+# `secretAccessor` lets the runtime read individual known-name
+# secrets but NOT enumerate the secret list — the
+# `secrets.list` permission lives in `secretmanager.viewer`.
+# scripts/vm_redeploy.sh uses live API listing to discover newly-
+# added secrets without a code change, so without this binding
+# every redeploy 403'd on the list call, the secrets-rewrite loop
+# saw zero IDs, and the runner came back online with an empty env
+# file (no OPENAI_API_KEY → every LLM call 401 → zero signals
+# minted). Granting list at the project level is intentional: it
+# leaks only the *names* of secrets, never values, and makes the
+# auto-discovery loop in vm_redeploy.sh actually work.
+resource "google_project_iam_member" "runtime_can_list_secrets" {
+  project = var.project_id
+  role    = "roles/secretmanager.viewer"
+  member  = "serviceAccount:${var.service_account_email}"
+}
+
 ###############################################################################
 # Outputs
 ###############################################################################
