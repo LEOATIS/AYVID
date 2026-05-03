@@ -40,7 +40,7 @@ import {
 import type { BacktestSummary, EquityResponse, PipelineStatus, ShockScenario, Signal } from "@/lib/api";
 
 export default function Dashboard() {
-  const { data: equity } = useEquity(500) as { data?: EquityResponse };
+  const { data: equity } = useEquity(10000) as { data?: EquityResponse };
   const { data: runner } = useRunner();
   const { data: signals } = useSignals();
   const { data: backtests } = useBacktests();
