@@ -235,3 +235,80 @@ async def runner_info() -> dict[str, Any]:
         return json.loads(text)
     except json.JSONDecodeError as exc:
         return {"build_sha": "error", "error": str(exc)}
+
+
+@public_router.get("/snapshot-info")
+async def snapshot_info() -> dict[str, Any]:
+    """Liveness heartbeat for the paper runner — public on purpose.
+
+    The CI smoke test in ``deploy-gcp.yml`` polls this after every
+    deploy to assert the runner is still writing fresh
+    ``equity_curve.jsonl`` rows. Gating it behind ``verify_api_key``
+    forces CI to consume a production credential, which we
+    deliberately avoided when we made ``/system/build`` and
+    ``/system/runner-info`` public (commit 8302e04).
+
+    Whitelist (everything we return):
+      * ``last_timestamp``    — ISO timestamp of the most recent snapshot,
+                                or ``null`` if no snapshot exists yet.
+      * ``snapshots_count``   — count of non-empty lines in the file.
+                                Monotonic cycle counter; reveals roughly
+                                how long the runner has been up. No
+                                strategy signal.
+      * ``checked_at``        — server time at read, for "X seconds ago"
+                                math without a clock-sync round-trip.
+      * ``note``              — present only on degraded reads (file
+                                missing, empty, or last line corrupt).
+
+    Forbidden (NEVER returned, even derived):
+      * equity / cash / position_value / daily_pnl / cumulative_pnl
+      * cumulative_return_pct / drawdown
+      * mode / open_positions / positions list / signals
+      * anything else from the row beyond the timestamp.
+
+    GCS-aware via the same ``_read_text_any`` helper ``/runner-info``
+    uses, so reads work whether the runner is co-located or on a
+    different VM that mirrors to ``${AYVID_LIVE_GCS_BUCKET}``.
+    """
+    from backend.api.v1.endpoints.live_routes import _read_text_any
+
+    eq_path = LIVE_DIR / "equity_curve.jsonl"
+    text = _read_text_any(eq_path)
+    now = dt.datetime.now(dt.UTC).isoformat()
+
+    if not text:
+        return {
+            "last_timestamp": None,
+            "snapshots_count": 0,
+            "checked_at": now,
+            "note": (
+                "equity_curve.jsonl not present locally and not in GCS — "
+                "runner has not written its first snapshot yet"
+            ),
+        }
+
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return {
+            "last_timestamp": None,
+            "snapshots_count": 0,
+            "checked_at": now,
+            "note": "equity_curve.jsonl is empty",
+        }
+
+    try:
+        last = json.loads(lines[-1])
+    except json.JSONDecodeError as exc:
+        return {
+            "last_timestamp": None,
+            "snapshots_count": len(lines),
+            "checked_at": now,
+            "note": f"last row is not valid JSON: {exc}",
+        }
+
+    ts = last.get("timestamp") if isinstance(last, dict) else None
+    return {
+        "last_timestamp": ts if isinstance(ts, str) else None,
+        "snapshots_count": len(lines),
+        "checked_at": now,
+    }

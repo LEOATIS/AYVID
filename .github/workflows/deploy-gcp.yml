@@ -485,28 +485,32 @@ jobs:
 
       - name: Verify runner is producing fresh snapshots
         run: |
-          # Allow the runner up to 4 min after VM roll to write its
-          # first new snapshot; the loop is what would have caught the
-          # "20 snapshots, 2d ago" regression.
+          # Polls the public /system/snapshot-info endpoint (build SHA's
+          # public sibling, see commit 8302e04). /api/v1/live/equity is
+          # API-key-gated and returned 403 to CI, masking real freshness
+          # regressions as auth failures. snapshot-info exposes only the
+          # heartbeat timestamp + line count — no equity / positions / mode.
           for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
-            EQ=$(curl -fsS "${{ steps.url.outputs.url }}/api/v1/live/equity?limit=1" || echo "{}")
-            LAST=$(echo "$EQ" | python3 -c "
-          import json, sys
-          d = json.load(sys.stdin) if sys.stdin.read else {}
-          " 2>/dev/null || echo "")
-            LAST=$(echo "$EQ" | python3 -c "import json,sys; d=json.load(sys.stdin); print((d.get('summary') or {}).get('last_timestamp') or '')")
+            RAW=$(curl -sS -w "\n___HTTP_STATUS:%{http_code}" \
+                   "${{ steps.url.outputs.url }}/api/v1/system/snapshot-info" 2>&1 || true)
+            HTTP=$(echo "$RAW" | sed -n 's/^___HTTP_STATUS://p')
+            BODY=$(echo "$RAW" | sed '/^___HTTP_STATUS:/d')
+            LAST=$(echo "$BODY" | python3 -c "import json,sys; print(json.load(sys.stdin).get('last_timestamp') or '')" 2>/dev/null || echo "")
+            NOTE=$(echo "$BODY" | python3 -c "import json,sys; print(json.load(sys.stdin).get('note') or '')" 2>/dev/null || echo "")
             if [ -n "$LAST" ]; then
               # GNU date on Ubuntu can parse ISO-8601
               AGE=$(( $(date +%s) - $(date -d "$LAST" +%s 2>/dev/null || echo 0) ))
-              echo "[$i] last snapshot ${AGE}s ago ($LAST)"
+              echo "[$i] HTTP=$HTTP last snapshot ${AGE}s ago ($LAST)"
               if [ "$AGE" -gt 0 ] && [ "$AGE" -lt 600 ]; then
                 echo "Runner is producing fresh snapshots."
                 exit 0
               fi
             else
-              echo "[$i] no last_timestamp yet"
+              echo "[$i] HTTP=$HTTP no last_timestamp yet${NOTE:+ — $NOTE}"
             fi
             sleep 20
           done
           echo "::error::Runner did not produce a fresh snapshot within 4 min of deploy."
+          echo "::error::Last HTTP status: $HTTP"
+          echo "::error::Last response body: $BODY"
           exit 1
