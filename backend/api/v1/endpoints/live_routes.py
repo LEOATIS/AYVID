@@ -614,6 +614,16 @@ def _summarize_backtest(data: dict[str, Any]) -> dict[str, Any]:
         "kind": "unknown",
         "generated_at": data.get("generated_at"),
     }
+    # Side-by-side comparison metrics — populated for both
+    # walkforward and shock_driven so the dashboard can show
+    # Naive vs Shock-driven on a single row without a second
+    # round-trip to /backtests/{name}.
+    common = {
+        "pooled_win_rate": data.get("pooled_win_rate"),
+        "avg_sharpe": data.get("avg_sharpe"),
+        "worst_drawdown_pct": data.get("worst_drawdown_pct"),
+        "avg_cost_drag_pct": data.get("avg_cost_drag_pct"),
+    }
     if "windows" in data and isinstance(data["windows"], list):
         out["kind"] = "walkforward"
         out.update(
@@ -627,6 +637,7 @@ def _summarize_backtest(data: dict[str, Any]) -> dict[str, Any]:
                 "pct_positive": data.get("pct_positive_windows"),
                 "median_sharpe": data.get("median_sharpe"),
                 "pooled_trades": data.get("pooled_total_trades"),
+                **common,
             }
         )
     elif "scenarios" in data and isinstance(data["scenarios"], list):
@@ -642,6 +653,7 @@ def _summarize_backtest(data: dict[str, Any]) -> dict[str, Any]:
                 "pct_positive": data.get("pct_positive_scenarios"),
                 "median_sharpe": data.get("median_sharpe"),
                 "pooled_trades": data.get("pooled_total_trades"),
+                **common,
             }
         )
     elif "total_return_pct" in data:

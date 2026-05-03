@@ -463,19 +463,114 @@ function BacktestSpotlight({ reports }: { reports?: BacktestSummary[] }) {
   const headline = shock ?? reports[0];
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      <BacktestCard
-        title="Shock-driven (AYVID's mode)"
-        subtitle="Trade only inside graph-surfaced shock windows"
-        report={shock ?? headline}
-        accent="pos"
-      />
-      <BacktestCard
-        title="Naive walk-forward (control)"
-        subtitle="Trade everything every day on technicals"
-        report={naive}
-        accent="neg"
-      />
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <BacktestCard
+          title="Shock-driven (AYVID's mode)"
+          subtitle="Trade only inside graph-surfaced shock windows"
+          report={shock ?? headline}
+          accent="pos"
+        />
+        <BacktestCard
+          title="Naive walk-forward (control)"
+          subtitle="Trade everything every day on technicals"
+          report={naive}
+          accent="neg"
+        />
+      </div>
+      <BacktestComparisonTable shock={shock} naive={naive} />
+    </div>
+  );
+}
+
+function BacktestComparisonTable({
+  shock,
+  naive,
+}: {
+  shock?: BacktestSummary;
+  naive?: BacktestSummary;
+}) {
+  if (!shock && !naive) return null;
+  const rows: { label: string; key: keyof BacktestSummary; isPct: boolean; lowerIsBetter?: boolean }[] = [
+    { label: "Compounded return", key: "compounded_return_pct", isPct: true },
+    { label: "Pooled WR", key: "pooled_win_rate", isPct: true },
+    { label: "Avg Sharpe", key: "avg_sharpe", isPct: false },
+    { label: "Worst DD", key: "worst_drawdown_pct", isPct: true, lowerIsBetter: true },
+    { label: "Cost drag", key: "avg_cost_drag_pct", isPct: true, lowerIsBetter: true },
+  ];
+  const fmtCell = (v: number | null | undefined, isPct: boolean): string => {
+    if (v === null || v === undefined || Number.isNaN(v)) return "—";
+    if (isPct) {
+      const sign = v > 0 ? "+" : "";
+      return `${sign}${v.toFixed(2)}%`;
+    }
+    return v.toFixed(2);
+  };
+  // Color cells by which side wins per metric. lowerIsBetter rows
+  // invert the comparison.
+  const better = (a: number | null | undefined, b: number | null | undefined, lowerWins: boolean) => {
+    if (a == null || b == null) return null;
+    if (a === b) return null;
+    return lowerWins ? a < b : a > b;
+  };
+  return (
+    <div className="card-soft overflow-x-auto">
+      <table className="w-full text-[12px]">
+        <thead>
+          <tr className="border-b border-app text-left text-[10px] uppercase tracking-wider text-muted">
+            <th className="px-4 py-2.5 font-medium">Mode</th>
+            {rows.map((r) => (
+              <th key={r.label} className="px-3 py-2.5 text-right font-medium">
+                {r.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-[hsl(var(--border))]">
+          <tr>
+            <td className="px-4 py-2.5">
+              <span className="text-fg">Naive (trade every ticker daily)</span>
+            </td>
+            {rows.map((r) => {
+              const v = naive?.[r.key] as number | null | undefined;
+              const o = shock?.[r.key] as number | null | undefined;
+              const isWinner = better(v, o, !!r.lowerIsBetter);
+              const cls =
+                isWinner === true
+                  ? "text-pos"
+                  : isWinner === false
+                  ? "text-neg"
+                  : "text-fg";
+              return (
+                <td key={r.label} className={`num px-3 py-2.5 text-right ${cls}`}>
+                  {fmtCell(v, r.isPct)}
+                </td>
+              );
+            })}
+          </tr>
+          <tr>
+            <td className="px-4 py-2.5">
+              <span className="text-fg">Shock-driven (AYVID&apos;s mode)</span>
+            </td>
+            {rows.map((r) => {
+              const v = shock?.[r.key] as number | null | undefined;
+              const o = naive?.[r.key] as number | null | undefined;
+              const isWinner = better(v, o, !!r.lowerIsBetter);
+              const cls =
+                isWinner === true
+                  ? "text-pos"
+                  : isWinner === false
+                  ? "text-neg"
+                  : "text-fg";
+              return (
+                <td key={r.label} className={`num px-3 py-2.5 text-right ${cls}`}>
+                  {fmtCell(v, r.isPct)}
+                </td>
+              );
+            })}
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }

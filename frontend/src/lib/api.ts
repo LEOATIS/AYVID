@@ -284,6 +284,12 @@ export interface BacktestSummary {
   sharpe_ratio?: number | null;
   max_drawdown_pct?: number | null;
   total_trades?: number | null;
+  // Side-by-side comparison metrics surfaced by _summarize_backtest
+  // for both walkforward and shock_driven shapes.
+  pooled_win_rate?: number | null;
+  avg_sharpe?: number | null;
+  worst_drawdown_pct?: number | null;
+  avg_cost_drag_pct?: number | null;
 }
 
 export type ReadinessStatus = "WAITING" | "READY" | "EXPIRED" | "CANCELLED";
