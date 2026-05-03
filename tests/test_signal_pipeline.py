@@ -412,6 +412,60 @@ class TestTradeReadinessChecker:
         assert results[0].status == "WAITING"
         assert results[0].reason == "hold_signal_no_execution"
 
+    @pytest.mark.asyncio
+    async def test_tick_persists_when_only_expirations_change(self, tmp_path, monkeypatch):
+        """Regression: prior to the fix, a tick whose ONLY change was
+        expiring stale signals never persisted to disk because
+        ``mark_all_expired`` was called for its side-effect and the
+        return count was discarded. The candidates loop saw zero
+        WAITING/READY entries (everything had just been flipped to
+        EXPIRED) so ``any_change`` stayed False and the EXPIRED status
+        sat in-memory only — dropped on container restart, the on-disk
+        book reverted to READY, and the dashboard kept showing dead
+        signals as live for weeks. This test pins the fix.
+        """
+        from execution_engine import signal_book as sb_module
+        from execution_engine.trade_readiness import TradeReadinessChecker
+
+        # Redirect persistence to a tmp file we can inspect.
+        target = tmp_path / "signal_book.json"
+        monkeypatch.setattr(sb_module, "_BOOK_PATH", target)
+
+        book = SignalBook()
+        # An already-expired signal — TTL elapsed 2 hours ago.
+        sig = _make_signal(
+            ticker="ZOMBIE", regime_fingerprint="r",
+            computed_at=(dt.datetime.now(dt.UTC) - dt.timedelta(hours=2)).isoformat(),
+            ttl_minutes=30,
+        )
+        # Force READY on disk so the bug-state is what we'd see in prod
+        # after an LLM pass marked the signal READY then the runner
+        # restarted before the next readiness sweep.
+        sig.readiness_status = "READY"
+        book.upsert(sig)
+
+        checker = TradeReadinessChecker(
+            signal_book=book,
+            get_price=lambda _t, _ac: 100.0,
+            check_interval_seconds=0.01,
+            persist_after_each_cycle=True,
+        )
+
+        await checker.tick()
+
+        # Disk must reflect EXPIRED — not the cached READY.
+        assert target.exists(), (
+            "tick() did not persist; mark_all_expired return value "
+            "is being ignored again"
+        )
+        import json
+        on_disk = json.loads(target.read_text())
+        zombie = on_disk["ZOMBIE|r"]
+        assert zombie["readiness_status"] == "EXPIRED", (
+            f"on-disk status is {zombie['readiness_status']!r}; "
+            f"expected EXPIRED after readiness tick"
+        )
+
 
 # ── SL/TP and quantity arithmetic invariants ───────────────────────
 

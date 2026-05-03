@@ -33,6 +33,55 @@ _NER_BATCH_SIZE: int = settings.NER_BATCH_SIZE
 _NER_CONCURRENCY: int = settings.NER_CONCURRENCY
 _TIER2_CYCLE_INTERVAL: int = settings.TIER2_CYCLE_INTERVAL
 
+# Clock-time-based tier scheduler. When the base cycle interval changes
+# (15min → 5min when we wired live-quote refresh) cycle-modulo gates
+# silently 3x heavy work like LLM pre-compute. These intervals are in
+# wallclock minutes so they survive cycle-interval changes — bumping
+# the runner cadence doesn't trip the LLM bill.
+#
+# Defaults match the user-facing "every 5m / 15m / 60m" SLAs.
+_TIER_INTERVAL_MINUTES: dict[str, float] = {
+    "intraday_refresh": 5.0,    # 5-min bar pulls, cheap upstream calls
+    "signal_precompute": 15.0,  # LLM-heavy fast pass over the book
+    "universe_refresh": 60.0,   # tier-2 watchlist + EOD OHLCV refresh
+}
+_tier_last_fired_at: dict[str, dt.datetime] = {}
+
+
+def _tier_due(tier: str, interval_minutes: float | None = None) -> bool:
+    """Returns True iff at least ``interval_minutes`` have elapsed since
+    ``tier`` last fired. On True, stamps the last-fired time so the
+    caller just consumes the boolean.
+
+    Cold start (no prior stamp) always fires — we want the first cycle
+    after a deploy to do the full work, then gate subsequent cycles.
+
+    Tests can pre-stamp via ``_tier_last_fired_at[tier] = …`` to skip
+    the cold-start fire.
+    """
+    minutes = interval_minutes
+    if minutes is None:
+        minutes = _TIER_INTERVAL_MINUTES.get(tier)
+    if minutes is None:
+        # Unknown tier name — fail open so the caller doesn't silently
+        # drop work. Surfacing the missing key in logs would be louder
+        # than necessary; the caller usually only adds tiers via this
+        # module so a typo will fail fast.
+        return True
+    now = dt.datetime.now(dt.UTC)
+    last = _tier_last_fired_at.get(tier)
+    if last is None or (now - last).total_seconds() >= minutes * 60.0:
+        _tier_last_fired_at[tier] = now
+        return True
+    return False
+
+
+def _reset_tier_state_for_tests() -> None:
+    """Test hook — clears the last-fired stamps so unit tests can
+    verify the cold-start fire path and tier-gating behaviour without
+    leaking state between cases."""
+    _tier_last_fired_at.clear()
+
 # Per-process semaphore guarding the LLM orchestrator. The 15-min cycle
 # can iterate over 100+ tickers; if every one fired an LLM call in
 # parallel we'd burn through provider rate limits in the first minute.
@@ -204,7 +253,11 @@ async def run_ingestion_cycle(
     else:
         tier1, tier2 = await _build_tiered_watchlists()
 
-    is_tier2_cycle = (cycle_id % _TIER2_CYCLE_INTERVAL == 0) and len(tier2) > 0
+    # Tier-2 watchlist now gates on wallclock minutes via the shared
+    # tier scheduler instead of cycle-count modulo. Result is the same
+    # cadence (~60min) when the runner is on its default cycle but
+    # doesn't 3x the universe work if we drop to a 5-minute cycle.
+    is_tier2_cycle = _tier_due("universe_refresh") and len(tier2) > 0
     active_watchlist = tier1 + (tier2 if is_tier2_cycle else [])
     result["watchlist_size"] = len(active_watchlist)
     result["tier1_size"] = len(tier1)
@@ -295,18 +348,25 @@ async def run_ingestion_cycle(
     except Exception as exc:
         result["errors"].append(f"Qdrant storage: {exc}")
 
-    # -- Step 4: Ingest Market Data ----
-    try:
-        from backend.services.orchestrator import ingest_market_data
+    # -- Step 4: Ingest Market Data (5-min tier) ----
+    # Intraday OHLCV refresh fires every 5 minutes by wallclock, not
+    # every cycle. With a 60-second base loop that's ~12x less wire
+    # traffic than the prior every-cycle behaviour and matches the
+    # 5-min bar resolution we actually consume.
+    if _tier_due("intraday_refresh"):
+        try:
+            from backend.services.orchestrator import ingest_market_data
 
-        bar_counts = await ingest_market_data(active_watchlist)
-        result["bars_ingested"] = sum(bar_counts.values())
-        log.info(
-            f"[Cycle {cycle_id}] Ingested {result['bars_ingested']} bars for {len(active_watchlist)} tickers"
-        )
-    except Exception as exc:
-        result["errors"].append(f"Market data: {exc}")
-        log.error(f"[Cycle {cycle_id}] Market data ingestion failed: {exc}")
+            bar_counts = await ingest_market_data(active_watchlist)
+            result["bars_ingested"] = sum(bar_counts.values())
+            log.info(
+                f"[Cycle {cycle_id}] Ingested {result['bars_ingested']} bars for {len(active_watchlist)} tickers"
+            )
+        except Exception as exc:
+            result["errors"].append(f"Market data: {exc}")
+            log.error(f"[Cycle {cycle_id}] Market data ingestion failed: {exc}")
+    else:
+        log.debug(f"[Cycle {cycle_id}] Skipping market data — intraday tier not due yet")
 
     # -- Step 5: Detect Shocks & Run Analysis ----
     # When shocks are detected, immediately invalidate stale cached signals
@@ -362,14 +422,20 @@ async def run_ingestion_cycle(
     except Exception as exc:
         log.warning(f"SSE event publish failed: {exc}")
 
-    # -- Step 7: Pre-Compute Signal Book (fast execution cache) ----
+    # -- Step 7: Pre-Compute Signal Book (fast execution cache, 15-min tier) --
+    # LLM-heavy pass. Gated to once every 15 minutes by wallclock so a
+    # 5-minute base cycle doesn't burn through provider rate limits or
+    # bills three times faster.
     precompute_count = 0
-    try:
-        precompute_count = await pre_compute_signals(active_watchlist)
-        result["precomputed_signals"] = precompute_count
-    except Exception as exc:
-        result["errors"].append(f"Signal pre-compute: {exc}")
-        log.warning(f"[Cycle {cycle_id}] Signal pre-compute failed: {exc}")
+    if _tier_due("signal_precompute"):
+        try:
+            precompute_count = await pre_compute_signals(active_watchlist)
+            result["precomputed_signals"] = precompute_count
+        except Exception as exc:
+            result["errors"].append(f"Signal pre-compute: {exc}")
+            log.warning(f"[Cycle {cycle_id}] Signal pre-compute failed: {exc}")
+    else:
+        log.debug(f"[Cycle {cycle_id}] Skipping pre-compute — 15-min tier not due yet")
 
     # -- Step 8: Auto-Execute from Signal Book (gated by AUTO_EXECUTE) --
     auto_executed = 0

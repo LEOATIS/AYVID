@@ -1372,7 +1372,7 @@ async def run(
     initial_equity: float = 1_000_000.0,
     interval_seconds: int = 60,
     with_pipeline: bool = False,
-    pipeline_interval_minutes: int = 15,
+    pipeline_interval_minutes: int = 5,
 ) -> None:
     """Start the paper-trading runner. Blocks until SIGINT/SIGTERM.
 
@@ -1411,6 +1411,27 @@ async def run(
     else:
         mode = "ib_paper"
     _write_meta(mode, initial_equity, interval_seconds)
+
+    # Auto-bootstrap the supply-chain graph. Replaces the operator-run
+    # `ayvid graph init` + `ayvid graph seed` pair so a fresh
+    # Cloud-Run/Aura deploy never sits with an empty schema-less Neo4j
+    # waiting on someone to remember the CLI command. Idempotent on
+    # subsequent boots (schema uses IF NOT EXISTS, seed gated on
+    # edges == 0). Best-effort — Neo4j outage must not block the
+    # trading loop, so we only log on failure.
+    try:
+        from graph_intelligence.tools.neo4j_tools import auto_bootstrap_graph
+
+        bootstrap_result = await auto_bootstrap_graph()
+        log.info(
+            f"graph_bootstrap "
+            f"schema={bootstrap_result['schema_initialized']} "
+            f"seeded={bootstrap_result['edges_seeded']} "
+            f"skip={bootstrap_result['seed_skipped_reason']!r} "
+            f"errors={len(bootstrap_result['errors'])}"
+        )
+    except Exception as exc:
+        log.warning(f"graph_bootstrap_failed (non-fatal): {exc!s}")
 
     loop = asyncio.get_event_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -1552,8 +1573,24 @@ async def _run_readiness_loop(
                 return float(state.cash or 0.0)
         return 0.0
 
+    # Live-quote → historical-close fallback. fetch_live_quote uses
+    # yfinance for near-real-time prices (BTC, FX, futures, equities)
+    # so the readiness UI stops showing entry-price as current_price
+    # forever. On any yfinance failure (rate limit, network, missing
+    # symbol) we drop back to the same on-disk close that the checker
+    # used before — nothing regresses.
+    from data_primitives.extractors.live_quote import fetch_live_quote
+    from execution_engine.trade_readiness import _default_get_price
+
+    async def _get_price_live_then_local(ticker: str, asset_class: str):
+        live = await fetch_live_quote(ticker, asset_class)
+        if live is not None and live > 0:
+            return live
+        return _default_get_price(ticker, asset_class)
+
     checker = TradeReadinessChecker(
         signal_book=book,
+        get_price=_get_price_live_then_local,
         has_open_position=_has_open_position,
         portfolio_value=_portfolio_value,
         portfolio_open_risk=_portfolio_open_risk,

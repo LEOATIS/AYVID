@@ -211,8 +211,14 @@ class TradeReadinessChecker:
 
     async def tick(self) -> list[ReadinessResult]:
         """One readiness sweep over the SignalBook. Returns the per-signal results."""
-        # Sweep stale entries first so they don't get re-evaluated.
-        self.signal_book.mark_all_expired()
+        # Sweep stale entries first so they don't get re-evaluated. The
+        # flipped count must feed `any_change` below — without it the
+        # sweep mutates only in-memory and `save_to_disk()` never fires
+        # when the cycle has *only* expirations and no per-signal
+        # status flips. Symptom: signals stuck at READY on disk for
+        # weeks past their TTL even though the in-process book had
+        # marked them EXPIRED on every tick.
+        expired_count = self.signal_book.mark_all_expired()
 
         candidates: dict[str, Any] = {}
         with self.signal_book._lock:
@@ -221,7 +227,7 @@ class TradeReadinessChecker:
                     candidates[k] = sig
 
         results: list[ReadinessResult] = []
-        any_change = False
+        any_change = expired_count > 0
         for key, sig in candidates.items():
             try:
                 result = await self._evaluate(sig)

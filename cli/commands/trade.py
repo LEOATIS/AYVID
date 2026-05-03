@@ -36,9 +36,14 @@ def paper_start(
         help="Run the continuous ingestion pipeline (news→NER→graph→signals) alongside the runner.",
     ),
     pipeline_interval: int = typer.Option(
-        15,
+        5,
         "--pipeline-interval",
-        help="Pipeline cycle interval in minutes (default 15).",
+        help=(
+            "Pipeline cycle interval in minutes (default 5). Heavy work "
+            "(LLM pre-compute, universe rebuild) is gated by the wallclock "
+            "tier scheduler in continuous_worker so the base cadence is "
+            "decoupled from the LLM bill — see _TIER_INTERVAL_MINUTES."
+        ),
     ),
 ):
     """Start the live paper-trading runner with a daily equity-curve artifact.

@@ -179,6 +179,81 @@ async def initialize_schema() -> None:
     log.info("Neo4j schema initialized")
 
 
+async def auto_bootstrap_graph() -> dict[str, Any]:
+    """Idempotent boot-time graph setup.
+
+    Replaces two operator-run CLI commands (``ayvid graph init`` and
+    ``ayvid graph seed``) so a fresh deploy never sits with an empty
+    or schema-less Neo4j. Behaviour:
+
+      1. Always re-runs ``initialize_schema()`` — every query is gated
+         by ``IF NOT EXISTS`` so this is cheap-no-op when schema is
+         already in place.
+      2. Probes ``get_graph_stats()``. If the graph has zero
+         ``SUPPLIES_TO`` edges we bulk-load the curated
+         ``GLOBAL_SUPPLY_CHAIN`` seed; otherwise we leave the live
+         graph alone.
+
+    All failures are caught and reported in the return dict — the
+    runner cannot afford a Neo4j outage to take down the trading loop.
+    """
+    out: dict[str, Any] = {
+        "schema_initialized": False,
+        "seed_skipped_reason": None,
+        "edges_seeded": 0,
+        "errors": [],
+    }
+    try:
+        await initialize_schema()
+        out["schema_initialized"] = True
+    except Exception as exc:
+        out["errors"].append(f"schema: {type(exc).__name__}: {exc}")
+        log.warning(f"auto_bootstrap_graph schema init failed: {exc}")
+        # Don't try to seed without schema — duplicate companies would
+        # land on every subsequent boot.
+        return out
+
+    try:
+        stats = await get_graph_stats()
+    except Exception as exc:
+        out["errors"].append(f"stats: {type(exc).__name__}: {exc}")
+        out["seed_skipped_reason"] = "stats_probe_failed"
+        log.warning(f"auto_bootstrap_graph stats probe failed: {exc}")
+        return out
+
+    if stats.get("edges", 0) > 0:
+        out["seed_skipped_reason"] = (
+            f"graph_already_populated ({stats['companies']} companies, "
+            f"{stats['edges']} edges)"
+        )
+        log.info(
+            f"auto_bootstrap_graph: skipping seed — graph already has "
+            f"{stats['edges']} edges across {stats['companies']} companies"
+        )
+        return out
+
+    try:
+        from graph_intelligence.tools.seed_supply_chain import GLOBAL_SUPPLY_CHAIN
+
+        edges = [
+            SupplyEdge(
+                source_ticker=src,
+                target_ticker=tgt,
+                revenue_dependency_pct=dep,
+                criticality_score=crit,
+            )
+            for src, tgt, dep, crit in GLOBAL_SUPPLY_CHAIN
+            if dep > 0
+        ]
+        seeded = await bulk_ingest_supply_chain(edges)
+        out["edges_seeded"] = seeded
+        log.info(f"auto_bootstrap_graph: seeded {seeded} supply-chain edges")
+    except Exception as exc:
+        out["errors"].append(f"seed: {type(exc).__name__}: {exc}")
+        log.warning(f"auto_bootstrap_graph seed failed: {exc}")
+    return out
+
+
 # ── Node Operations ───────────────────────────────────────────
 
 

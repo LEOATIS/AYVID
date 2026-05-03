@@ -47,6 +47,18 @@ RUN pip install --no-index --find-links=/wheels --no-build-isolation \
 COPY --chown=ayvid:ayvid . .
 RUN mkdir -p /app/live && chown -R ayvid:ayvid /app
 
+# OpenBB writes a `.build.lock` file inside its site-packages dir on
+# the first import each process. With the default site-packages
+# ownership (root from `pip install`), every runtime call from the
+# uid=1001 ayvid user fails with `[Errno 13] Permission denied:
+# /usr/local/lib/python3.12/site-packages/openbb/.build.lock`. Five
+# stages of run_ingestion_cycle hit OpenBB — news fetch, NER feed,
+# market-data ingest, pre-compute, auto-execute — so the May 3
+# incident logged "0 signals minted" every cycle. chown the OpenBB
+# package dir so the runtime user can write its lock without
+# escalating any other site-packages perms.
+RUN chown -R ayvid:ayvid /usr/local/lib/python3.12/site-packages/openbb
+
 USER ayvid
 
 # P1-16: healthcheck for the execution worker. Writes a tiny JSON
