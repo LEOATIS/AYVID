@@ -484,8 +484,6 @@ async def signals_history(
     """
     import datetime as _dt
 
-    from execution_engine.signal_book import get_signal_book
-
     def _parse_ts(s: str | None) -> _dt.datetime | None:
         if not s:
             return None
@@ -494,16 +492,51 @@ async def signals_history(
         except (ValueError, TypeError):
             return None
 
-    book = get_signal_book()
-    records = book.get_history(
-        start=_parse_ts(start),
-        end=_parse_ts(end),
-        ticker=ticker.upper() if ticker else None,
-        asset_class=asset_class.upper() if asset_class else None,
-        status=status.upper() if status else None,
-        event=event.upper() if event else None,
-        limit=limit,
-    )
+    # Read history via _read_text_any so Cloud Run can fall back to
+    # GCS. The previous implementation called book.get_history(),
+    # which used a raw open() on the relative path — fine on the VM
+    # (bind-mount has the file) but always empty on Cloud Run, where
+    # the image excludes signal_history.jsonl per .dockerignore. The
+    # FULL HISTORY tab on the deployed dashboard rendered "0 records"
+    # for the same reason /signals used to render zombie data: code
+    # paths that bypass _read_text_any can't see GCS.
+    history_path = PROJECT_ROOT / "data_store" / "signal_history.jsonl"
+    text = _read_text_any(history_path)
+    records: list[dict[str, Any]] = []
+    if text:
+        start_iso = _parse_ts(start).isoformat() if start else None
+        end_iso = _parse_ts(end).isoformat() if end else None
+        ticker_u = ticker.upper() if ticker else None
+        asset_u = asset_class.upper() if asset_class else None
+        status_u = status.upper() if status else None
+        event_u = event.upper() if event else None
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            ts = rec.get("computed_at") or rec.get("logged_at") or ""
+            if start_iso and ts and ts < start_iso:
+                continue
+            if end_iso and ts and ts > end_iso:
+                continue
+            if ticker_u and rec.get("ticker") != ticker_u:
+                continue
+            if asset_u and rec.get("asset_class") != asset_u:
+                continue
+            if status_u and rec.get("readiness_status") != status_u:
+                continue
+            if event_u and rec.get("event") != event_u:
+                continue
+            records.append(rec)
+        records.sort(
+            key=lambda r: r.get("computed_at") or r.get("logged_at") or "",
+            reverse=True,
+        )
+        records = records[:limit]
 
     by_status: dict[str, int] = {}
     by_asset_class: dict[str, int] = {}
