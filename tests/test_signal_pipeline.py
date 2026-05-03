@@ -412,6 +412,58 @@ class TestTradeReadinessChecker:
         assert results[0].status == "WAITING"
         assert results[0].reason == "hold_signal_no_execution"
 
+    def test_load_from_disk_flips_stale_entries_and_persists(
+        self, tmp_path, monkeypatch
+    ):
+        """Regression: prior to the fix, ``load_from_disk`` filtered
+        stale signals out of the in-memory book. The on-disk file was
+        never re-written so READY entries that had TTL-elapsed weeks
+        ago stayed READY on disk forever — invisible to the in-memory
+        readiness checker that does the EXPIRE flips. The dashboard's
+        ``/signals`` endpoint reads the on-disk file directly, so it
+        kept serving zombie READY entries.
+
+        Fix: load all signals (regardless of staleness), run
+        mark_all_expired, then persist. After load_from_disk, the
+        on-disk file must reflect EXPIRED for any TTL-elapsed entry.
+        """
+        import json
+
+        from execution_engine import signal_book as sb_module
+
+        target = tmp_path / "signal_book.json"
+        # Hand-craft an on-disk file with one stale READY signal — the
+        # exact prod state that triggered the bug.
+        stale = _make_signal(
+            ticker="ZOMBIE", regime_fingerprint="r",
+            computed_at=(dt.datetime.now(dt.UTC) - dt.timedelta(hours=2)).isoformat(),
+            ttl_minutes=30,
+        )
+        from dataclasses import asdict
+        on_disk_blob = asdict(stale)
+        on_disk_blob["readiness_status"] = "READY"
+        on_disk_blob["readiness_checked_at"] = stale.computed_at
+        target.write_text(json.dumps({"ZOMBIE|r": on_disk_blob}))
+
+        monkeypatch.setattr(sb_module, "_BOOK_PATH", target)
+        book = SignalBook()
+        active = book.load_from_disk()
+
+        assert active == 0, (
+            "all signals were TTL-elapsed; load_from_disk should report "
+            "0 active after the EXPIRE sweep"
+        )
+        # The in-memory book must have the entry (so subsequent
+        # readiness queries see it as EXPIRED, not "missing").
+        assert book.size() == 1
+        # And the on-disk file must reflect EXPIRED — this is the bit
+        # the prior code never got right.
+        on_disk = json.loads(target.read_text())
+        assert on_disk["ZOMBIE|r"]["readiness_status"] == "EXPIRED", (
+            f"on-disk status is {on_disk['ZOMBIE|r']['readiness_status']!r}; "
+            f"expected EXPIRED after load_from_disk's stale sweep"
+        )
+
     @pytest.mark.asyncio
     async def test_tick_persists_when_only_expirations_change(self, tmp_path, monkeypatch):
         """Regression: prior to the fix, a tick whose ONLY change was

@@ -978,10 +978,26 @@ class SignalBook:
             pass
 
     def load_from_disk(self, path: Path | None = None) -> int:
-        """Load signal book from disk. Returns count of loaded signals.
+        """Load signal book from disk. Returns count of active signals
+        loaded into memory.
 
         Falls back to the `.bak` if the primary fails to parse — this
         is the dual-file rotation written by ``save_to_disk``.
+
+        Stale entries (TTL elapsed) are loaded into the in-memory book
+        too — but they're loaded with their on-disk status preserved
+        so the readiness checker's next ``mark_all_expired`` sweep can
+        flip them to EXPIRED *and persist that to disk*.
+
+        Why we don't just filter stale on load (the prior behaviour):
+        the dashboard's signal/* endpoints read the on-disk file
+        directly, not the in-memory book. So a stale READY entry
+        invisible to the in-memory checker stayed READY on disk
+        forever — the May 3 console showed seven weeks-old signals
+        still flagged READY because every restart re-loaded them and
+        then ignored them. By loading + immediately running
+        mark_all_expired + persisting, we guarantee disk converges to
+        in-memory state on every boot.
         """
         from shared.atomic_io import safe_load_json
 
@@ -995,6 +1011,7 @@ class SignalBook:
                 )
             return 0
         try:
+            stale_count = 0
             with self._lock:
                 for key, val in raw.items():
                     sig = PrecomputedSignal(
@@ -1004,14 +1021,32 @@ class SignalBook:
                             if k in PrecomputedSignal.__dataclass_fields__
                         }
                     )
-                    if not sig.is_stale:
-                        self._signals[key] = sig
-            loaded = len(self._signals)
-            log.info(f"Signal book loaded: {loaded} active signals from {path}")
-            return loaded
+                    self._signals[key] = sig
+                    if sig.is_stale:
+                        stale_count += 1
+            total = len(self._signals)
         except Exception as exc:
             log.warning(f"Signal book load failed during deserialise: {exc}")
             return 0
+
+        # Sweep + persist so on-disk EXPIRED catches up with reality.
+        # Done outside the lock above (mark_all_expired re-acquires
+        # internally and so does save_to_disk).
+        if stale_count > 0:
+            flipped = self.mark_all_expired()
+            if flipped > 0:
+                try:
+                    self.save_to_disk(path)
+                    log.info(
+                        f"Signal book loaded: {total - flipped} active + "
+                        f"{flipped} flipped to EXPIRED (persisted) from {path}"
+                    )
+                except Exception as exc:
+                    log.warning(f"signal_book persist after load-sweep failed: {exc}")
+                return total - flipped
+
+        log.info(f"Signal book loaded: {total} active signals from {path}")
+        return total
 
     def clear(self) -> None:
         with self._lock:
