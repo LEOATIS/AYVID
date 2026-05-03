@@ -41,39 +41,44 @@ _PROCESS_STARTED_AT = dt.datetime.now(dt.UTC)
 
 
 def _count_trades_today() -> int:
-    path = LIVE_DIR / "trades.jsonl"
-    if not path.exists():
+    # Use _read_text_any so Cloud Run can fall back to GCS — the
+    # bind-mounted runtime files only live on the VM, the Cloud Run
+    # container has no local copy.
+    from backend.api.v1.endpoints.live_routes import _read_text_any
+
+    text = _read_text_any(LIVE_DIR / "trades.jsonl")
+    if not text:
         return 0
     today = dt.datetime.now(dt.UTC).date().isoformat()
     count = 0
-    try:
-        with path.open() as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                ts = str(rec.get("timestamp") or rec.get("ts") or "")
-                if ts.startswith(today):
-                    count += 1
-    except OSError:
-        return 0
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        ts = str(rec.get("timestamp") or rec.get("ts") or "")
+        if ts.startswith(today):
+            count += 1
     return count
 
 
 def _signal_book_counts() -> dict[str, int]:
     """Count signals by readiness status + open position count."""
-    if not SIGNAL_BOOK.exists():
-        return {"waiting": 0, "ready": 0, "expired": 0, "cancelled": 0, "total": 0}
+    from backend.api.v1.endpoints.live_routes import _read_text_any
+
+    empty = {"waiting": 0, "ready": 0, "expired": 0, "cancelled": 0, "total": 0}
+    text = _read_text_any(SIGNAL_BOOK)
+    if not text:
+        return empty
     try:
-        book = json.loads(SIGNAL_BOOK.read_text())
-    except (OSError, json.JSONDecodeError):
-        return {"waiting": 0, "ready": 0, "expired": 0, "cancelled": 0, "total": 0}
+        book = json.loads(text)
+    except json.JSONDecodeError:
+        return empty
     if not isinstance(book, dict):
-        return {"waiting": 0, "ready": 0, "expired": 0, "cancelled": 0, "total": 0}
+        return empty
     counts = {"waiting": 0, "ready": 0, "expired": 0, "cancelled": 0, "total": 0}
     classes: set[str] = set()
     for sig in book.values():
@@ -96,12 +101,14 @@ def _signal_book_counts() -> dict[str, int]:
 
 
 def _open_position_count() -> int:
-    path = LIVE_DIR / "positions.json"
-    if not path.exists():
+    from backend.api.v1.endpoints.live_routes import _read_text_any
+
+    text = _read_text_any(LIVE_DIR / "positions.json")
+    if not text:
         return 0
     try:
-        data = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
+        data = json.loads(text)
+    except json.JSONDecodeError:
         return 0
     if isinstance(data, dict):
         positions = data.get("positions")
