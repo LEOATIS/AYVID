@@ -20,7 +20,6 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-
 # Fields a competitor could use to reconstruct strategy state — the
 # whole reason ``/live/*`` is gated. None of them belong in any public
 # system endpoint, period.
