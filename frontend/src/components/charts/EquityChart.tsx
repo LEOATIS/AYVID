@@ -125,10 +125,14 @@ export function EquityChart({ snapshots, initial, height = 300, showGrid = true 
   );
   const range = domainMax - domainMin;
 
-  const lastEquity = equityValues[equityValues.length - 1] ?? initial;
-  const positive = lastEquity >= initial;
-  const lineColor = positive ? "hsl(var(--pos))" : "hsl(var(--neg))";
-  const fillId = positive ? "fund-fill-pos" : "fund-fill-neg";
+  // Split fill + stroke at the inception line so the chart visually
+  // distinguishes "above water" (green) from "below water" (red) the
+  // way a fund tearsheet does. Without this a portfolio that ran +1.4%
+  // peak then dipped to -0.002% reads as a fully red disaster.
+  const inceptionOffsetPct =
+    range > 0
+      ? Math.max(0, Math.min(100, ((domainMax - initial) / range) * 100))
+      : 50;
 
   const timeSpanMs = data.length > 1 ? data[data.length - 1].t - data[0].t : 0;
   const xFormatter = (ts: number) => {
@@ -171,15 +175,17 @@ export function EquityChart({ snapshots, initial, height = 300, showGrid = true 
       <ResponsiveContainer>
         <AreaChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
           <defs>
-            <linearGradient id="fund-fill-pos" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="hsl(var(--pos))" stopOpacity={0.22} />
-              <stop offset="85%" stopColor="hsl(var(--pos))" stopOpacity={0.02} />
-              <stop offset="100%" stopColor="hsl(var(--pos))" stopOpacity={0} />
+            <linearGradient id="fund-fill-split" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="hsl(var(--pos))" stopOpacity={0.28} />
+              <stop offset={`${inceptionOffsetPct}%`} stopColor="hsl(var(--pos))" stopOpacity={0.04} />
+              <stop offset={`${inceptionOffsetPct}%`} stopColor="hsl(var(--neg))" stopOpacity={0.04} />
+              <stop offset="100%" stopColor="hsl(var(--neg))" stopOpacity={0.28} />
             </linearGradient>
-            <linearGradient id="fund-fill-neg" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="hsl(var(--neg))" stopOpacity={0.22} />
-              <stop offset="85%" stopColor="hsl(var(--neg))" stopOpacity={0.02} />
-              <stop offset="100%" stopColor="hsl(var(--neg))" stopOpacity={0} />
+            <linearGradient id="fund-line-split" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="hsl(var(--pos))" />
+              <stop offset={`${inceptionOffsetPct}%`} stopColor="hsl(var(--pos))" />
+              <stop offset={`${inceptionOffsetPct}%`} stopColor="hsl(var(--neg))" />
+              <stop offset="100%" stopColor="hsl(var(--neg))" />
             </linearGradient>
           </defs>
 
@@ -234,13 +240,16 @@ export function EquityChart({ snapshots, initial, height = 300, showGrid = true 
           <Area
             type="monotone"
             dataKey="equity"
-            stroke={lineColor}
+            stroke="url(#fund-line-split)"
             strokeWidth={1.6}
-            fill={`url(#${fillId})`}
+            fill="url(#fund-fill-split)"
             dot={false}
             activeDot={{
               r: 4,
-              fill: lineColor,
+              fill:
+                (equityValues[equityValues.length - 1] ?? initial) >= initial
+                  ? "hsl(var(--pos))"
+                  : "hsl(var(--neg))",
               stroke: "hsl(var(--bg))",
               strokeWidth: 2,
             }}

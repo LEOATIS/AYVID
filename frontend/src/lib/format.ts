@@ -53,12 +53,17 @@ export const fmtMoneyAdaptive = (n: number | null | undefined) => {
       maximumFractionDigits: 0,
     }).format(n);
   }
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(n);
+  // Two-decimal compact so values within rounding distance of a round
+  // million ($1,014,024 vs $999,979) don't both collapse to "$1M". The
+  // boundary between K and M lands at $999.5K so $999,979 reads "$1.00M"
+  // instead of the misleading "$1,000K".
+  if (abs < 999_500) {
+    return `$${Math.round(n / 1_000).toLocaleString("en-US")}K`;
+  }
+  if (abs < 1_000_000_000) {
+    return `$${(n / 1_000_000).toFixed(2)}M`;
+  }
+  return `$${(n / 1_000_000_000).toFixed(2)}B`;
 };
 
 export const fmtTime = (iso?: string | null) => {
