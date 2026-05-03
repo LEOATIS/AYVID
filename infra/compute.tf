@@ -213,6 +213,27 @@ resource "google_compute_instance" "execution" {
 
     # --- AYVID runner container --------------------------------------------
     docker --config "$DOCKER_CONFIG" pull "$IMAGE"
+
+    # Seed reference data baked into the image. The runner reads bars
+    # from data_store/{ohlcv,intraday} but never writes them — they're
+    # static reference data shipped via COPY . . in Dockerfile.execution.
+    # The data_store bind-mount below shadows them, and the runner falls
+    # into the cold-start "no_local_data" branch on every cycle
+    # (paper_runner.py:919-947). Skip subdirs already populated by GCS
+    # hydrate so signal_book.json etc. survive.
+    TMP_CID=$(docker --config "$DOCKER_CONFIG" create "$IMAGE")
+    for sub in ohlcv intraday indices; do
+        if [ -d "$HOST_DATA_DIR/$sub" ] && [ "$(ls -A "$HOST_DATA_DIR/$sub" 2>/dev/null | head -1)" ]; then
+            echo "data_store/$sub already populated — skipping image seed"
+            continue
+        fi
+        if docker --config "$DOCKER_CONFIG" cp "$TMP_CID:/app/data_store/$sub" "$HOST_DATA_DIR/" 2>/dev/null; then
+            echo "seeded data_store/$sub from image"
+        fi
+    done
+    docker --config "$DOCKER_CONFIG" rm "$TMP_CID" >/dev/null 2>&1 || true
+    chown -R 1001:1001 "$HOST_DATA_DIR"
+
     docker rm -f ayvid-execution 2>/dev/null || true
 
     RUNNER_ARGS=(python -m cli.app trade paper-start --with-pipeline --equity 1000000 --interval 60)

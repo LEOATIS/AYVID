@@ -221,12 +221,26 @@ def _write_deploy_marker() -> dict[str, Any]:
 
 def _write_meta(mode: str, initial_equity: float, interval_seconds: int) -> None:
     exec_mode = getattr(settings, "EXECUTION_MODE", None)
+    # Preserve fund inception across restarts. Each container restart
+    # used to overwrite started_at with now(), making the dashboard's
+    # "Started" field jump forward and the equity chart's left-edge
+    # disappear every redeploy. started_at is set on the first cold
+    # start and held for the lifetime of the run_meta.json.
+    inception = dt.datetime.now(dt.UTC).isoformat()
+    if RUN_META_PATH.exists():
+        try:
+            prior = json.loads(RUN_META_PATH.read_text())
+            existing = prior.get("started_at")
+            if isinstance(existing, str) and existing:
+                inception = existing
+        except (OSError, json.JSONDecodeError):
+            pass
     meta = {
         "mode": mode,
         "execution_mode": exec_mode.value if hasattr(exec_mode, "value") else str(exec_mode or mode),
         "initial_equity": initial_equity,
         "interval_seconds": interval_seconds,
-        "started_at": dt.datetime.now(dt.UTC).isoformat(),
+        "started_at": inception,
         "ib_host": settings.IB_HOST,
         "ib_port": settings.IB_PORT,
         "auto_execute": settings.AUTO_EXECUTE,

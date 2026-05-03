@@ -136,7 +136,32 @@ hydrate_from_gcs() {
 hydrate_from_gcs "live"       "$HOST_LIVE_DIR"       || echo "[vm_redeploy] live hydrate failed (non-fatal)"
 hydrate_from_gcs "data_store" "$HOST_DATA_DIR"       || echo "[vm_redeploy] data_store hydrate failed (non-fatal)"
 
-# `sudo tee`/`sudo mkdir` inside hydrate_from_gcs writes as root, which
+# Seed reference data baked into the image. The runner reads bars from
+# data_store/{ohlcv,intraday} but never writes them — they're static
+# reference data shipped via `COPY . .` in Dockerfile.execution. The
+# bind-mount above shadows them, and the runner falls into the cold-
+# start "no_local_data" branch every cycle (paper_runner.py:919-947).
+# Symptom on the May 2 incident: 22:04 UTC onward every snapshot wrote
+# equity=$1M / open_positions=0 even though signals + positions existed.
+# Skip subdirs that already exist so signal_book.json hydrated from GCS
+# survives.
+TMP_CID=$(sudo docker --config "$DOCKER_CONFIG_DIR" create "$IMAGE")
+trap 'sudo docker --config "$DOCKER_CONFIG_DIR" rm "$TMP_CID" >/dev/null 2>&1 || true' EXIT
+for sub in ohlcv intraday indices; do
+  if [ -d "$HOST_DATA_DIR/$sub" ] && [ "$(ls -A "$HOST_DATA_DIR/$sub" 2>/dev/null | head -1)" ]; then
+    echo "[vm_redeploy] data_store/$sub already populated — skipping image seed"
+    continue
+  fi
+  if sudo docker --config "$DOCKER_CONFIG_DIR" cp "$TMP_CID:/app/data_store/$sub" "$HOST_DATA_DIR/" 2>/dev/null; then
+    echo "[vm_redeploy] seeded data_store/$sub from image"
+  else
+    echo "[vm_redeploy] data_store/$sub not in image (skipping)"
+  fi
+done
+sudo docker --config "$DOCKER_CONFIG_DIR" rm "$TMP_CID" >/dev/null 2>&1 || true
+trap - EXIT
+
+# `sudo tee`/`sudo mkdir`/`docker cp` above writes as root, which
 # re-roots the dirs we chowned above. Final chown sweeps everything to
 # 1001:1001 so the container user can read and write.
 sudo chown -R 1001:1001 "$HOST_LIVE_DIR" "$HOST_DATA_DIR"
