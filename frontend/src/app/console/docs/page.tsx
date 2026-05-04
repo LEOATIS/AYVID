@@ -76,7 +76,7 @@ export default function DocsPage() {
           <Tier
             tier="Tier 2"
             title="~30s shock override"
-            description="LLM ingests headlines; LangGraph 4-agent debate; Neo4j 3-hop walk surfaces tickers."
+            description="LLM ingests headlines; LangGraph 7-agent debate; Neo4j 3-hop walk surfaces tickers."
             icon={<Code2 className="h-4 w-4" />}
           />
           <Tier

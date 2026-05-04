@@ -140,7 +140,7 @@ function Process() {
     {
       n: "03",
       title: "Multi-Agent Debate",
-      body: "Four LLM specialists — Strategist, Mapper, Auditor, Supervisor — debate every signal. Bayesian reconciliation across agents is how we estimate conviction. Disagreement itself is a signal.",
+      body: "Seven LLM specialists — Strategist, Mapper, Researchers, Analyst, Pattern, Auditor, Supervisor — debate every signal. Bayesian reconciliation across agents is how we estimate conviction. Disagreement itself is a signal.",
     },
     {
       n: "04",
@@ -206,7 +206,7 @@ function Capabilities() {
     {
       icon: <Brain className="h-5 w-5" />,
       title: "Agent-swarm research",
-      body: "Four LLM specialists debate each signal. Disagreement is itself a signal that the trade is fragile.",
+      body: "Seven LLM specialists debate each signal. Disagreement is itself a signal that the trade is fragile.",
     },
     {
       icon: <Workflow className="h-5 w-5" />,
@@ -278,7 +278,7 @@ function Comparison() {
       them: { title: "Factor regression",        body: "Lagged factors, momentum residuals, value premia. Linear models on non-linear consequences." },
     },
     {
-      us:   { title: "Agent swarms",             body: "Four specialists debate every signal. Disagreement is conviction-discounted." },
+      us:   { title: "Agent swarms",             body: "Seven specialists debate every signal. Disagreement is conviction-discounted." },
       them: { title: "Single research analyst",  body: "One PM's mental model bottlenecks the entire firm. Disagreement is dampened, not measured." },
     },
     {

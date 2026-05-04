@@ -17,9 +17,9 @@ const NOTES: { date: string; tag: string; title: string; teaser: string }[] = [
   {
     date: "2026 · Q2",
     tag: "Architecture",
-    title: "A four-agent swarm produces calibrated conviction. A single model does not.",
+    title: "A seven-agent swarm produces calibrated conviction. A single model does not.",
     teaser:
-      "Strategist, Mapper, Auditor, Supervisor. We measure their disagreement as a first-class signal — high-disagreement trades are systematically smaller, regardless of average conviction.",
+      "Strategist, Mapper, Researchers, Analyst, Pattern, Auditor, Supervisor. We measure their disagreement as a first-class signal — high-disagreement trades are systematically smaller, regardless of average conviction.",
   },
   {
     date: "2026 · Q2",
