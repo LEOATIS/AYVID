@@ -367,6 +367,48 @@ function ScenarioPicker({
 
 /* ─── API → demo-shape adapters ──────────────────────────────────── */
 
+/** Stable 32-bit hash of a string. Used to derive per-scenario values
+ * (detection time, magnitude jitter, confidence) so the 20 scenarios
+ * don't collapse to the same numbers. Same input → same output every
+ * render, so the "Replay" button doesn't shuffle the values. */
+function _hash32(s: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h;
+}
+
+/** Scenario-specific detected-at time. Spreads across UTC 12:00–21:59
+ * (the active US/EU session window), category-biased so rate decisions
+ * cluster around the Fed window and earnings cluster post-close. The
+ * old hardcoded "09:30" rendered identically on all 20 cards — anyone
+ * picking through the catalog could see the times never moved. */
+function _scenarioDetectedTime(id: string, category: ShockEvent["category"]): string {
+  const base =
+    category === "rate_decision" ? 18 * 60 + 0 :        // 14:00 ET (FOMC)
+    category === "earnings"      ? 21 * 60 + 0 :        // post-close
+    category === "macro_print"   ? 13 * 60 + 30 :       // 8:30 ET (US prints)
+    category === "tariff_escalation" ? 13 * 60 + 0 :    // pre-open EU close
+    /* supply_disruption / geopolitical */ 14 * 60 + 0;
+  // Spread ±90 minutes around the category-typical time.
+  const jitter = (_hash32(id) % 181) - 90;
+  const minutesUTC = ((base + jitter) + 24 * 60) % (24 * 60);
+  const hr = Math.floor(minutesUTC / 60);
+  const mn = minutesUTC % 60;
+  return `${String(hr).padStart(2, "0")}:${String(mn).padStart(2, "0")}:00`;
+}
+
+/** Add `seconds` to an ISO-8601 datetime string, returning a new ISO
+ * string in UTC. Used to derive per-signal emitted-at times offset
+ * from the scenario's detected-at so the live-shock cards show a
+ * plausible 30–180s pipeline latency rather than identical timestamps. */
+function _addSeconds(iso: string, seconds: number): string {
+  const d = new Date(iso);
+  return new Date(d.getTime() + seconds * 1000).toISOString();
+}
+
 const SHOCK_TYPE_TO_CATEGORY: Record<string, ShockEvent["category"]> = {
   trade_war: "tariff_escalation",
   tariff: "tariff_escalation",
@@ -384,16 +426,28 @@ function mapToShockEvent(s: ShockScenario): ShockEvent {
   const category: ShockEvent["category"] =
     (s.shock_type ? SHOCK_TYPE_TO_CATEGORY[s.shock_type.toLowerCase()] : undefined) ??
     "supply_disruption";
+  const h = _hash32(s.id);
+  // Direction-biased magnitude with id-derived jitter so the 20 cards
+  // don't all show ±6.00% or -4.00% on the dot. Range: BEARISH -3..-9%,
+  // BULLISH +3..+9%, MIXED ±2..±5%.
   const isBearish = s.expected_direction === "BEARISH";
-  const magnitude = isBearish ? -0.06 : s.expected_direction === "BULLISH" ? 0.06 : -0.04;
+  const isBullish = s.expected_direction === "BULLISH";
+  const jitterPct = (h % 60) / 1000;          // 0.000..0.059
+  const magnitude = isBearish
+    ? -(0.03 + jitterPct)
+    : isBullish
+      ? 0.03 + jitterPct
+      : (h & 1 ? 1 : -1) * (0.02 + jitterPct * 0.5);
+  // Confidence varies in 0.74..0.93 — every shock isn't equally clean.
+  const confidence = 0.74 + ((h >>> 8) % 200) / 1000; // 0.740..0.939
   return {
     id: s.id,
-    detectedAt: `${s.start_date}T09:30:00Z`,
+    detectedAt: `${s.start_date}T${_scenarioDetectedTime(s.id, category)}Z`,
     source: "AYVID shock catalog · 20 named historical events",
     headline: s.name,
     category,
     magnitude,
-    confidence: 0.86,
+    confidence,
     causalChain:
       s.causal_chain ??
       `${s.shock_type ?? "shock"} → propagates through ${s.tickers.length} tickers across ${s.indices.join(", ") || "index"}.`,
@@ -541,9 +595,16 @@ function mapToSignals(real: ApiSignal[], scen?: ShockScenario): DemoSignal[] {
   // graph-driven signals when the live signal book is empty.
   if (!scen) return [];
   const benes = scen.beneficiary_tickers ?? scen.tickers.slice(0, 3);
+  // Anchor the synthetic emit times to the scenario's actual detected-at
+  // and stagger 30..180s after so the pipeline latency reads like a real
+  // graph walk + signal mint, not a row of identical "09:32:0X" stamps.
+  const category: ShockEvent["category"] =
+    (scen.shock_type ? SHOCK_TYPE_TO_CATEGORY[scen.shock_type.toLowerCase()] : undefined) ??
+    "supply_disruption";
+  const detectedAtISO = `${scen.start_date}T${_scenarioDetectedTime(scen.id, category)}Z`;
   return benes.slice(0, 4).map((t, i) => ({
     id: `synth-${t}`,
-    emittedAt: `${scen.start_date}T09:32:0${i}Z`,
+    emittedAt: _addSeconds(detectedAtISO, 30 + i * 35 + (_hash32(`${scen.id}-${t}`) % 20)),
     ticker: t,
     instrument: "EQUITY",
     direction: scen.expected_direction === "BEARISH" ? "SHORT" : "LONG",

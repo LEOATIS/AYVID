@@ -92,7 +92,7 @@ class ShadowState:
     consumed_signals: set[str] = field(default_factory=set)
 
 
-def _save_shadow_state(state: "ShadowState") -> None:
+def _save_shadow_state(state: ShadowState) -> None:
     """Persist the runner state so a process restart resumes where it
     left off instead of re-firing every still-open signal as a new fill.
     Atomic write via the same helper used for positions.json so a SIGKILL
@@ -118,7 +118,7 @@ def _save_shadow_state(state: "ShadowState") -> None:
         log.warning(f"shadow_state save failed: {exc}")
 
 
-def _load_shadow_state(initial_equity: float) -> "ShadowState":
+def _load_shadow_state(initial_equity: float) -> ShadowState:
     """Hydrate ShadowState from disk (or GCS on Cloud Run cold-start).
 
     Returns a fresh ShadowState if no snapshot exists or the snapshot is
