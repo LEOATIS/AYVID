@@ -12,6 +12,7 @@ import {
   Network,
   Radio,
   Server,
+  TrendingUp,
   Zap,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -55,6 +56,15 @@ export default function Dashboard() {
   const ret = summary?.total_return_pct ?? 0;
   const dd = summary?.drawdown_from_peak_pct ?? 0;
   const positive = ret >= 0;
+  const cumulativePnl = final - initial;
+  // Inception is the first equity snapshot — currently 2026-04-19 — so this
+  // automatically labels the ROI tile with the actual run-start date instead
+  // of hard-coding "Apr 19".
+  const inceptionIso = summary?.first_timestamp ?? meta?.started_at ?? null;
+  const inceptionShort = inceptionIso
+    ? new Date(inceptionIso).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : null;
+  const inceptionRange = inceptionShort ? `${inceptionShort} → today` : "since inception";
 
   const headlineBacktest = (backtests?.reports as BacktestSummary[] | undefined)?.find(
     (r) => r.kind === "shock_driven",
@@ -88,7 +98,7 @@ export default function Dashboard() {
       </section>
 
       {/* ── KPIs ─────────────────────────────────────────────── */}
-      <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+      <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6">
         <StatTile
           label="Equity"
           value={fmtMoneyAdaptive(final)}
@@ -96,6 +106,14 @@ export default function Dashboard() {
           trend={positive ? "up" : "down"}
           hint={`vs ${fmtMoneyAdaptive(initial)} start`}
           icon={<CircleDollarSign className="h-4 w-4" />}
+          loading={!summary}
+        />
+        <StatTile
+          label={`ROI · ${inceptionRange}`}
+          value={fmtPct(ret)}
+          trend={positive ? "up" : "down"}
+          hint={`P&L ${fmtMoneyAdaptive(cumulativePnl)} · ${fmtNumber(summary?.snapshots_count ?? 0)} snapshots`}
+          icon={<TrendingUp className="h-4 w-4" />}
           loading={!summary}
         />
         <StatTile
@@ -170,7 +188,7 @@ export default function Dashboard() {
                   {(summary.total_return_pct ?? 0) >= 0 ? "+" : ""}
                   {(summary.total_return_pct ?? 0).toFixed(3)}%
                 </div>
-                <div className="text-[10px] text-subtle">since inception</div>
+                <div className="text-[10px] text-subtle">{inceptionRange}</div>
               </div>
             ) : (
               <span className="inline-flex items-center gap-1.5 text-[11px]">
