@@ -253,8 +253,28 @@ class PrecomputedSignal:
                 self.risk_reward_ratio = round(reward / risk, 4)
 
         # Notional value & dollar risk: derived from quantity if set.
+        # Asset-class aware — equity-style qty*price is wrong for FX
+        # (qty is in lots × 100k base units), futures/commodities (qty is
+        # contracts × contract_multiplier), and options (qty × 100). The
+        # canonical sizers in execution_engine/math/position_sizer.py
+        # already populate notional_value correctly; this fallback fires
+        # when a signal lands on disk with notional_value=0 (manual /
+        # LLM-emitted signals, restored ledger rows). Pre-fix this path
+        # produced USDJPY @ 155.45 → "$15,546.64 notional for 1 lot",
+        # which is 100× off — anyone in finance spots it instantly.
         if self.notional_value <= 0 and self.quantity > 0 and self.entry_price > 0:
-            self.notional_value = round(self.quantity * self.entry_price, 2)
+            ac = (self.asset_class or "EQUITY").upper()
+            if ac == "FX":
+                lot_units = float(self.lot_size or 100_000.0)
+                self.notional_value = round(self.quantity * lot_units * self.entry_price, 2)
+            elif ac in ("FUTURE", "COMMODITY"):
+                mult = float(self.contract_multiplier or self.lot_size or 1.0)
+                self.notional_value = round(self.quantity * mult * self.entry_price, 2)
+            elif ac == "OPTION":
+                mult = float(self.contract_multiplier or 100.0)
+                self.notional_value = round(self.quantity * mult * self.entry_price, 2)
+            else:  # EQUITY / ETF / INDEX / CRYPTO / BOND
+                self.notional_value = round(self.quantity * self.entry_price, 2)
         if (
             self.risk_amount <= 0
             and self.quantity > 0

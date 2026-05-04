@@ -48,6 +48,15 @@ EQUITY_CURVE_PATH = LIVE_DIR / "equity_curve.jsonl"
 TRADES_PATH = LIVE_DIR / "trades.jsonl"
 POSITIONS_PATH = LIVE_DIR / "positions.json"
 RUN_META_PATH = LIVE_DIR / "run_meta.json"
+# ShadowState snapshot — cash, open positions, the consumed-signals dedup
+# set, cycle counter, and rolling P&L. Persisted after each cycle and
+# reloaded on startup so a Cloud Run cold-start (or a Docker restart from
+# the stall watchdog) doesn't reset to a fresh $1M and re-fire every
+# still-open signal as a brand-new fill. Pre-fix the runner was creating
+# a fresh ShadowState() on every start, which is what made the equity
+# curve look dead flat at $1M and the trade tape carry duplicate fills
+# at the same price across days.
+SHADOW_STATE_PATH = LIVE_DIR / "shadow_state.json"
 _GCS_BUCKET = (os.getenv("AYVID_LIVE_GCS_BUCKET") or "").strip()
 _GCS_PREFIX = (os.getenv("AYVID_LIVE_GCS_PREFIX") or "live_state").strip("/")
 _gcs_client: Any | None = None
@@ -81,6 +90,77 @@ class ShadowState:
     # Track signal-book keys already consumed so one signal
     # produces exactly one fill across the runner's lifetime.
     consumed_signals: set[str] = field(default_factory=set)
+
+
+def _save_shadow_state(state: "ShadowState") -> None:
+    """Persist the runner state so a process restart resumes where it
+    left off instead of re-firing every still-open signal as a new fill.
+    Atomic write via the same helper used for positions.json so a SIGKILL
+    mid-write can't corrupt the snapshot, then mirrored to GCS for the
+    Cloud Run cold-start path."""
+    payload = {
+        "saved_at": dt.datetime.now(dt.UTC).isoformat(),
+        "initial_equity": state.initial_equity,
+        "cash": round(state.cash, 4),
+        "cycle": state.cycle,
+        "cumulative_pnl": round(state.cumulative_pnl, 4),
+        "last_equity": round(state.last_equity, 4),
+        # Sets aren't JSON-native — sorted list keeps diffs stable across
+        # snapshots, which makes the GCS object's version history readable.
+        "consumed_signals": sorted(state.consumed_signals),
+        "positions": state.positions,
+    }
+    try:
+        atomic_write_json(SHADOW_STATE_PATH, payload, indent=2, default=str)
+        _sync_path_to_gcs(SHADOW_STATE_PATH)
+    except Exception as exc:
+        # State persistence is best-effort — never break the trading loop.
+        log.warning(f"shadow_state save failed: {exc}")
+
+
+def _load_shadow_state(initial_equity: float) -> "ShadowState":
+    """Hydrate ShadowState from disk (or GCS on Cloud Run cold-start).
+
+    Returns a fresh ShadowState if no snapshot exists or the snapshot is
+    corrupt. The ``initial_equity`` argument seeds a brand-new run; once
+    a saved snapshot exists, its ``initial_equity`` is preserved so the
+    "since-inception ROI" tile keeps tracking the same baseline."""
+    text = _read_text_local_or_gcs(SHADOW_STATE_PATH)
+    if not text:
+        log.info(
+            f"shadow_state cold start (no snapshot at {SHADOW_STATE_PATH}); "
+            f"initial_equity=${initial_equity:,.0f}"
+        )
+        return ShadowState(
+            initial_equity=initial_equity,
+            cash=initial_equity,
+            last_equity=initial_equity,
+        )
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        log.warning(f"shadow_state corrupt ({exc}); starting fresh")
+        return ShadowState(
+            initial_equity=initial_equity,
+            cash=initial_equity,
+            last_equity=initial_equity,
+        )
+    saved_initial = float(data.get("initial_equity") or initial_equity)
+    state = ShadowState(
+        initial_equity=saved_initial,
+        cash=float(data.get("cash") or saved_initial),
+        positions=dict(data.get("positions") or {}),
+        cycle=int(data.get("cycle") or 0),
+        cumulative_pnl=float(data.get("cumulative_pnl") or 0.0),
+        last_equity=float(data.get("last_equity") or saved_initial),
+        consumed_signals=set(data.get("consumed_signals") or []),
+    )
+    log.info(
+        f"shadow_state resumed cycle={state.cycle} cash=${state.cash:,.2f} "
+        f"positions={len(state.positions)} consumed={len(state.consumed_signals)} "
+        f"saved_at={data.get('saved_at')}"
+    )
+    return state
 
 
 def _ensure_dirs() -> None:
@@ -117,6 +197,32 @@ def _sync_path_to_gcs(path: Path) -> None:
     except Exception as exc:
         # Never let storage sync break the trading loop.
         log.warning(f"gcs sync failed for {path}: {exc}")
+
+
+def _read_text_local_or_gcs(path: Path) -> str | None:
+    """Read text from local disk; fall back to GCS for cold-starts on
+    Cloud Run where the container's writable layer is empty but the
+    bucket has the prior session's snapshot."""
+    if path.exists():
+        try:
+            return path.read_text()
+        except OSError:
+            return None
+    if not _GCS_BUCKET:
+        return None
+    global _gcs_client
+    try:
+        if _gcs_client is None:
+            from google.cloud import storage
+
+            _gcs_client = storage.Client()
+        blob = _gcs_client.bucket(_GCS_BUCKET).blob(_blob_name(path))
+        if not blob.exists():
+            return None
+        return blob.download_as_text()
+    except Exception as exc:
+        log.warning(f"gcs read failed for {path}: {exc}")
+        return None
 
 
 import time as _time
@@ -1036,8 +1142,13 @@ async def _shadow_cycle(state: ShadowState) -> EquitySnapshot:
         except Exception as exc:
             log.debug(f"live_quote_overlay_failed cycle={state.cycle}: {exc}")
             live_results = [None] * len(open_position_marks)
+        live_failures: list[tuple[str, str]] = []
         for (sym, _ac), price in zip(open_position_marks, live_results):
-            if isinstance(price, Exception) or price is None or price <= 0:
+            if isinstance(price, Exception):
+                live_failures.append((sym, type(price).__name__))
+                continue
+            if price is None or (isinstance(price, (int, float)) and price <= 0):
+                live_failures.append((sym, "no_quote"))
                 continue
             latest_close[sym] = float(price)
             mark_meta[sym] = {
@@ -1045,6 +1156,19 @@ async def _shadow_cycle(state: ShadowState) -> EquitySnapshot:
                 "mark_price_source": "live_quote",
                 "mark_age_seconds": 0.0,
             }
+        if live_failures:
+            # Surface failures explicitly. Pre-fix this was a silent
+            # `continue` — when yfinance throttled or could not resolve
+            # a non-US ticker, the position fell through to stale OHLCV
+            # or `fallback_entry_price` and the equity curve sat dead
+            # flat. Logging the count + a sample makes the degradation
+            # visible to anyone reading the runner log.
+            sample = ", ".join(f"{s}({why})" for s, why in live_failures[:5])
+            log.info(
+                f"live_quote_overlay cycle={state.cycle} "
+                f"ok={len(open_position_marks) - len(live_failures)}/{len(open_position_marks)} "
+                f"failed={len(live_failures)} sample=[{sample}]"
+            )
 
     new_fills: list[dict[str, Any]] = []
 
@@ -1369,9 +1493,11 @@ async def _run_shadow_mode(
         f"Shadow mode: ${initial_equity:,.0f} initial equity, "
         f"polling every {interval_seconds}s (no IB connection)"
     )
-    state = ShadowState(
-        initial_equity=initial_equity, cash=initial_equity, last_equity=initial_equity
-    )
+    # Resume from disk/GCS so Cloud Run cold-starts and Docker restarts
+    # don't reset cash to $1M and re-fire every still-open signal as a
+    # brand-new fill (which is what was producing duplicate TSM/USDJPY/
+    # KLAC/BTC/ETH/GC/NQ rows in the trades tape).
+    state = _load_shadow_state(initial_equity)
     if state_holder is not None:
         state_holder["state"] = state
 
@@ -1380,6 +1506,7 @@ async def _run_shadow_mode(
         try:
             snap = await _shadow_cycle(state)
             _append_jsonl(EQUITY_CURVE_PATH, asdict(snap))
+            _save_shadow_state(state)
             log.info(
                 f"[{state.cycle:>4}] equity=${snap.equity:,.2f} "
                 f"cash=${snap.cash:,.2f} open={snap.open_positions} "
