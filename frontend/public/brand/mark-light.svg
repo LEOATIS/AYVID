@@ -1,24 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none"
-     role="img" aria-label="AYVID mark">
-  <!-- Light-theme variant — strokes become warm graphite (#0F0D0A).
-       Apex stays gold. -->
-
-  <!-- Left leg -->
-  <line x1="35.3" y1="92" x2="60" y2="16"
-        stroke="#0F0D0A" stroke-width="6"/>
-  <!-- Right leg -->
-  <line x1="84.7" y1="92" x2="60" y2="16"
-        stroke="#0F0D0A" stroke-width="6"/>
-  <!-- Crossbar at golden ratio -->
-  <line x1="44.7" y1="63" x2="75.3" y2="63"
-        stroke="#0F0D0A" stroke-width="4"/>
-
-  <!-- Four graph nodes in warm graphite -->
-  <circle cx="35.3" cy="92" r="4"   fill="#0F0D0A"/>
-  <circle cx="84.7" cy="92" r="4"   fill="#0F0D0A"/>
-  <circle cx="44.7" cy="63" r="2.8" fill="#0F0D0A"/>
-  <circle cx="75.3" cy="63" r="2.8" fill="#0F0D0A"/>
-
-  <!-- Apex node — gold stays gold regardless of theme. -->
-  <circle cx="60" cy="16" r="5" fill="#C9A84C"/>
+     role="img" aria-label="AYVID">
+  <!-- Light-theme variant — the A renders in warm graphite (#0F0D0A)
+       on warm cream paper.  Gold period unchanged. -->
+  <defs>
+    <style type="text/css">
+      @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@144,900&amp;display=block");
+      .ay-mark {
+        font-family: "Fraunces", Georgia, "Times New Roman", serif;
+        font-weight: 900;
+        font-variation-settings: "opsz" 144, "SOFT" 30;
+        letter-spacing: -0.045em;
+      }
+    </style>
+  </defs>
+  <text x="60" y="92"
+        class="ay-mark"
+        font-size="108"
+        fill="#0F0D0A"
+        text-anchor="middle">A</text>
+  <circle cx="92" cy="88" r="8" fill="#C9A84C"/>
 </svg>

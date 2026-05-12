@@ -50,31 +50,20 @@ export function ConsoleGate({ children }: { children: ReactNode }) {
       <div className="pointer-events-none absolute inset-0 marketing-grid opacity-30" aria-hidden />
 
       <header className="container-page flex h-16 items-center justify-between">
-        {/* Compact mark + wordmark in the corner — the stacked
-            wordmark sits below in the main hero area. */}
+        {/* Wordmark only — the stacked lockup lives in the main hero
+            area below.  Keeping the header restrained sets the
+            "private bank reading room" register that the brief
+            wants for the gate. */}
         <Link
           href="/"
           aria-label="AYVID home"
           className="flex items-center"
-          style={{ gap: 10 }}
         >
           <img
-            src="/brand/mark-dark.svg"
-            alt=""
-            aria-hidden="true"
-            style={{ width: 24, height: 24, display: "block" }}
+            src="/brand/wordmark-horizontal-dark.svg"
+            alt="AYVID"
+            style={{ height: 24, width: "auto", display: "block" }}
           />
-          <span
-            style={{
-              fontFamily: "'Fraunces', Georgia, serif",
-              fontWeight: 900,
-              fontSize: 17,
-              letterSpacing: "-0.025em",
-              color: "hsl(var(--fg))",
-            }}
-          >
-            AYVID
-          </span>
         </Link>
         <Link
           href="/"
