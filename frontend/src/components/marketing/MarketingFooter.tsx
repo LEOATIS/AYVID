@@ -61,23 +61,30 @@ export function MarketingFooter() {
           className="footer-grid"
         >
           <div>
+            {/* Footer logomark — Golden-Gnomon mark + AYVID + tagline,
+                slightly dimmed (opacity 0.86) per the colophon-of-a-
+                printed-report aesthetic.  Always dark-variant since
+                marketing is pinned to the dark register. */}
             <Link
               href="/"
-              style={{
-                fontFamily:
-                  'var(--font-display), "Fraunces", Georgia, serif',
-                fontWeight: 700,
-                fontSize: 36,
-                letterSpacing: "-0.032em",
-                color: "hsl(var(--fg))",
-                display: "inline-block",
-              }}
+              aria-label="AYVID home"
+              style={{ display: "inline-block", textDecoration: "none" }}
             >
-              AYVID
+              <img
+                src="/brand/wordmark-horizontal-dark.svg"
+                alt="AYVID"
+                style={{
+                  height: 28,
+                  width: "auto",
+                  opacity: 0.86,
+                  display: "block",
+                  marginBottom: 16,
+                }}
+              />
             </Link>
             <p
               className="body-prose"
-              style={{ marginTop: 16, maxWidth: "32ch" }}
+              style={{ maxWidth: "32ch" }}
             >
               An AI-native hedge fund. Causal supply-chain inference,
               agent-driven research, and end-to-end execution.

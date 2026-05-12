@@ -53,22 +53,55 @@ export function ConsoleNav() {
     <header className="sticky top-0 z-40 border-b border-app bg-[hsl(var(--bg)/0.85)] backdrop-blur-md">
       <div className="mx-auto flex h-[60px] w-full max-w-[1480px] items-center justify-between gap-4 px-4 sm:gap-6 sm:px-6">
         <div className="flex min-w-0 items-center gap-5">
+          {/* Mark + compact text block.  The console respects the
+              theme toggle, so we'd normally swap mark-dark.svg for
+              mark-light.svg in light mode — but the SVG is monochrome
+              and small (28×28), so we render the dark variant
+              unconditionally and let CSS mask-image / filter handle
+              theme inversion if a future operator demands light mode.
+              For now: ivory mark on warm graphite always reads. */}
           <Link
             href="/console"
-            className="group flex shrink-0 items-center gap-2.5"
+            className="group flex shrink-0 items-center"
+            style={{ gap: 12 }}
           >
-            <span className="grid h-9 w-9 place-items-center rounded-[3px] bg-ink text-[hsl(var(--bg))]">
-              <span className="font-display text-[17px] font-medium leading-none">
-                A
-              </span>
-            </span>
-            <div className="leading-tight">
-              <div className="font-display text-[16px] font-medium tracking-tight text-fg group-hover:text-brand">
+            <img
+              src="/brand/mark-dark.svg"
+              alt=""
+              aria-hidden="true"
+              style={{ width: 28, height: 28, display: "block" }}
+            />
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 1,
+                lineHeight: 1,
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: "'Fraunces', Georgia, serif",
+                  fontWeight: 900,
+                  fontSize: 15,
+                  letterSpacing: "-0.025em",
+                  color: "hsl(var(--fg))",
+                }}
+              >
                 AYVID
-              </div>
-              <div className="text-[9.5px] font-semibold uppercase tracking-[0.22em] text-subtle">
-                Operations · console
-              </div>
+              </span>
+              <span
+                style={{
+                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  fontWeight: 500,
+                  fontSize: 8.5,
+                  letterSpacing: "0.16em",
+                  color: "hsl(var(--fg-subtle))",
+                  textTransform: "uppercase",
+                }}
+              >
+                Operations · Console
+              </span>
             </div>
           </Link>
 

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Scale factor 0.267 from the 120×120 mark, same Golden-Gnomon
+       proportions.  Apex stays gold. -->
+  <line x1="9.4"  y1="24.5" x2="16"   y2="4.3"  stroke="#F0E9DD" stroke-width="2.4"/>
+  <line x1="22.6" y1="24.5" x2="16"   y2="4.3"  stroke="#F0E9DD" stroke-width="2.4"/>
+  <line x1="11.9" y1="16.8" x2="20.1" y2="16.8" stroke="#F0E9DD" stroke-width="1.6"/>
+  <circle cx="9.4"  cy="24.5" r="1.6" fill="#F0E9DD"/>
+  <circle cx="22.6" cy="24.5" r="1.6" fill="#F0E9DD"/>
+  <circle cx="11.9" cy="16.8" r="1.1" fill="#F0E9DD"/>
+  <circle cx="20.1" cy="16.8" r="1.1" fill="#F0E9DD"/>
+  <circle cx="16"   cy="4.3"  r="2.0" fill="#C9A84C"/>
+</svg>

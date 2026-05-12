@@ -23,20 +23,48 @@ const display = Fraunces({
   axes: ["opsz"],
 });
 
+const SITE_DESCRIPTION =
+  "Asymmetric Yield Via Intelligent Decisions. Swarms of LLM agents " +
+  "read every filing, trace supply-chain shocks through a live causal " +
+  "graph, and route real orders to Interactive Brokers — end to end, " +
+  "no humans on the trade path.";
+
 export const metadata: Metadata = {
   title: {
-    default: "AYVID — AI-Native Hedge Fund",
+    default: "AYVID — An AI-Native Hedge Fund",
     template: "%s · AYVID",
   },
-  description:
-    "AYVID is an AI-native hedge fund. Swarms of LLM agents read 10-Ks, earnings calls, and SEC filings, trace their consequences through a live causal graph of the global economy, and route sized, risk-limited orders into the market — end-to-end.",
-  metadataBase: new URL("http://localhost:3000"),
+  description: SITE_DESCRIPTION,
+  metadataBase: new URL("https://ayvid.ai"),
+  icons: {
+    // The Golden-Gnomon mark with the single gold apex — readable down
+    // to 16px tab favicons.
+    icon: "/brand/favicon.svg",
+    shortcut: "/brand/favicon.svg",
+    apple: "/brand/mark-dark.svg",
+  },
+  openGraph: {
+    title: "AYVID — An AI-Native Hedge Fund",
+    description: SITE_DESCRIPTION,
+    images: [{ url: "/brand/og-image.svg", width: 1200, height: 630 }],
+    type: "website",
+    siteName: "AYVID",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "AYVID",
+    description: SITE_DESCRIPTION,
+    images: ["/brand/og-image.svg"],
+  },
 };
 
+// Tab-bar / safe-area tint.  Light tint matches the warm cream paper,
+// dark tint matches the warm graphite — both are token-aligned so the
+// chrome around the page never looks "off-register".
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#faf9f5" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0e16" },
+    { media: "(prefers-color-scheme: light)", color: "#F4EFE6" },
+    { media: "(prefers-color-scheme: dark)", color: "#0F0D0A" },
   ],
 };
 

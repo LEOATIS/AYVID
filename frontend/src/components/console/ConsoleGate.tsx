@@ -50,11 +50,31 @@ export function ConsoleGate({ children }: { children: ReactNode }) {
       <div className="pointer-events-none absolute inset-0 marketing-grid opacity-30" aria-hidden />
 
       <header className="container-page flex h-16 items-center justify-between">
-        <Link href="/" className="flex items-center gap-2.5">
-          <span className="grid h-7 w-7 place-items-center bg-ink text-[hsl(var(--bg))]">
-            <span className="font-display text-[14px] leading-none">A</span>
+        {/* Compact mark + wordmark in the corner — the stacked
+            wordmark sits below in the main hero area. */}
+        <Link
+          href="/"
+          aria-label="AYVID home"
+          className="flex items-center"
+          style={{ gap: 10 }}
+        >
+          <img
+            src="/brand/mark-dark.svg"
+            alt=""
+            aria-hidden="true"
+            style={{ width: 24, height: 24, display: "block" }}
+          />
+          <span
+            style={{
+              fontFamily: "'Fraunces', Georgia, serif",
+              fontWeight: 900,
+              fontSize: 17,
+              letterSpacing: "-0.025em",
+              color: "hsl(var(--fg))",
+            }}
+          >
+            AYVID
           </span>
-          <span className="font-display text-[18px] tracking-tight text-fg">AYVID</span>
         </Link>
         <Link
           href="/"
@@ -66,6 +86,22 @@ export function ConsoleGate({ children }: { children: ReactNode }) {
 
       <main className="container-page mt-[6vh] grid grid-cols-1 gap-12 pb-24 md:mt-[12vh] md:grid-cols-12">
         <section className="md:col-span-7 reveal">
+          {/* Stacked wordmark — mark + AYVID + tagline, centred over
+              the gate's headline column.  The brief asks for it to
+              sit "centred" but the gate is a two-column layout, so
+              left-align inside the wider 7-col section preserves the
+              hierarchy: brand mark establishes presence, then the
+              "Restricted area" eyebrow drives the message. */}
+          <img
+            src="/brand/wordmark-stacked-dark.svg"
+            alt="AYVID"
+            style={{
+              width: 180,
+              height: "auto",
+              display: "block",
+              marginBottom: 40,
+            }}
+          />
           <div className="eyebrow inline-flex items-center gap-2 text-[10px]">
             <Lock className="h-3 w-3" /> Restricted area
           </div>
