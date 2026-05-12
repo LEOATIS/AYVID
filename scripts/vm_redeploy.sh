@@ -32,6 +32,39 @@ GCS_PREFIX="live_state"
 
 echo "[vm_redeploy] target image: ${IMAGE}"
 
+# ── PRE-PULL DISK HYGIENE (CRITICAL — must run before anything that writes) ──
+# Order matters: `docker login` writes credentials to $DOCKER_CONFIG_DIR;
+# `docker pull` writes layers to /var/lib/docker. Both fail with "no space
+# left on device" when the disk is full, which is exactly when we most
+# need the prune to succeed. So prune FIRST, before any write-dependent
+# docker command. The prune commands talk to the local daemon socket and
+# need neither registry auth nor the config dir.
+#
+# History: the previous ordering ran login → prune, which deadlocked the
+# May-12 deploy when /var/lib/docker filled to 100% (48 stale images,
+# 42 GB reclaimable). `docker login` couldn't write its config, the script
+# bailed before reaching prune, and 6 retry attempts repeated the same
+# failure verbatim. Moving prune above login breaks that deadlock.
+#
+# What we prune (and why nothing more):
+#   - container prune: removes stopped containers from previous rolls
+#   - image prune -a: removes any image NOT referenced by a running
+#     container (the currently-running ayvid-execution + ib-gateway
+#     images are protected automatically — running-container references
+#     pin them)
+#   - builder prune: clears BuildKit cache (rarely populated on a runtime
+#     VM, but defensive)
+# We do NOT prune volumes — those hold persisted live/ + data_store/
+# bind-mounts and losing them drops the equity curve.
+echo "[vm_redeploy] disk before prune:"
+df -h /var/lib/docker 2>&1 | tail -2 || true
+echo "[vm_redeploy] pruning docker (pre-pull hygiene)..."
+sudo docker container prune -f 2>&1 | tail -3 || true
+sudo docker image prune -af 2>&1 | tail -3 || true
+sudo docker builder prune -af 2>&1 | tail -3 || true
+echo "[vm_redeploy] disk after prune:"
+df -h /var/lib/docker 2>&1 | tail -2 || true
+
 # Refresh docker auth — the token from boot may have expired.
 ACCESS_TOKEN=$(curl -sf -H "Metadata-Flavor: Google" \
     "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
@@ -43,29 +76,6 @@ sudo mkdir -p "$DOCKER_CONFIG_DIR"
 sudo chmod 700 "$DOCKER_CONFIG_DIR"
 echo "$ACCESS_TOKEN" | sudo docker --config "$DOCKER_CONFIG_DIR" login \
     -u oauth2accesstoken --password-stdin "${REGION}-docker.pkg.dev"
-
-# ── DISK HYGIENE (CRITICAL — prevent "no space left on device") ─────
-# Every redeploy pulls a fresh image (~600MB compressed, 1.8GB unpacked).
-# COS ships with a 10GB persistent disk by default; without pruning,
-# old layers + dangling tags accumulate until /var/lib/docker fills and
-# the next pull dies with `write /var/lib/docker/tmp/...: no space left
-# on device` (May 12 deploy incident). We prune BEFORE pull so the
-# pull has headroom even on a near-full disk:
-#   - container prune: removes stopped containers from previous rolls
-#   - image prune -a: removes any image NOT referenced by a running
-#     container (the currently-running ayvid-execution is protected)
-#   - builder prune: clears BuildKit cache (rarely populated on a
-#     runtime VM, but defensive)
-# We do NOT prune volumes — those hold persisted live/ + data_store/
-# bind-mounts and losing them drops the equity curve.
-echo "[vm_redeploy] disk before prune:"
-df -h /var/lib/docker 2>&1 | tail -2 || true
-echo "[vm_redeploy] pruning docker (disk hygiene)..."
-sudo docker --config "$DOCKER_CONFIG_DIR" container prune -f 2>&1 | tail -3 || true
-sudo docker --config "$DOCKER_CONFIG_DIR" image prune -af 2>&1 | tail -3 || true
-sudo docker --config "$DOCKER_CONFIG_DIR" builder prune -af 2>&1 | tail -3 || true
-echo "[vm_redeploy] disk after prune:"
-df -h /var/lib/docker 2>&1 | tail -2 || true
 
 echo "[vm_redeploy] pulling image..."
 sudo docker --config "$DOCKER_CONFIG_DIR" pull "$IMAGE"
@@ -224,3 +234,20 @@ sudo docker run -d --restart=always --name ayvid-execution \
 
 echo "[vm_redeploy] container status:"
 sudo docker ps --filter name=ayvid-execution --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
+
+# ── POST-SWAP DISK HYGIENE ────────────────────────────────────────────
+# After the new ayvid-execution container is up, the OLD image tag is
+# unreferenced (the only container that pinned it — the previous
+# ayvid-execution — was just `docker rm -f`'d above). Prune again here
+# so steady-state disk usage stays at ~1 ayvid-execution image (~2 GB)
+# rather than growing by one image per redeploy until pre-pull prune
+# has to bail us out. Safe because rollback.yml re-pulls from Artifact
+# Registry after re-tagging :latest — it does NOT rely on locally
+# cached N-1 images, so deleting N-1 here costs us no rollback path.
+# Short sleep gives the daemon a beat to settle the old container's
+# tear-down before the unreferenced-image scan runs.
+echo "[vm_redeploy] post-swap prune (drop N-1 image)..."
+sleep 3
+sudo docker image prune -af 2>&1 | tail -3 || true
+echo "[vm_redeploy] disk after post-swap prune:"
+df -h /var/lib/docker 2>&1 | tail -1 || true
