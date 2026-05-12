@@ -59,6 +59,28 @@ variable "service_account_email" {
   description = "Pre-created service account that backend + worker run as."
 }
 
+variable "deployer_service_account_email" {
+  type        = string
+  description = <<EOT
+Pre-created service account that GitHub Actions impersonates via Workload
+Identity Federation to deploy. Must be supplied — bindings in compute.tf
+grant it the minimum surface to (1) IAP-tunnel SSH into ayvid-execution,
+(2) authenticate via OS Login, and (3) act as the runtime SA when
+SSHing in. Without these the May-12 outage recurs:
+`runner@compute.<id>: Permission denied (publickey)`.
+
+In the current bootstrap the deployer SA *is* the runtime SA (GH Actions
+impersonates ayvid-runtime via the `github-pool` WIF provider), so
+typical value is the same as `service_account_email`. The two are kept
+as separate variables so a future split (e.g. a dedicated deployer SA
+with narrower runtime permissions) doesn't require touching compute.tf.
+EOT
+  validation {
+    condition     = can(regex("^[a-z0-9-]+@[a-z0-9.-]+\\.iam\\.gserviceaccount\\.com$", var.deployer_service_account_email))
+    error_message = "deployer_service_account_email must be a service-account email (e.g. foo@project.iam.gserviceaccount.com)."
+  }
+}
+
 variable "image_tag" {
   type        = string
   default     = "latest"
