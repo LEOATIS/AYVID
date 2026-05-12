@@ -1,221 +1,196 @@
 "use client";
 
 import Link from "next/link";
-import { type CSSProperties, type ReactNode } from "react";
-import { ArrowRight } from "lucide-react";
+import { useRef, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { ArrowRight, Sparkles } from "lucide-react";
+import { HeroVisual } from "@/components/marketing/HeroVisual";
+import { HeroShowcase } from "@/components/marketing/HeroShowcase";
 
 /**
- * AYVID Hero — text on warm paper, per brief §5.2.
+ * AYVID Hero — Polo-style on warm graphite + gold (the original aesthetic).
  *
- * The hero is no longer a stage with an ambient orb and a grid backdrop.
- * It is a printed page.
+ *   • Type scale  : Golden Ratio.  H1 clamps via `.wordmark-polo`.
+ *   • Spacing     : Fibonacci ONLY  (4 / 8 / 13 / 21 / 34 / 55 / 89 / 144).
+ *   • Reveal      : Monument curve cubic-bezier(0.22, 1, 0.36, 1) — pure
+ *                   CSS keyframe so the page is visible pre-hydration.
+ *   • Primary CTA : Cursor-tracking gold glow border (no flash).
+ *   • Layout      : capped width 1080px, max prose 65ch.
  *
- *  • 180px top padding — the breath that signals confidence.
- *  • Eyebrow:   .label-mono · color var(--brand)        · 12px above headline.
- *  • Headline:  .display-hero · TWO lines max
- *                  - line 1 in --fg
- *                  - line 2 in --brand (SOLID gold, not a gradient).
- *  • Subhead:   .display-callout (italic Fraunces) · max-width 56ch · --fg-2.
- *  • CTAs:      .btn-paper-primary + .btn-paper-secondary, 16px gap.
- *  • Below CTAs: 96px of whitespace, then a single horizontal rule.
- *  • Below the rule: four stat tiles AS A ROW OF TEXT — no cards, no
- *                    borders around the whole strip.  Vertical 1px rules
- *                    between columns.
- *
- * Heavy verbs and brand-defining facts only.  No HeroVisual, no
- * HeroShowcase, no Reveal animation, no cursor-tracking glow.  Per
- * brief §7: "Do not animate on page load except the count-up for the
- * main hero stats" — and the four stats here are static facts, not
- * live counters, so we don't animate at all.  Restraint is the design.
+ * Eyebrow no longer prefixes itself with "AYVID ·" — the wordmark in the
+ * nav already says AYVID, and duplicating it inside the hero eyebrow on
+ * the SAME viewport reads as a typo to anyone seeing the page for the
+ * first time.  Just "AI-Native Hedge Fund" is enough context.
  */
-
-/** Static fact set — fixed, not from any API.  Brief §5.2 verbatim. */
-const STAT_TILES: {
-  value: string;
-  label: string;
-  desc: string;
-}[] = [
-  {
-    value: "300+",
-    label: "Instruments",
-    desc: "Equities · FX · Crypto · Commodities",
-  },
-  {
-    value: "30",
-    label: "Exchanges",
-    desc: "Across 6 continents",
-  },
-  {
-    value: "6",
-    label: "Asset classes",
-    desc: "All live-wired",
-  },
-  {
-    value: "0",
-    label: "Humans on trade path",
-    desc: "End-to-end autonomous",
-  },
-];
-
 export function Hero() {
   return (
-    <section className="relative">
+    <section className="relative isolate overflow-hidden">
+      {/* Ambient warm-gold wash — gold @ 5% on dark, slate-blue tint on light. */}
+      <div className="hero-glow" aria-hidden />
+      <div className="mesh-grain pointer-events-none absolute inset-0" aria-hidden />
+
       <div
-        className="container-page mx-auto"
+        className="container-page relative z-10"
         style={{
-          paddingTop: 180,
-          paddingBottom: 96,
+          paddingTop: "var(--s-6)",
+          paddingBottom: "var(--s-7)",
         }}
       >
-        {/* Eyebrow — .label-mono coloured gold, sits 12px above headline */}
-        <p
-          className="label-mono"
-          style={{
-            color: "hsl(var(--brand))",
-            marginBottom: 12,
-          }}
-        >
-          AYVID · AI-Native Hedge Fund
-        </p>
+        {/* Hero copy — left-aligned, capped width.  Asymmetry inside the
+            column rather than via a 12-col split. */}
+        <div className="max-w-[1080px]" style={{ minWidth: 0 }}>
+          <Reveal delay={0}>
+            <span className="eyebrow-pill">
+              <span className="sparkle" aria-hidden>
+                <Sparkles className="h-3 w-3" strokeWidth={2.6} />
+              </span>
+              AYVID&nbsp;·&nbsp;AI-Native Hedge Fund
+            </span>
+          </Reveal>
 
-        {/* Headline — two lines max.  Line 1 in --fg, line 2 in --brand
-            (SOLID gold; never a gradient per brief §7). */}
-        <h1 className="display-hero" style={{ maxWidth: "16ch" }}>
-          <span style={{ color: "hsl(var(--fg))", display: "block" }}>
-            Asymmetric yield
-          </span>
-          <span style={{ color: "hsl(var(--brand))", display: "block" }}>
-            via intelligent decisions.
-          </span>
-        </h1>
+          <Reveal delay={60}>
+            <h1
+              className="wordmark-polo"
+              style={{ marginTop: "var(--s-5)" }}
+            >
+              <span className="tone-bright">The First Fully</span>
+              <br />
+              <span className="tone-bright">Autonomous</span>
+              <br />
+              <span className="tone-mute">AI Hedge Fund.</span>
+            </h1>
+          </Reveal>
 
-        {/* Subhead — italic Fraunces, narrow editorial measure */}
-        <p
-          className="display-callout"
-          style={{ marginTop: 32, maxWidth: "56ch" }}
-        >
-          Six asset classes. 300+ instruments. Zero human traders. LLM agent
-          swarms read every 10-K, earnings call, and central-bank print, then
-          route sized, hedged orders across the global economy — end-to-end,
-          fully autonomous.
-        </p>
+          <Reveal delay={120}>
+            <p
+              className="eyebrow-wide"
+              style={{ marginTop: "var(--s-4)" }}
+            >
+              <b>A</b>symmetric&nbsp;&nbsp;<b>Y</b>ield&nbsp;&nbsp;
+              <b>V</b>ia&nbsp;&nbsp;<b>I</b>ntelligent&nbsp;&nbsp;
+              <b>D</b>ecisions
+            </p>
+          </Reveal>
 
-        {/* CTA row — primary + secondary, 16px gap, both 44px tall */}
-        <div
-          className="flex flex-wrap items-center"
-          style={{ marginTop: 48, gap: 16 }}
-        >
-          <Link href="/approach" className="btn-paper-primary" style={{ height: 44 }}>
-            See the engine
-            <ArrowRight className="h-3.5 w-3.5" strokeWidth={2.4} />
-          </Link>
-          <Link
-            href="/contact"
-            className="btn-paper-secondary"
-            style={{ height: 44 }}
+          <Reveal delay={180}>
+            <p
+              className="text-fg-muted"
+              style={{
+                marginTop: "var(--s-5)",
+                maxWidth: "65ch",
+                fontSize: "var(--t-body)",
+                lineHeight: "var(--lh-body)",
+              }}
+            >
+              Six asset classes. 300+ instruments. Zero human traders. LLM agent
+              swarms read every 10-K, earnings call, and central-bank print,
+              trace consequences through a live causal graph of the global
+              economy, and route sized, hedged orders across equities, FX,
+              commodities, crypto, ETFs, and bonds —{" "}
+              <strong className="text-fg">end-to-end, fully autonomous</strong>.
+            </p>
+          </Reveal>
+
+          <Reveal delay={260}>
+            <div
+              className="flex flex-wrap items-center"
+              style={{ marginTop: "var(--s-6)", gap: "var(--s-3)" }}
+            >
+              <GlowCTA href="/approach">
+                See the engine
+                <span className="arrow" aria-hidden>
+                  <ArrowRight />
+                </span>
+              </GlowCTA>
+              <Link href="/contact" className="btn-polo btn-polo-paper">
+                Speak with the desk
+                <span className="arrow" aria-hidden>
+                  <ArrowRight />
+                </span>
+              </Link>
+            </div>
+          </Reveal>
+
+          <Reveal delay={340}>
+            <div style={{ marginTop: "var(--s-6)" }}>
+              <div className="proof-bar">
+                <span>
+                  <span className="dot" aria-hidden />
+                  <b>Live</b>&nbsp;· IB Paper
+                </span>
+                <span>
+                  <b>6 asset classes</b>&nbsp;· fully wired
+                </span>
+                <span>
+                  <b>Neo4j</b>&nbsp;· causal graph &nbsp;·&nbsp;{" "}
+                  <b>30 exchanges</b>
+                </span>
+              </div>
+            </div>
+          </Reveal>
+        </div>
+
+        {/* Showcase preview — full width below the fold */}
+        <Reveal delay={420}>
+          <div
+            className="mx-auto"
+            style={{ marginTop: "var(--s-7)", maxWidth: "1080px" }}
           >
-            Speak with the desk
-          </Link>
-        </div>
-
-        {/* 96px whitespace, then horizontal rule */}
-        <div style={{ height: 96 }} aria-hidden />
-        <div
-          style={{
-            height: 1,
-            background: "var(--rule-bold)",
-            width: "100%",
-          }}
-          aria-hidden
-        />
-
-        {/* Stat row — four columns, vertical hairline rules between them.
-            NO CARDS, NO BORDERS around the whole strip.  Just text on paper. */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            marginTop: 48,
-          }}
-          className="hero-stat-grid"
-        >
-          {STAT_TILES.map((tile, idx) => (
-            <StatColumn key={tile.label} {...tile} isFirst={idx === 0} />
-          ))}
-        </div>
+            <HeroShowcase>
+              <HeroVisual />
+            </HeroShowcase>
+          </div>
+        </Reveal>
       </div>
-
-      {/* Component-local rule for the responsive stat grid.  On narrow
-          screens collapse to 2 columns; remove the left-hand vertical
-          rule on the leftmost column of each row so the dividers don't
-          dangle. */}
-      <style jsx>{`
-        @media (max-width: 720px) {
-          :global(.hero-stat-grid) {
-            grid-template-columns: repeat(2, 1fr) !important;
-            row-gap: 36px;
-          }
-          :global(.hero-stat-grid > div:nth-child(2n + 1)) {
-            border-left: none !important;
-          }
-        }
-      `}</style>
     </section>
   );
 }
 
-/** One column of the stat row.  Big number, tiny label, tinier descrip.
- *  First column: no left rule.  Every other column: 1px var(--rule) on
- *  the left edge.
- */
-function StatColumn({
-  value,
-  label,
-  desc,
-  isFirst,
+/* Pure-CSS monument reveal — slide-up + fade.  The element is fully
+ * visible at end-state so SSR has no FOUC.  `delay` in ms. */
+function Reveal({
+  children,
+  delay = 0,
 }: {
-  value: string;
-  label: string;
-  desc: string;
-  isFirst: boolean;
-}): ReactNode {
-  const cellStyle: CSSProperties = {
-    paddingLeft: isFirst ? 0 : 24,
-    paddingRight: 24,
-    borderLeft: isFirst ? "none" : "1px solid var(--rule)",
-    display: "flex",
-    flexDirection: "column",
-    gap: 8,
-    minWidth: 0,
+  children: ReactNode;
+  delay?: number;
+}) {
+  const style: CSSProperties = { animationDelay: `${delay}ms` };
+  return (
+    <div className="reveal-up" style={style}>
+      {children}
+    </div>
+  );
+}
+
+/* Cursor-tracking glow CTA — sets --mx / --my CSS vars on move so the
+ * radial gold ring follows the pointer.  No flash; pure CSS. */
+function GlowCTA({
+  href,
+  children,
+}: {
+  href: string;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLAnchorElement | null>(null);
+
+  const onMove = (e: MouseEvent<HTMLAnchorElement>) => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    el.style.setProperty("--mx", `${x}%`);
+    el.style.setProperty("--my", `${y}%`);
   };
 
   return (
-    <div style={cellStyle}>
-      <span
-        className="data-mono"
-        style={{
-          fontSize: "clamp(40px, 5vw, 64px)",
-          lineHeight: 1,
-          fontWeight: 600,
-          color: "hsl(var(--fg))",
-          letterSpacing: "-0.02em",
-        }}
-      >
-        {value}
-      </span>
-      <span className="label-mono" style={{ marginTop: 4 }}>
-        {label}
-      </span>
-      <span
-        style={{
-          fontFamily: 'var(--font-sans), "Inter", system-ui, sans-serif',
-          fontSize: 11,
-          lineHeight: 1.45,
-          color: "hsl(var(--fg-subtle))",
-        }}
-      >
-        {desc}
-      </span>
-    </div>
+    <Link
+      ref={ref}
+      href={href}
+      onMouseMove={onMove}
+      className="btn-polo btn-polo-ink btn-polo-glow"
+    >
+      {children}
+    </Link>
   );
 }
