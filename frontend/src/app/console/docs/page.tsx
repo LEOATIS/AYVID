@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, Code2, FileText, Terminal } from "lucide-react";
+import { ArrowUpRight, Code2, FileText, Plug, Sparkles, Terminal } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 
 const SECTIONS: { title: string; description: string; links: { href: string; label: string }[] }[] = [
@@ -88,6 +88,65 @@ export default function DocsPage() {
         </div>
       </Card>
 
+      <Card
+        title="Anthropic Financial Services integration"
+        subtitle="AYVID = buy-side production of anthropic/financial-services"
+      >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <IntegrationBlock
+            label="Claude Skills"
+            count="15 bundles"
+            description="10 adapted from upstream equity-research + financial-analysis; 5 AYVID-native (bull/bear debate, shock thesis, causal validation, Kelly sizing, post-mortem). Markdown lives in .claude/skills/."
+            icon={<Sparkles className="h-4 w-4" />}
+          />
+          <IntegrationBlock
+            label="MCP connectors"
+            count="5 servers"
+            description="MT Newswires, Aiera, FactSet, Moody's, S&P Global. Wired into data_primitives/mcp/. Opt-in via MCP_*_URL env vars; falls back to OpenBB / SEC EDGAR / news scraper when unset."
+            icon={<Plug className="h-4 w-4" />}
+          />
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <a
+            href="https://github.com/anthropics/financial-services"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="pill pill-ghost !text-fg"
+          >
+            anthropics/financial-services <ArrowUpRight className="h-3 w-3" />
+          </a>
+          <span className="pill pill-ghost">document/yc/anthropic_integration.md</span>
+          <span className="pill pill-ghost">shared/skills_loader.py</span>
+        </div>
+      </Card>
+
+    </div>
+  );
+}
+
+function IntegrationBlock({
+  label,
+  count,
+  description,
+  icon,
+}: {
+  label: string;
+  count: string;
+  description: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="card-soft p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-brand">
+          <span className="grid h-6 w-6 place-items-center rounded-md bg-[hsl(var(--brand)/0.12)]">
+            {icon}
+          </span>
+          {label}
+        </div>
+        <span className="num text-[12px] text-subtle">{count}</span>
+      </div>
+      <p className="mt-3 text-[12px] leading-relaxed text-muted">{description}</p>
     </div>
   );
 }

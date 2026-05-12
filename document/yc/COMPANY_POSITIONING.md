@@ -33,6 +33,27 @@ Point-by-point mapping:
 
 **What differentiates AYVID from "GPT picks stocks" copycats**: the graph layer. The edge isn't "ask an LLM what's cheap"; it's *tracing the N-th order causal consequences of an event through a real supply-chain topology* before the market has priced it in. That's the `find_hidden_victims()` primitive in `graph_intelligence/tools/neo4j_tools.py`. Nobody else in the "AI hedge fund" batch will have that.
 
+### Built on Anthropic's Claude for Financial Services stack
+
+AYVID is the buy-side production of Anthropic's
+[`financial-services`](https://github.com/anthropics/financial-services)
+ecosystem. We adopt the file-based Claude Skills convention (15 skill
+bundles live at `.claude/skills/`, sourced from the upstream
+equity-research and financial-analysis verticals plus 5 AYVID-native
+skills the upstream repo doesn't ship), and we wire the buy-side
+slice of Anthropic's MCP connector registry (Aiera, MT Newswires,
+FactSet, Moody's, S&P Global) directly into our continuous ingestion
+worker. The researcher agent's bull/bear/facilitator debate already
+runs from the skills loader as a single source of truth; the
+remaining agents migrate the same way as their prompts evolve. Full
+integration map in [`anthropic_integration.md`](anthropic_integration.md).
+
+For YC, the framing is: **we are not a "ChatGPT wrapper + IB" — we are
+the production deployment of Anthropic's own FSI tooling on the
+buy-side**, with five proprietary skills layered on top that encode
+the parts of the AYVID stack (shock thesis, causal validation, Kelly
+sizing, post-mortem, bull/bear debate) that have no upstream analogue.
+
 ---
 
 ## Fund structure and regulatory path (honest)

@@ -58,6 +58,12 @@ dependencies = [
     "httpx>=0.27,<1",
     "aiofiles>=23,<26",
     "google-cloud-storage>=2.16,<4",
+
+    # --- Skill loader (anthropic/financial-services integration) ---
+    # Parses YAML frontmatter for .claude/skills/**/SKILL.md files.
+    # Already pulled in transitively by langchain / openbb-core, but
+    # pinning it explicitly so shared/skills_loader.py is supported.
+    "pyyaml>=6,<7",
 ]
 
 [project.optional-dependencies]

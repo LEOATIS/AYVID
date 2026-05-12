@@ -377,6 +377,40 @@ These are not aspirations. They are code-enforced invariants.
 
 ---
 
+## Anthropic Financial Services integration
+
+AYVID is the buy-side production of Anthropic's
+[Claude for Financial Services](https://github.com/anthropics/financial-services)
+stack. The integration brings three things into the repo:
+
+1. **A Claude Skills layer** at `.claude/skills/`. 15 skill bundles
+   (8 equity-research adapted from upstream, 2 financial-analysis
+   adapted from upstream, 5 AYVID-native — including the
+   bull/bear/facilitator debate, shock-thesis, causal validation,
+   Kelly sizing, and post-mortem). Each skill is a `SKILL.md`
+   manifest + sibling `.md` prompt files — Anthropic's file-based
+   convention, no build step.
+
+2. **An MCP connector registry** at `.mcp.json` (root) plus runtime
+   wrappers at `data_primitives/mcp/`. Five buy-side-relevant MCP
+   servers: MT Newswires (real-time news), Aiera (earnings calls),
+   FactSet (fundamentals), Moody's (credit), S&P Global (sector tear
+   sheets). Each is opt-in via `MCP_*_URL` env vars; when unset, AYVID
+   falls back to its existing extractor paths.
+
+3. **A skills loader bridge** at [`shared/skills_loader.py`](shared/skills_loader.py).
+   The researcher agent's prompts (`graph_intelligence/agents/researchers/prompts.py`)
+   now load their bull/bear/facilitator system + user templates from
+   the markdown skills, so the skill files are the single source of
+   truth and the Python module is a shim.
+
+See [`document/yc/anthropic_integration.md`](document/yc/anthropic_integration.md)
+for the full integration map (what's adapted, what's AYVID-native, the
+opt-in matrix, the runtime topology, and the migration recipe for
+moving the remaining agents through the loader).
+
+---
+
 ## Further reading
 
 Order of usefulness for a new contributor:

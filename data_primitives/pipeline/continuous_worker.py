@@ -294,6 +294,18 @@ async def run_ingestion_cycle(
         except ImportError:
             pass
 
+        # Optional MCP feed (anthropic/financial-services connector).
+        # Returns [] when MCP_MT_NEWSWIRES_URL is unset, so the gather
+        # below treats it as a quiet no-op. See data_primitives/mcp/.
+        try:
+            from data_primitives.mcp.mt_newswires import fetch_mt_newswires_items
+
+            fetch_tasks.append(
+                fetch_mt_newswires_items(tickers=active_watchlist[:25], limit=50)
+            )
+        except ImportError:
+            pass
+
         results_raw = await asyncio.gather(*fetch_tasks, return_exceptions=True)
         for r in results_raw:
             if isinstance(r, Exception):

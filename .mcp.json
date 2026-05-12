@@ -1,0 +1,64 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/financial-services/main/.mcp.schema.json",
+  "comment": [
+    "MCP connector registry for AYVID.",
+    "URLs mirror anthropic/financial-services/plugins/vertical-plugins/financial-analysis/.mcp.json,",
+    "scoped to the five buy-side-relevant servers (skipping Chronograph/PitchBook/Egnyte/Daloopa/Morningstar/LSEG),",
+    "and wired into AYVID's runtime via data_primitives/mcp/.",
+    "Each server URL is opt-in: it only becomes active when its matching env var is set",
+    "(MCP_AIERA_URL, MCP_MT_NEWSWIRES_URL, MCP_FACTSET_URL, MCP_MOODYS_URL, MCP_SP_GLOBAL_URL)."
+  ],
+  "mcpServers": {
+    "mt-newswires": {
+      "type": "http",
+      "url": "https://vast-mcp.blueskyapi.com/mtnewswires",
+      "env": "MCP_MT_NEWSWIRES_URL",
+      "consumed_by": [
+        "data_primitives/pipeline/continuous_worker.py (shock detection feed)",
+        "data_primitives/mcp/mt_newswires.py"
+      ],
+      "description": "Real-time market news feed. Preferred shock-detection source when configured; falls back to existing news_scraper.py otherwise."
+    },
+    "aiera": {
+      "type": "http",
+      "url": "https://mcp-pub.aiera.com",
+      "env": "MCP_AIERA_URL",
+      "consumed_by": [
+        "data_primitives/mcp/aiera.py",
+        "skill:equity-research/earnings-analysis"
+      ],
+      "description": "Earnings call transcripts and analyst Q&A. Used by earnings-analysis and earnings-preview skills."
+    },
+    "factset": {
+      "type": "http",
+      "url": "https://mcp.factset.com/mcp",
+      "env": "MCP_FACTSET_URL",
+      "consumed_by": [
+        "data_primitives/mcp/factset.py",
+        "skill:equity-research/earnings-analysis",
+        "skill:equity-research/earnings-preview"
+      ],
+      "description": "Multi-asset fundamentals, consensus estimates, IV-implied moves."
+    },
+    "moodys": {
+      "type": "http",
+      "url": "https://api.moodys.com/genai-ready-data/m1/mcp",
+      "env": "MCP_MOODYS_URL",
+      "consumed_by": [
+        "data_primitives/mcp/moodys.py",
+        "ETFs & bonds asset class (credit ratings)"
+      ],
+      "description": "Credit ratings, sovereign + corporate. Used by the ETFs & bonds asset class for rating-aware sizing."
+    },
+    "sp-global": {
+      "type": "http",
+      "url": "https://kfinance.kensho.com/integrations/mcp",
+      "env": "MCP_SP_GLOBAL_URL",
+      "consumed_by": [
+        "data_primitives/mcp/sp_global.py",
+        "skill:equity-research/sector-overview"
+      ],
+      "description": "Capital IQ tear sheets, analyst dispersion, sector benchmarks."
+    }
+  }
+}

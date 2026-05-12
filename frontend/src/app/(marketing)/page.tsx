@@ -5,6 +5,7 @@ import {
   Brain,
   Cpu,
   Network,
+  Plug,
   ShieldCheck,
   Sparkles,
   Workflow,
@@ -27,6 +28,7 @@ export default function HomePage() {
       <Marquee />
       <Identity />
       <Process />
+      <AnthropicStack />
       <Capabilities />
       <Comparison />
       <Numbers />
@@ -187,6 +189,124 @@ function Process() {
               <p className="mt-3 text-[14px] leading-relaxed text-muted">{s.body}</p>
             </article>
           ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   AnthropicStack — Built on Anthropic's Claude for Financial Services.
+   Surfaces the integration with the upstream anthropic/financial-services
+   repo. Skills + MCP connectors that ship in the AYVID repo today.
+   ───────────────────────────────────────────────────────────────── */
+function AnthropicStack() {
+  const skills = [
+    { tag: "Adapted", name: "Earnings analysis", note: "from anthropic/financial-services · equity-research" },
+    { tag: "Adapted", name: "Earnings preview", note: "consensus + IV-implied move + swing items" },
+    { tag: "Adapted", name: "Thesis tracker", note: "nightly INTACT / WEAKENED / INVALIDATED verdicts" },
+    { tag: "Adapted", name: "Catalyst calendar", note: "30-day forward, ranks priority dates" },
+    { tag: "Adapted", name: "Idea generation", note: "ranked candidates from screener × shocks" },
+    { tag: "Adapted", name: "Model update", note: "assumption delta + fair-value range" },
+    { tag: "Adapted", name: "Morning note", note: "06:30 ET situational-awareness brief" },
+    { tag: "Adapted", name: "Sector overview", note: "leaders, laggards, stress map" },
+    { tag: "Adapted", name: "DCF model", note: "fundamental anchor on shock theses" },
+    { tag: "Adapted", name: "Comps analysis", note: "peer multiples cross-check" },
+    { tag: "AYVID-native", name: "Bull / bear / facilitator debate", note: "researcher LangGraph node" },
+    { tag: "AYVID-native", name: "Shock thesis", note: "directional thesis anchored on causal chain" },
+    { tag: "AYVID-native", name: "Causal validation", note: "edge adjudication against return data" },
+    { tag: "AYVID-native", name: "Kelly sizing", note: "plain-English explanation of Half-Kelly" },
+    { tag: "AYVID-native", name: "Post-mortem", note: "trade rationale + priors-update suggestion" },
+  ];
+  const connectors = [
+    { name: "MT Newswires", role: "Real-time news → shock detection feed" },
+    { name: "Aiera",        role: "Earnings call transcripts" },
+    { name: "FactSet",      role: "Multi-asset fundamentals + consensus" },
+    { name: "Moody's",      role: "Credit ratings → ETFs & bonds sizing" },
+    { name: "S&P Global",   role: "Capital IQ tear sheets" },
+  ];
+  return (
+    <section className="border-b border-app">
+      <div className="container-page section-y">
+        <div className="flex flex-wrap items-end justify-between gap-6">
+          <div className="max-w-2xl">
+            <p className="section-label">Built on Anthropic</p>
+            <h2 className="font-display display-2 mt-4 text-fg">
+              The buy-side production of{" "}
+              <em className="not-italic text-brand">Claude for Financial Services</em>.
+            </h2>
+            <p className="prose-body mt-5">
+              AYVID is the hedge-fund production deployment of
+              Anthropic&rsquo;s{" "}
+              <a
+                href="https://github.com/anthropics/financial-services"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline decoration-brand decoration-2 underline-offset-4 hover:opacity-80"
+              >
+                financial-services
+              </a>{" "}
+              stack. We adopt the file-based Claude Skills convention, wire
+              the buy-side slice of the upstream MCP connector registry
+              directly into our continuous ingestion worker, and layer five
+              proprietary skills on top — the parts of the AYVID stack
+              (shock thesis, causal validation, Kelly sizing, post-mortem,
+              bull/bear debate) that have no upstream analogue.
+            </p>
+          </div>
+          <span className="pill pill-status">
+            <Sparkles className="h-3.5 w-3.5" />
+            15 skills · 5 connectors
+          </span>
+        </div>
+
+        {/* Skills grid */}
+        <div className="mt-12 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {skills.map((sk) => (
+            <article key={sk.name} className="tile !p-5">
+              <div className="flex items-center gap-2">
+                <span
+                  className={
+                    "pill text-[10.5px] uppercase tracking-[0.14em] " +
+                    (sk.tag === "AYVID-native" ? "pill-brand" : "pill-ghost")
+                  }
+                >
+                  {sk.tag}
+                </span>
+              </div>
+              <h3 className="font-display mt-4 text-[17px] leading-tight text-fg">
+                {sk.name}
+              </h3>
+              <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
+                {sk.note}
+              </p>
+            </article>
+          ))}
+        </div>
+
+        {/* MCP connectors strip */}
+        <div className="mt-12">
+          <div className="flex items-center gap-3">
+            <Plug className="h-4 w-4 text-fg" />
+            <p className="section-label !mt-0">MCP data connectors</p>
+          </div>
+          <ul className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {connectors.map((c) => (
+              <li key={c.name} className="tile-soft !p-4">
+                <p className="font-display text-[15px] leading-tight text-fg">
+                  {c.name}
+                </p>
+                <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
+                  {c.role}
+                </p>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-5 text-[12.5px] text-subtle">
+            Each connector is opt-in via a single env var. When the URL is
+            unset, AYVID falls back to its existing extractor stack (news
+            scraper, OpenBB, Finnhub, SEC EDGAR) — no behavioural change.
+          </p>
         </div>
       </div>
     </section>
@@ -527,6 +647,10 @@ function Faq() {
     {
       q: "Is the LLM in the critical execution path?",
       a: "No. Tier 1 (deterministic, < 100 ms) routes orders. Tier 2 (causal graph, ~1 s) re-weights conviction. Tier 3 (LLM swarm, ~30 s) can override — emit, modify, or cancel — but is never a blocker for the fast path.",
+    },
+    {
+      q: "How does AYVID relate to Anthropic's Claude for Financial Services?",
+      a: "AYVID is the buy-side production deployment of the anthropic/financial-services stack. We adopt the file-based Claude Skills convention (15 skill bundles ship in the repo: 10 adapted from the upstream equity-research and financial-analysis verticals, 5 AYVID-native), and we wire the buy-side slice of the MCP connector registry — MT Newswires, Aiera, FactSet, Moody's, S&P Global — directly into our continuous ingestion worker. Each connector is opt-in; the existing OpenBB / SEC EDGAR / news-scraper paths remain the default fallback. The full integration map lives in document/yc/anthropic_integration.md.",
     },
     {
       q: "How is risk managed?",

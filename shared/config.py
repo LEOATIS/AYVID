@@ -48,6 +48,24 @@ class Settings(BaseSettings):
     # --- Finnhub ---
     FINNHUB_API_KEY: str | None = None
 
+    # --- MCP connectors (anthropic/financial-services integration) -----
+    # Each URL is opt-in: when None (default), the matching wrapper in
+    # data_primitives/mcp/ returns None/[] and AYVID falls back to its
+    # existing extractor paths (news_scraper, openbb_client, etc.).
+    # Set the URL + API key when you have a vendor subscription; the
+    # continuous worker will then prefer the vendor feed.
+    # Endpoints mirror anthropic/financial-services/.../financial-analysis/.mcp.json.
+    MCP_MT_NEWSWIRES_URL: str | None = None
+    MCP_MT_NEWSWIRES_API_KEY: str | None = None
+    MCP_AIERA_URL: str | None = None
+    MCP_AIERA_API_KEY: str | None = None
+    MCP_FACTSET_URL: str | None = None
+    MCP_FACTSET_API_KEY: str | None = None
+    MCP_MOODYS_URL: str | None = None
+    MCP_MOODYS_API_KEY: str | None = None
+    MCP_SP_GLOBAL_URL: str | None = None
+    MCP_SP_GLOBAL_API_KEY: str | None = None
+
     # --- SEC EDGAR ---
     SEC_EDGAR_EMAIL: str = "research@ayvid.ai"
 

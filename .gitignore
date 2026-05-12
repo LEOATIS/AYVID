@@ -60,10 +60,13 @@ override.tf.json
 .cursor/
 .cursorignore
 
-.claude/
-.claude/**
-claude/
-claude/**
+# Claude Code state: track `.claude/skills/` (the anthropic/financial-services
+# integration — skill manifests + prompts), but keep per-developer Claude
+# Code settings, worktree scratch, and any local-only plugins out of the repo.
+.claude/settings.local.json
+.claude/worktrees/
+.claude/plugins/
+.claude/.cache/
 
 # Local documents/artifacts
 document/*
