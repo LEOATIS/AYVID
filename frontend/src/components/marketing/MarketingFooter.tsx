@@ -1,7 +1,17 @@
 import Link from "next/link";
-import { Wordmark } from "./Wordmark";
 
-const FOOTER_LINKS: { heading: string; items: { href: string; label: string; external?: boolean }[] }[] = [
+/**
+ * AYVID MarketingFooter — quiet wealth wordmark + disclosure block.
+ *
+ * Restraint over chrome: no elevated background (footer sits flush on
+ * page bg), no decorative monogram, only hairline rules.  The wordmark
+ * sets in display serif and reads as the colophon of a printed report.
+ */
+
+const FOOTER_LINKS: {
+  heading: string;
+  items: { href: string; label: string }[];
+}[] = [
   {
     heading: "Firm",
     items: [
@@ -32,56 +42,172 @@ const FOOTER_LINKS: { heading: string; items: { href: string; label: string; ext
 export function MarketingFooter() {
   const year = new Date().getFullYear();
   return (
-    <footer className="border-t border-app bg-[hsl(var(--bg-elev))]">
-      <div className="container-page section-y-sm">
-        <div className="grid grid-cols-1 gap-10 md:grid-cols-12">
-          <div className="md:col-span-4">
-            <Wordmark variant="stacked" href="/" />
-            <p className="mt-5 max-w-xs text-[13px] leading-relaxed text-muted">
-              An AI-native hedge fund. Causal supply-chain inference, agent-driven
-              research, and end-to-end execution.
+    <footer
+      style={{
+        borderTop: "1px solid var(--rule)",
+        background: "hsl(var(--bg))",
+      }}
+    >
+      <div
+        className="container-page mx-auto"
+        style={{ paddingTop: 64, paddingBottom: 48 }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr",
+            gap: 48,
+          }}
+          className="footer-grid"
+        >
+          <div>
+            <Link
+              href="/"
+              style={{
+                fontFamily:
+                  'var(--font-display), "Fraunces", Georgia, serif',
+                fontWeight: 700,
+                fontSize: 36,
+                letterSpacing: "-0.032em",
+                color: "hsl(var(--fg))",
+                display: "inline-block",
+              }}
+            >
+              AYVID
+            </Link>
+            <p
+              className="body-prose"
+              style={{ marginTop: 16, maxWidth: "32ch" }}
+            >
+              An AI-native hedge fund. Causal supply-chain inference,
+              agent-driven research, and end-to-end execution.
             </p>
           </div>
 
-          {FOOTER_LINKS.map((section) => (
-            <div key={section.heading} className="md:col-span-2">
-              <div className="eyebrow mb-3 text-[10px]">{section.heading}</div>
-              <ul className="space-y-2">
-                {section.items.map((item) => (
-                  <li key={item.label}>
-                    <Link
-                      href={item.href}
-                      className="text-[13px] text-fg/80 hover:text-fg"
-                    >
-                      {item.label}
-                    </Link>
-                  </li>
-                ))}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, 1fr)",
+              gap: 32,
+            }}
+            className="footer-cols"
+          >
+            {FOOTER_LINKS.map((section) => (
+              <div key={section.heading}>
+                <p
+                  className="label-mono"
+                  style={{ marginBottom: 16, color: "hsl(var(--fg-subtle))" }}
+                >
+                  {section.heading}
+                </p>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                  {section.items.map((item) => (
+                    <li key={item.label} style={{ marginBottom: 8 }}>
+                      <Link
+                        href={item.href}
+                        className="footer-link"
+                      >
+                        {item.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            <div>
+              <p
+                className="label-mono"
+                style={{ marginBottom: 16, color: "hsl(var(--fg-subtle))" }}
+              >
+                Offices
+              </p>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                <li
+                  style={{
+                    fontFamily:
+                      'var(--font-sans), "Inter", system-ui, sans-serif',
+                    fontSize: 13,
+                    color: "hsl(var(--fg-muted))",
+                    marginBottom: 8,
+                  }}
+                >
+                  New York
+                </li>
+                <li
+                  style={{
+                    fontFamily:
+                      'var(--font-sans), "Inter", system-ui, sans-serif',
+                    fontSize: 13,
+                    color: "hsl(var(--fg-muted))",
+                  }}
+                >
+                  Bengaluru
+                </li>
               </ul>
             </div>
-          ))}
-
-          <div className="md:col-span-2">
-            <div className="eyebrow mb-3 text-[10px]">Offices</div>
-            <ul className="space-y-2 text-[13px] text-fg/80">
-              <li>New York</li>
-              <li>Bengaluru</li>
-            </ul>
           </div>
         </div>
 
-        <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-app pt-6 sm:flex-row sm:items-center">
-          <p className="max-w-3xl text-[11px] leading-relaxed text-subtle">
-            © {year} AYVID. The materials on this site are for informational purposes only and do
-            not constitute an offer to sell, or a solicitation of an offer to buy, any security or
-            interest in any AYVID-managed fund. Past simulated or live performance is not indicative
-            of future results. All trading involves substantial risk of loss.
+        <div
+          style={{
+            marginTop: 64,
+            paddingTop: 24,
+            borderTop: "1px solid var(--rule)",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 16,
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+          }}
+        >
+          <p
+            style={{
+              fontFamily:
+                'var(--font-sans), "Inter", system-ui, sans-serif',
+              fontSize: 11,
+              lineHeight: 1.65,
+              color: "hsl(var(--fg-subtle))",
+              maxWidth: "62ch",
+            }}
+          >
+            © {year} AYVID. The materials on this site are for informational
+            purposes only and do not constitute an offer to sell, or a
+            solicitation of an offer to buy, any security or interest in any
+            AYVID-managed fund. Past simulated or live performance is not
+            indicative of future results. All trading involves substantial risk
+            of loss.
           </p>
-          <p className="text-[11px] uppercase tracking-[0.16em] text-subtle">
+          <p
+            className="label-mono"
+            style={{ color: "hsl(var(--fg-subtle))" }}
+          >
             YC S26 · AI-Native Hedge Funds
           </p>
         </div>
       </div>
+
+      <style>{`
+        .footer-link {
+          font-family: var(--font-sans), "Inter", system-ui, sans-serif;
+          font-size: 13px;
+          color: hsl(var(--fg-muted));
+          transition: color var(--t-quick) var(--ease-monument);
+        }
+        .footer-link:hover {
+          color: hsl(var(--fg));
+        }
+        @media (min-width: 900px) {
+          .footer-grid {
+            grid-template-columns: 1fr 2fr !important;
+          }
+        }
+        @media (max-width: 720px) {
+          .footer-cols {
+            grid-template-columns: repeat(2, 1fr) !important;
+            row-gap: 32px;
+          }
+        }
+      `}</style>
     </footer>
   );
 }
