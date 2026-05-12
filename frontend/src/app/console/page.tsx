@@ -83,7 +83,24 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="flex flex-col" style={{ gap: 48 }}>
+    <div
+      className="flex flex-col"
+      style={{
+        gap: 48,
+        // CRITICAL: min-width: 0 + overflow-x: hidden prevent long
+        // unbroken signal rationales (e.g. "[SHOCK SAFETY HOLD:
+        // cycle_1_shock] Technicals say LONG but news implies…")
+        // from pushing the page wider than the viewport.  Without
+        // this, the page acquired a horizontal scrollbar whenever
+        // any signal's rationale didn't contain a whitespace
+        // break-point within ~80 chars.  Belt-and-suspenders with
+        // the per-item min-width: 0 below and the rationale's
+        // line-clamp.
+        minWidth: 0,
+        maxWidth: "100%",
+        overflowX: "hidden",
+      }}
+    >
       {/* ── Masthead ─────────────────────────────────────────── */}
       <section>
         <p className="label-mono" style={{ color: "hsl(var(--brand))" }}>
@@ -390,6 +407,16 @@ export default function Dashboard() {
       </section>
 
       <style jsx>{`
+        /* CSS Grid items default to min-width: auto, which evaluates
+           to min-content for grid tracks containing flex-wrap or
+           long unbroken strings.  That lets the right-hand "Recent
+           signals" column (1fr of a 2fr+1fr grid) push wider than
+           its share whenever a signal rationale lacks a whitespace
+           break-point.  Setting min-width: 0 on every direct child
+           of .two-col restores the intended fr-share behaviour. */
+        :global(.two-col > *) {
+          min-width: 0;
+        }
         @media (min-width: 1024px) {
           :global(.two-col) {
             grid-template-columns: 2fr 1fr !important;
@@ -1186,9 +1213,25 @@ function SignalsList({ signals }: { signals: Signal[] }) {
                     fontSize: 11,
                     color: "hsl(var(--fg-subtle))",
                     marginTop: 6,
+                    // Was nowrap-ellipsis — that fails to clip when
+                    // the grid item itself has min-width: auto (CSS
+                    // default), which lets the long unbroken
+                    // rationale ("[SHOCK SAFETY HOLD: ...]") push the
+                    // grid track wider than its fr-share and the page
+                    // wider than the viewport.  Switching to a 2-line
+                    // -webkit-line-clamp + overflow-wrap: anywhere
+                    // means the text ALWAYS wraps inside its column
+                    // even if there isn't a whitespace break-point
+                    // for 200+ chars.  The conviction column on the
+                    // right keeps its fixed cell, the layout stays
+                    // intact, and the page no longer scrolls right.
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
                     overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+                    overflowWrap: "anywhere",
+                    wordBreak: "break-word",
+                    lineHeight: 1.5,
                   }}
                 >
                   {s.rationale}
