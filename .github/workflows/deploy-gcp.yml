@@ -195,7 +195,16 @@ jobs:
       - name: Deploy new Cloud Run revision (deterministic suffix)
         id: deploy
         env:
-          REV_SUFFIX: ${{ needs.build-and-push.outputs.image_tag }}
+          # Revision suffix MUST be unique per workflow run, not per
+          # commit. The 6h cron + manual workflow_dispatch can re-run
+          # the same SHA, and Cloud Run rejects creating a same-named
+          # revision with different config (env vars or image digest):
+          #   ERROR: ALREADY_EXISTS: Revision named 'ayvid-backend-<sha>'
+          #   with different configuration already exists.
+          # (May 12 incident.) Appending the run number to the sha
+          # keeps the revision human-readable (still leads with the
+          # commit) while guaranteeing uniqueness across re-runs.
+          REV_SUFFIX: ${{ needs.build-and-push.outputs.image_tag }}-r${{ github.run_number }}
         run: |
           REV_NAME="ayvid-backend-$REV_SUFFIX"
           echo "rev_name=$REV_NAME" >> $GITHUB_OUTPUT
@@ -264,41 +273,81 @@ jobs:
       # Stream the redeploy script over IAP-tunneled SSH. The VM does
       # the actual pull + restart using the metadata server token; the
       # workflow just orchestrates and waits.
+      #
+      # Retry wrapper rationale: every GH Actions run authenticates as
+      # the deployer SA, which has no pre-existing project SSH key.
+      # `gcloud compute ssh` generates a fresh keypair, uploads the
+      # public half to project-level metadata, and waits a short window
+      # for the GCE metadata server to propagate the new key to the
+      # instance — but that propagation is best-effort and frequently
+      # races (`runner@compute.<id>: Permission denied (publickey)`,
+      # May 12 incident). With up to 6 attempts × 25s backoff, the
+      # second-or-third attempt connects cleanly. We bound the retry
+      # so a *genuinely* broken IAM (missing iap.tunnelResourceAccessor
+      # or osLogin) fails the workflow loudly instead of looping.
       - name: Roll container on ayvid-execution VM
         run: |
-          gcloud compute ssh ayvid-execution \
-            --tunnel-through-iap \
-            --zone=${{ env.GCP_ZONE }} \
-            --command="bash -s ${{ env.GCP_REGION }} ${{ env.GCP_PROJECT }} ${{ needs.build-and-push.outputs.image_tag }}" \
-            --quiet \
-            < scripts/vm_redeploy.sh
+          set -euo pipefail
+          attempt=0
+          max=6
+          delay=25
+          until [ $attempt -ge $max ]; do
+            attempt=$((attempt + 1))
+            echo "::group::SSH roll attempt $attempt/$max"
+            if gcloud compute ssh ayvid-execution \
+                --tunnel-through-iap \
+                --zone=${{ env.GCP_ZONE }} \
+                --command="bash -s ${{ env.GCP_REGION }} ${{ env.GCP_PROJECT }} ${{ needs.build-and-push.outputs.image_tag }}" \
+                --quiet \
+                < scripts/vm_redeploy.sh ; then
+              echo "::endgroup::"
+              echo "✓ vm_redeploy succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "::warning::SSH/redeploy attempt $attempt failed; sleeping ${delay}s before retry (likely SSH-key propagation race)"
+            sleep $delay
+          done
+          echo "::error::vm_redeploy SSH failed after $max attempts — investigate IAP / OS-Login / firewall before re-running"
+          exit 1
 
       - name: Verify container healthy
         run: |
-          gcloud compute ssh ayvid-execution \
-            --tunnel-through-iap \
-            --zone=${{ env.GCP_ZONE }} \
-            --command='
-              set -e
-              for i in $(seq 1 30); do
-                status=$(sudo docker ps --filter name=ayvid-execution --format "{{.Status}}" | head -n 1)
-                echo "[$i] ayvid-execution status: ${status}"
-                # Pass if healthy; also pass if container is Up but image
-                # somehow has no healthcheck (defensive fallback).
-                if echo "$status" | grep -qi "healthy"; then
-                  exit 0
-                fi
-                if echo "$status" | grep -qi "^Up" && ! echo "$status" | grep -qi "health"; then
-                  exit 0
-                fi
-                sleep 10
-              done
-              echo "Container did not become healthy in time." >&2
-              sudo docker ps -a --filter name=ayvid-execution --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" >&2 || true
-              sudo docker logs --tail 80 ayvid-execution >&2 || true
-              exit 1
-            ' \
-            --quiet
+          set -euo pipefail
+          attempt=0
+          max=6
+          delay=25
+          until [ $attempt -ge $max ]; do
+            attempt=$((attempt + 1))
+            echo "::group::Container healthcheck attempt $attempt/$max"
+            if gcloud compute ssh ayvid-execution \
+                --tunnel-through-iap \
+                --zone=${{ env.GCP_ZONE }} \
+                --command='
+                  set -e
+                  for i in $(seq 1 30); do
+                    status=$(sudo docker ps --filter name=ayvid-execution --format "{{.Status}}" | head -n 1)
+                    echo "[$i] ayvid-execution status: ${status}"
+                    if echo "$status" | grep -qi "healthy"; then exit 0; fi
+                    if echo "$status" | grep -qi "^Up" && ! echo "$status" | grep -qi "health"; then exit 0; fi
+                    sleep 10
+                  done
+                  echo "Container did not become healthy in time." >&2
+                  sudo docker ps -a --filter name=ayvid-execution --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" >&2 || true
+                  sudo docker logs --tail 80 ayvid-execution >&2 || true
+                  exit 1
+                ' \
+                --quiet ; then
+              echo "::endgroup::"
+              echo "✓ container healthy on attempt $attempt"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "::warning::healthcheck SSH attempt $attempt failed; sleeping ${delay}s"
+            sleep $delay
+          done
+          echo "::error::container healthcheck SSH failed after $max attempts"
+          exit 1
 
   # ───────────────────────────────────────────────────────────────────
   # Sync versioned artefacts (calibration priors, document/, scripts/,

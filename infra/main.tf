@@ -176,6 +176,29 @@ locals {
     "ib-client-portal-cookie",
     # API gateway
     "api-key",
+
+    # MCP connectors (anthropic/financial-services integration).
+    # Each id `mcp-{vendor}-url` / `mcp-{vendor}-api-key` maps via
+    # cloudrun.tf (`upper(replace(env.key, "-", "_"))`) to the env
+    # vars `MCP_<VENDOR>_URL` / `MCP_<VENDOR>_API_KEY` — matching
+    # the fields added to `shared.config.Settings`. First apply
+    # creates empty placeholders; operators populate via
+    # `gcloud secrets versions add ayvid-mcp-<vendor>-<url|api-key>
+    #   --data-file=-` as vendor subscriptions land. The runtime
+    # fails closed when a URL is empty (data_primitives/mcp/*.py
+    # returns None / [] gracefully) so empty values are safe —
+    # AYVID falls back to its existing extractor stack until a
+    # real value is provisioned.
+    "mcp-mt-newswires-url",
+    "mcp-mt-newswires-api-key",
+    "mcp-aiera-url",
+    "mcp-aiera-api-key",
+    "mcp-factset-url",
+    "mcp-factset-api-key",
+    "mcp-moodys-url",
+    "mcp-moodys-api-key",
+    "mcp-sp-global-url",
+    "mcp-sp-global-api-key",
   ]
 }
 

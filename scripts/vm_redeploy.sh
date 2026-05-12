@@ -44,6 +44,29 @@ sudo chmod 700 "$DOCKER_CONFIG_DIR"
 echo "$ACCESS_TOKEN" | sudo docker --config "$DOCKER_CONFIG_DIR" login \
     -u oauth2accesstoken --password-stdin "${REGION}-docker.pkg.dev"
 
+# ── DISK HYGIENE (CRITICAL — prevent "no space left on device") ─────
+# Every redeploy pulls a fresh image (~600MB compressed, 1.8GB unpacked).
+# COS ships with a 10GB persistent disk by default; without pruning,
+# old layers + dangling tags accumulate until /var/lib/docker fills and
+# the next pull dies with `write /var/lib/docker/tmp/...: no space left
+# on device` (May 12 deploy incident). We prune BEFORE pull so the
+# pull has headroom even on a near-full disk:
+#   - container prune: removes stopped containers from previous rolls
+#   - image prune -a: removes any image NOT referenced by a running
+#     container (the currently-running ayvid-execution is protected)
+#   - builder prune: clears BuildKit cache (rarely populated on a
+#     runtime VM, but defensive)
+# We do NOT prune volumes — those hold persisted live/ + data_store/
+# bind-mounts and losing them drops the equity curve.
+echo "[vm_redeploy] disk before prune:"
+df -h /var/lib/docker 2>&1 | tail -2 || true
+echo "[vm_redeploy] pruning docker (disk hygiene)..."
+sudo docker --config "$DOCKER_CONFIG_DIR" container prune -f 2>&1 | tail -3 || true
+sudo docker --config "$DOCKER_CONFIG_DIR" image prune -af 2>&1 | tail -3 || true
+sudo docker --config "$DOCKER_CONFIG_DIR" builder prune -af 2>&1 | tail -3 || true
+echo "[vm_redeploy] disk after prune:"
+df -h /var/lib/docker 2>&1 | tail -2 || true
+
 echo "[vm_redeploy] pulling image..."
 sudo docker --config "$DOCKER_CONFIG_DIR" pull "$IMAGE"
 
