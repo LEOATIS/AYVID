@@ -203,9 +203,13 @@
     --brand-dim:    43 74% 31%;
     --brand-ink:    40 47% 20%;
 
-    /* Ambient glow channel — kept for legacy call-sites but no glow on
-       new components per brief P7 (no shadows with blur > 0). */
-    --glow-color: 45 53% 54%;
+    /* Ambient glow channel — used by .hero-glow.  Gold + deep umber give
+       the warm "moon hidden in a dusty room" effect from the original
+       Polo direction.  Strictly this is the one gradient that survives
+       the brief's "no gradient" pass — it's a static decorative ambient
+       on the hero only, NOT on every section. */
+    --glow-color:   45 53% 54%;   /* warm gold */
+    --glow-color-2: 18 60% 30%;   /* deep umber, secondary orb anchor */
 
     /* Semantic — same family as light mode for tonal consistency.
        Slight lift in lightness so they remain readable on dark. */
