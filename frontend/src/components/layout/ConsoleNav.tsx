@@ -53,56 +53,44 @@ export function ConsoleNav() {
     <header className="sticky top-0 z-40 border-b border-app bg-[hsl(var(--bg)/0.85)] backdrop-blur-md">
       <div className="mx-auto flex h-[60px] w-full max-w-[1480px] items-center justify-between gap-4 px-4 sm:gap-6 sm:px-6">
         <div className="flex min-w-0 items-center gap-5">
-          {/* Mark + compact text block.  The console respects the
-              theme toggle, so we'd normally swap mark-dark.svg for
-              mark-light.svg in light mode — but the SVG is monochrome
-              and small (28×28), so we render the dark variant
-              unconditionally and let CSS mask-image / filter handle
-              theme inversion if a future operator demands light mode.
-              For now: ivory mark on warm graphite always reads. */}
+          {/* AYVID wordmark + thin divider + console context label.
+              The wordmark SVG already carries the brand mark (gold
+              period after AYVID).  Right of a 1px hairline we set
+              the role label in mono — this is what tells the
+              operator they're inside Operations Console, not the
+              public site. */}
           <Link
             href="/console"
             className="group flex shrink-0 items-center"
-            style={{ gap: 12 }}
+            style={{ gap: 14 }}
+            aria-label="AYVID Operations Console"
           >
             <img
-              src="/brand/mark-dark.svg"
-              alt=""
-              aria-hidden="true"
-              style={{ width: 28, height: 28, display: "block" }}
+              src="/brand/wordmark-horizontal-dark.svg"
+              alt="AYVID"
+              style={{ height: 26, width: "auto", display: "block" }}
             />
-            <div
+            <span
+              aria-hidden
               style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 1,
-                lineHeight: 1,
+                width: 1,
+                height: 22,
+                background: "var(--rule-bold)",
+              }}
+            />
+            <span
+              style={{
+                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                fontWeight: 500,
+                fontSize: 9.5,
+                letterSpacing: "0.18em",
+                color: "hsl(var(--fg-subtle))",
+                textTransform: "uppercase",
+                whiteSpace: "nowrap",
               }}
             >
-              <span
-                style={{
-                  fontFamily: "'Fraunces', Georgia, serif",
-                  fontWeight: 900,
-                  fontSize: 15,
-                  letterSpacing: "-0.025em",
-                  color: "hsl(var(--fg))",
-                }}
-              >
-                AYVID
-              </span>
-              <span
-                style={{
-                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
-                  fontWeight: 500,
-                  fontSize: 8.5,
-                  letterSpacing: "0.16em",
-                  color: "hsl(var(--fg-subtle))",
-                  textTransform: "uppercase",
-                }}
-              >
-                Operations · Console
-              </span>
-            </div>
+              Operations · Console
+            </span>
           </Link>
 
           <nav className="hidden items-center gap-0.5 lg:flex">

@@ -1,26 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none"
-     role="img" aria-label="AYVID mark">
-  <!-- Golden Gnomon (36°-72°-72°).  Crossbar sits at t = 1/φ² = 0.382
-       from the apex along each leg.  Apex coords (60,16); base coords
-       computed as half-base = 76 × tan(18°). -->
-
-  <!-- Left leg -->
-  <line x1="35.3" y1="92" x2="60" y2="16"
-        stroke="#F0E9DD" stroke-width="6"/>
-  <!-- Right leg -->
-  <line x1="84.7" y1="92" x2="60" y2="16"
-        stroke="#F0E9DD" stroke-width="6"/>
-  <!-- Crossbar at golden ratio -->
-  <line x1="44.7" y1="63" x2="75.3" y2="63"
-        stroke="#F0E9DD" stroke-width="4"/>
-
-  <!-- Four graph nodes in ivory -->
-  <circle cx="35.3" cy="92" r="4"   fill="#F0E9DD"/>
-  <circle cx="84.7" cy="92" r="4"   fill="#F0E9DD"/>
-  <circle cx="44.7" cy="63" r="2.8" fill="#F0E9DD"/>
-  <circle cx="75.3" cy="63" r="2.8" fill="#F0E9DD"/>
-
-  <!-- Apex node — the single point of gold.  This is the AI decision
-       moment.  Everything else is the graph that produced it. -->
-  <circle cx="60" cy="16" r="5" fill="#C9A84C"/>
+     role="img" aria-label="AYVID">
+  <!-- AYVID monogram — heavy Fraunces "A" + the gold full-stop.
+       The period IS the brand: it reads as "the decision has been made."
+       Single accent (#C9A84C); the rest is ink on paper.
+       Self-importing the variable font so the SVG renders the right
+       glyph in any context (inline, <img>, OG-bot, favicon-renderer). -->
+  <defs>
+    <style type="text/css">
+      @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@144,900&amp;display=block");
+      .ay-mark {
+        font-family: "Fraunces", Georgia, "Times New Roman", serif;
+        font-weight: 900;
+        font-variation-settings: "opsz" 144, "SOFT" 30;
+        letter-spacing: -0.045em;
+        font-style: normal;
+      }
+    </style>
+  </defs>
+  <text x="60" y="92"
+        class="ay-mark"
+        font-size="108"
+        fill="#F0E9DD"
+        text-anchor="middle">A</text>
+  <!-- Gold full-stop — the only #C9A84C anywhere in the system.
+       Positioned at the baseline-right of the A. -->
+  <circle cx="92" cy="88" r="8" fill="#C9A84C"/>
 </svg>

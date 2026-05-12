@@ -1,51 +1,56 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" fill="none">
-  <!-- Warm graphite background — matches the brand contract. -->
+  <defs>
+    <style type="text/css">
+      @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@144,900&amp;family=JetBrains+Mono:wght@500&amp;display=block");
+      .ay-word {
+        font-family: "Fraunces", Georgia, "Times New Roman", serif;
+        font-weight: 900;
+        font-variation-settings: "opsz" 144, "SOFT" 30;
+        letter-spacing: -0.045em;
+      }
+      .ay-tag {
+        font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+        font-weight: 500;
+      }
+    </style>
+  </defs>
+
+  <!-- Warm graphite background — matches the brand palette. -->
   <rect width="1200" height="630" fill="#0F0D0A"/>
 
-  <!-- Subtle noise overlay (mix-blend-mode: overlay).
-       The opacity is intentionally tiny — eyes shouldn't see noise,
-       only feel that the page is less digital. -->
-  <rect width="1200" height="630" fill="#F0E9DD" opacity="0.018"
-        style="mix-blend-mode: overlay"/>
+  <!-- Top eyebrow — small caps mono, dim, left-aligned. -->
+  <text x="96" y="148"
+        class="ay-tag"
+        font-size="18"
+        letter-spacing="5"
+        fill="#C9A84C"
+        fill-opacity="0.80">AYVID</text>
 
-  <!-- Mark large, left.  Scale 2.4× from base 120-unit grid. -->
-  <g transform="translate(96, 180) scale(2.4)">
-    <line x1="35.3" y1="92" x2="60" y2="16" stroke="#F0E9DD" stroke-width="6"/>
-    <line x1="84.7" y1="92" x2="60" y2="16" stroke="#F0E9DD" stroke-width="6"/>
-    <line x1="44.7" y1="63" x2="75.3" y2="63" stroke="#F0E9DD" stroke-width="4"/>
-    <circle cx="35.3" cy="92" r="4"   fill="#F0E9DD"/>
-    <circle cx="84.7" cy="92" r="4"   fill="#F0E9DD"/>
-    <circle cx="44.7" cy="63" r="2.8" fill="#F0E9DD"/>
-    <circle cx="75.3" cy="63" r="2.8" fill="#F0E9DD"/>
-    <circle cx="60"   cy="16" r="5"   fill="#C9A84C"/>
-  </g>
+  <!-- The wordmark — huge, considered, the only thing on the page. -->
+  <text x="96" y="346"
+        class="ay-word"
+        font-size="220"
+        fill="#F0E9DD">AYVID</text>
+  <!-- Gold full-stop — the brand's only ornament. -->
+  <circle cx="744" cy="328" r="22" fill="#C9A84C"/>
 
-  <!-- Vertical hairline divider. -->
-  <line x1="480" y1="180" x2="480" y2="450"
-        stroke="#F0E9DD" stroke-opacity="0.14" stroke-width="1"/>
+  <!-- Gold hairline rule — currency watermark, single permitted line. -->
+  <line x1="96" y1="406" x2="640" y2="406"
+        stroke="#C9A84C" stroke-opacity="0.42" stroke-width="1"/>
 
-  <!-- Wordmark — Fraunces 900, big and editorial. -->
-  <text x="528" y="288"
-        font-family="Fraunces, Georgia, serif"
-        font-weight="900" font-size="112" letter-spacing="-4.5"
+  <!-- Tagline as editorial small-caps band, narrow tracking. -->
+  <text x="96" y="450"
+        class="ay-tag"
+        font-size="18"
+        letter-spacing="5"
         fill="#F0E9DD"
-        style="font-variation-settings: 'opsz' 144, 'SOFT' 30;">AYVID</text>
+        fill-opacity="0.62">ASYMMETRIC YIELD VIA INTELLIGENT DECISIONS</text>
 
-  <!-- Tagline — editorial small caps, mono, wide tracking. -->
-  <text x="532" y="324"
-        font-family="JetBrains Mono, ui-monospace, monospace"
-        font-weight="500" font-size="14" letter-spacing="4"
-        fill="#F0E9DD" fill-opacity="0.48">
-    ASYMMETRIC YIELD VIA INTELLIGENT DECISIONS
-  </text>
-
-  <!-- Single gold hairline beneath the wordmark — the watermark touch. -->
-  <line x1="528" y1="360" x2="900" y2="360"
-        stroke="#C9A84C" stroke-opacity="0.30" stroke-width="1"/>
-
-  <!-- Sub-label. -->
-  <text x="528" y="408"
-        font-family="JetBrains Mono, ui-monospace, monospace"
-        font-weight="500" font-size="12" letter-spacing="2.4"
-        fill="#F0E9DD" fill-opacity="0.36">AN AI-NATIVE HEDGE FUND</text>
+  <!-- Sub-label.  Two tonal weights of the same mono. -->
+  <text x="96" y="498"
+        class="ay-tag"
+        font-size="16"
+        letter-spacing="3.6"
+        fill="#F0E9DD"
+        fill-opacity="0.36">AN AI-NATIVE HEDGE FUND</text>
 </svg>
