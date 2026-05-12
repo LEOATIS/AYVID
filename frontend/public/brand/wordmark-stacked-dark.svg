@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" fill="none"
+     role="img" aria-label="AYVID">
+  <!-- Mark centred, top.  Full-scale (no transform). -->
+  <g transform="translate(60, 12) scale(1.0)">
+    <line x1="35.3" y1="92" x2="60" y2="16" stroke="#F0E9DD" stroke-width="6"/>
+    <line x1="84.7" y1="92" x2="60" y2="16" stroke="#F0E9DD" stroke-width="6"/>
+    <line x1="44.7" y1="63" x2="75.3" y2="63" stroke="#F0E9DD" stroke-width="4"/>
+    <circle cx="35.3" cy="92" r="4"   fill="#F0E9DD"/>
+    <circle cx="84.7" cy="92" r="4"   fill="#F0E9DD"/>
+    <circle cx="44.7" cy="63" r="2.8" fill="#F0E9DD"/>
+    <circle cx="75.3" cy="63" r="2.8" fill="#F0E9DD"/>
+    <circle cx="60"   cy="16" r="5"   fill="#C9A84C"/>
+  </g>
+
+  <!-- Horizontal hairline between mark and wordmark. -->
+  <line x1="80" y1="148" x2="160" y2="148"
+        stroke="#F0E9DD" stroke-opacity="0.20" stroke-width="1"/>
+
+  <!-- Wordmark centred. -->
+  <text x="120" y="174"
+        font-family="Fraunces, Georgia, serif"
+        font-weight="900"
+        font-size="32"
+        letter-spacing="-1.2"
+        text-anchor="middle"
+        fill="#F0E9DD"
+        style="font-variation-settings: 'opsz' 144, 'SOFT' 30;">AYVID</text>
+
+  <!-- Tagline centred. -->
+  <text x="120" y="190"
+        font-family="JetBrains Mono, ui-monospace, monospace"
+        font-weight="500"
+        font-size="7.5"
+        letter-spacing="2.8"
+        text-anchor="middle"
+        fill="#F0E9DD"
+        fill-opacity="0.42">AI-NATIVE HEDGE FUND</text>
+</svg>

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { useEffect, useState } from "react";
-import { Menu, X, ArrowUpRight, Sparkles } from "lucide-react";
+import { Menu, X, ArrowUpRight } from "lucide-react";
 // ThemeToggle deliberately NOT imported.  Marketing pages render in a
 // fixed warm-graphite dark register so the brand impression is always
 // deliberate (Citadel / Two Sigma / Renaissance pattern).  The toggle
@@ -70,20 +70,22 @@ export function MarketingNav() {
           )}
           style={{ gap: "var(--s-3)" }}
         >
-          {/* Brand mark — monogram + wordmark, Polo style. */}
+          {/* Brand mark — the Golden-Gnomon SVG wordmark.  Marketing is
+              pinned to the dark register (see (marketing)/layout.tsx),
+              so the dark-variant SVG is always correct here.  The wordmark
+              SVG already contains the mark + "AYVID" + tagline; we render
+              it at 32px tall to fit the floating-pill geometry. */}
           <Link
             href="/"
-            className="group flex items-center gap-2.5 rounded-full px-1.5 py-1 sm:px-2"
+            aria-label="AYVID home"
+            className="flex items-center"
+            style={{ padding: "4px 4px", textDecoration: "none" }}
           >
-            <span
-              className="grid h-8 w-8 place-items-center rounded-full bg-[hsl(var(--fg))] text-[hsl(var(--bg))] transition-transform group-hover:rotate-[8deg]"
-              aria-hidden
-            >
-              <Sparkles className="h-3.5 w-3.5" strokeWidth={2.4} />
-            </span>
-            <span className="text-[15.5px] font-semibold tracking-tight text-fg">
-              AYVID
-            </span>
+            <img
+              src="/brand/wordmark-horizontal-dark.svg"
+              alt="AYVID — Asymmetric Yield Via Intelligent Decisions"
+              style={{ height: 32, width: "auto", display: "block" }}
+            />
           </Link>
 
           {/* Center desktop nav — pushed right */}

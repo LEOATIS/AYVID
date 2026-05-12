@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 72" fill="none"
+     role="img" aria-label="AYVID — Asymmetric Yield Via Intelligent Decisions">
+  <!-- Mark scaled to 56×56, left edge. -->
+  <g transform="translate(4, 8) scale(0.467)">
+    <line x1="35.3" y1="92" x2="60" y2="16" stroke="#F0E9DD" stroke-width="6"/>
+    <line x1="84.7" y1="92" x2="60" y2="16" stroke="#F0E9DD" stroke-width="6"/>
+    <line x1="44.7" y1="63" x2="75.3" y2="63" stroke="#F0E9DD" stroke-width="4"/>
+    <circle cx="35.3" cy="92" r="4"   fill="#F0E9DD"/>
+    <circle cx="84.7" cy="92" r="4"   fill="#F0E9DD"/>
+    <circle cx="44.7" cy="63" r="2.8" fill="#F0E9DD"/>
+    <circle cx="75.3" cy="63" r="2.8" fill="#F0E9DD"/>
+    <circle cx="60"   cy="16" r="5"   fill="#C9A84C"/>
+  </g>
+
+  <!-- Vertical hairline divider between mark and wordmark. -->
+  <line x1="74" y1="14" x2="74" y2="58"
+        stroke="#F0E9DD" stroke-opacity="0.16" stroke-width="1"/>
+
+  <!-- "AYVID" set in Fraunces display, opsz 144, SOFT 30. -->
+  <text x="88" y="42"
+        font-family="Fraunces, Georgia, serif"
+        font-weight="900"
+        font-size="36"
+        letter-spacing="-1.4"
+        fill="#F0E9DD"
+        style="font-variation-settings: 'opsz' 144, 'SOFT' 30;">AYVID</text>
+
+  <!-- Tagline — small-caps mono, wide tracking, dimmed. -->
+  <text x="89" y="58"
+        font-family="JetBrains Mono, ui-monospace, monospace"
+        font-weight="500"
+        font-size="8"
+        letter-spacing="2.2"
+        fill="#F0E9DD"
+        fill-opacity="0.42">ASYMMETRIC YIELD VIA INTELLIGENT DECISIONS</text>
+</svg>
