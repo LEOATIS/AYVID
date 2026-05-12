@@ -13,41 +13,57 @@
   :root {
     color-scheme: light;
 
-    /* Surfaces — architectural white / soft pearl */
-    --bg:          0 0% 98%;          /* #FAFAFA */
-    --bg-elev:     0 0% 96%;
-    --bg-sunken:   0 0% 94%;
-    --panel:       0 0% 100%;
-    --panel-2:     0 0% 99%;
+    /* ── Surfaces — warm cream "paper", not architectural white.
+       The brief's discipline: pure white is what student projects use;
+       fine private-bank reporting suites are set on a slight cream so the
+       page reads as printed-on-paper rather than rendered-on-screen. */
+    --bg:          36 41% 93%;        /* #F4EFE6 — warm cream paper */
+    --bg-elev:     36 38% 95%;        /* a half-shade lighter for elevation */
+    --bg-sunken:   36 35% 90%;        /* a half-shade darker for inset/sunken */
+    --panel:       36 50% 96%;        /* cards on paper, very subtle warmth */
+    --panel-2:     36 44% 94%;
+    --paper:       36 41% 93%;        /* explicit alias, matches brief */
 
-    /* Text */
-    --fg:          0 0% 7%;           /* #111111 */
-    --fg-muted:    0 0% 40%;          /* #666666 */
-    --fg-subtle:   0 0% 58%;
+    /* Text — warm graphite ink, not 100% black.  100% black on paper
+       reads as printed ink; #111 is too plastic. */
+    --fg:          36 25% 12%;        /* deep ink, ≈ #261F18 */
+    --fg-muted:    38 21% 35%;        /* warm muted, brief --fg-3 → in dark */
+    --fg-subtle:   36 18% 50%;
 
-    /* Hairlines */
-    --border:        0 0% 90%;
-    --border-strong: 0 0% 80%;
+    /* Hairlines — ink rules on paper, not slate edges. */
+    --border:        36 25% 80%;
+    --border-strong: 36 25% 68%;
     /* Etched-glass tokens (apply alpha at the call-site) */
-    --glass-line:        0 0% 0%;     /* black tint on light */
-    --glass-line-strong: 0 0% 0%;
+    --glass-line:        36 25% 12%;  /* ink tint on paper */
+    --glass-line-strong: 36 25% 12%;
 
-    /* Brand — deep cobalt; institutional, never bright */
-    --brand:    218 78% 28%;
-    --brand-2:  218 70% 42%;
-    --brand-fg: 0   0%  100%;
+    /* Rules tokens (new, matches brief).  Use directly without hsl(). */
+    --rule:       rgba(38, 31, 24, 0.08);
+    --rule-bold:  rgba(38, 31, 24, 0.16);
+    --rule-brand: rgba(201, 168, 76, 0.28);
 
-    /* Ambient glow channel (apply alpha at call-site) */
-    --glow-color: 215 28% 88%;        /* slate-blue #E2E8F0 */
+    /* ── Brand — gold (#C9A84C and family).  The brief is explicit:
+       this is "watermark on currency" gold, not neon, never a gradient. */
+    --brand:        45 53% 54%;       /* #C9A84C — base gold */
+    --brand-2:      46 75% 67%;       /* #E8C96B — bright gold (hover/focus) */
+    --brand-fg:     36 25% 12%;       /* deep ink on gold buttons */
+    --brand-bright: 46 75% 67%;       /* alias matching brief */
+    --brand-dim:    43 74% 31%;       /* #8B6914 — for muted borders */
+    --brand-ink:    40 47% 20%;       /* #4A3A1A — deepest gold for ink rules */
 
-    /* Semantic */
-    --pos:  152 64% 32%;
-    --neg:  4   72% 44%;
-    --warn: 32  92% 42%;
-    --info: 199 70% 38%;
+    /* Ambient glow channel (legacy — many call sites use this; kept
+       as a token but should not be rendered with a blur radius. */
+    --glow-color: 45 53% 54%;
 
-    --ring:   218 78% 36%;
-    --shadow: 220 26% 14%;
+    /* Semantic — warm, restrained.  Forest / terracotta / amber.
+       Not Slack-green, not error-red, not warning-orange. */
+    --pos:  122 22% 45%;              /* #5B8B5B muted forest */
+    --neg:    4 49% 44%;              /* #A8413A terracotta */
+    --warn:  41 64% 45%;              /* #B8862B amber, harmonised with gold */
+    --info: 199 70% 38%;              /* kept for legacy info pills */
+
+    --ring:   45 53% 54%;             /* focus ring uses brand */
+    --shadow: 36 25% 8%;              /* warm-ink shadow base */
 
     /* ── Fibonacci spacing system (px) — the ONLY spacing values
        allowed for marketing-shell layouts.  Map any margin / padding
@@ -72,8 +88,17 @@
     --tr-tight:  -0.04em;     /* hero negative tracking */
     --tr-eyebrow: 0.2em;      /* eyebrow ultra-wide */
 
-    /* ── Motion */
+    /* ── Motion.  Two curves, two durations — nothing else (brief P4).
+       --ease-monument: page transitions, card hovers (primary).
+       --ease-paper:    number changes, value updates (secondary).
+       --t-quick:       200ms — hovers, button states.
+       --t-settle:      480ms — page transitions, reveal.
+       Every transition that previously used `ease`, `ease-in-out`, etc.
+       should be migrated to one of these two for register consistency. */
     --ease-monument: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-paper:    cubic-bezier(0.32, 0.72, 0.40, 1);
+    --t-quick:  200ms;
+    --t-settle: 480ms;
   }
 
   /* The console always paints its own surface using its own --bg/--fg
@@ -95,107 +120,40 @@
     isolation: isolate;
   }
 
-  /* ── Cinematic atmosphere — ONE continuous photo set under the
-     entire marketing site (Polo aesthetic).
-     Fixed-position pseudo-elements anchored to the viewport so the
-     "radiating core" stays in the TOP-RIGHT corner and the grain
-     follows the viewport at every scroll depth.
-     The marketing-shell creates its own stacking context via
-     `isolation: isolate`, so z-index: -1 / -2 here paint behind
-     interactive content but above the page background.
-     Light mode: cool institutional blue wash, faintly fills right. */
-  .marketing-shell::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: -2;
-    pointer-events: none;
-    background:
-      radial-gradient(
-        720px 600px at 100% 0%,
-        hsl(218 50% 82% / 0.30),
-        hsl(218 50% 82% / 0.08) 35%,
-        transparent 60%
-      ),
-      radial-gradient(
-        520px 420px at 0% 100%,
-        hsl(218 30% 88% / 0.15),
-        transparent 60%
-      );
-  }
-  html.dark .marketing-shell::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: -2;
-    pointer-events: none;
-    background:
-      /* Primary warm core — top-right corner, the "radiating sun" */
-      radial-gradient(
-        720px 600px at 100% 0%,
-        hsl(34 75% 42% / 0.50),
-        hsl(34 70% 38% / 0.16) 30%,
-        transparent 60%
-      ),
-      /* Secondary deep umber anchor — lower-left, asymmetric weight */
-      radial-gradient(
-        520px 420px at 0% 100%,
-        hsl(18 55% 22% / 0.28),
-        hsl(18 55% 22% / 0.05) 42%,
-        transparent 75%
-      ),
-      /* Subtle vertical gradient so corners feel cinematically darker */
-      linear-gradient(
-        180deg,
-        hsl(24 10% 7%) 0%,
-        hsl(24 8% 5%) 45%,
-        hsl(24 9% 4%) 100%
-      );
-    filter: blur(0.4px);
-  }
-  /* Section "elevated" fills drop to transparent in dark mode so the
-     atmospheric ::before shows through every section, top to bottom,
-     without any banding stripes. */
-  html.dark .marketing-shell section[class*="bg-elev"],
-  html.dark .marketing-shell section[class*="bg-sunken"] {
-    background-color: transparent !important;
-  }
-  /* Section dividers go hairline in dark mode so they don't chop the
-     atmosphere into stripes. */
-  html.dark .marketing-shell section[class*="border-"] {
-    border-color: hsl(0 0% 100% / 0.04) !important;
-  }
-  /* Global film-grain pinned to the viewport — analogue, premium,
-     low enough to never compete with text. */
-  html.dark .marketing-shell::after {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='260' height='260'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.55'/></svg>");
-    opacity: 0.10;
-    mix-blend-mode: overlay;
-  }
+  /* ── Marketing-shell atmosphere — REMOVED.
+     The previous version layered radial-gradient "warm cores" and a
+     linear-gradient vignette behind every page to manufacture a
+     cinematic photo-studio feel.  The brief's discipline (Part 1,
+     Part 7) is the opposite: no gradients, no glow, no "look at our
+     cool atmosphere."  The page should read as deeply considered
+     ink on paper.  Flat warm graphite (dark) / warm cream (light)
+     does the work without competing with the typography.
+     The global film-grain that lived on .marketing-shell::after is
+     also removed here — it's replaced by a single body::before noise
+     overlay (defined later in this file) that applies to BOTH shells
+     and BOTH themes so the texture stays uniform across the whole
+     app, not just dark marketing. */
 
-  /* Keep <html>/<body> bg matched to whichever shell is active. */
+  /* Keep <html>/<body> bg matched to whichever shell is active.
+     Values reference token-equivalent hsl literals so the bg is
+     painted before the shell mounts and we never see a flash. */
   html:has(.console-shell),
   body:has(.console-shell) {
-    background: hsl(40 30% 98%);
+    background: hsl(36 41% 93%);          /* light paper #F4EFE6 */
   }
   html.dark:has(.console-shell),
   html.dark body:has(.console-shell) {
-    background: hsl(222 47% 5%);
-    color: hsl(210 40% 98%);
+    background: hsl(36 20% 5%);           /* warm graphite #0F0D0A */
+    color: hsl(36 44% 90%);
   }
   html:has(.marketing-shell),
   body:has(.marketing-shell) {
-    background: hsl(0 0% 98%);            /* light-mode #FAFAFA */
+    background: hsl(36 41% 93%);          /* light paper #F4EFE6 */
   }
   html.dark:has(.marketing-shell),
   html.dark body:has(.marketing-shell) {
-    background: hsl(24 8% 5%);            /* warm charcoal */
-    color: hsl(0 0% 93%);
+    background: hsl(36 20% 5%);           /* warm graphite #0F0D0A */
+    color: hsl(36 44% 90%);
   }
 
   /* ── Marketing-site palette — STRICT spec.
@@ -208,75 +166,103 @@
   .marketing-shell[data-theme="dark"] {
     color-scheme: dark;
 
-    /* Surfaces — warm charcoal void (Polo-grade premium).
-       Hint of warm umber so the page reads as a high-end photo
-       studio rather than a flat OLED sheet. */
-    --bg:        24 8% 5%;        /* warm near-black ≈ #0E0C0A */
-    --bg-elev:   24 7% 8%;
-    --bg-sunken: 24 9% 3%;
-    --panel:     24 6% 9%;
-    --panel-2:   24 5% 12%;
+    /* ── Surfaces — warm graphite, "ink-darkened oak" not "server room".
+       The brief's specific values: #0F0D0A base, layered through #14110D,
+       #1A1610, #221C14.  No gradients.  No glow.  The page should read as
+       deeply considered ink on paper, not "look at our cool atmosphere." */
+    --bg:        36 20% 5%;       /* #0F0D0A — warm graphite base */
+    --bg-elev:   35 21% 6%;       /* #14110D — card layer */
+    --bg-sunken: 36 24% 8%;       /* #1A1610 — elevated/raised */
+    --panel:     35 21% 6%;       /* alias for card surfaces (matches bg-elev) */
+    --panel-2:   36 24% 8%;       /* alias for hover/secondary surfaces */
+    --paper:     36 41% 93%;      /* light-side paper, kept for inverse */
 
-    /* Text */
-    --fg:        0 0% 93%;        /* #EDEDED */
-    --fg-muted:  240 2% 55%;      /* #8A8A8E */
-    --fg-subtle: 240 2% 38%;
+    /* Text — warm ivory ink, dimmed warm gray-gold, tertiary warm muted */
+    --fg:        36 44% 90%;      /* #F0E9DD — warm ivory */
+    --fg-muted:  35 18% 59%;      /* #A89A82 — dimmed warm gray-gold */
+    --fg-subtle: 38 21% 35%;      /* #6B6048 — tertiary warm muted */
 
-    /* Hairlines — solid form for legacy consumers */
-    --border:        0 0% 14%;
-    --border-strong: 0 0% 22%;
+    /* Hairlines — solid form for legacy consumers using hsl(var(--border)) */
+    --border:        36 30% 16%;
+    --border-strong: 36 30% 24%;
     /* Etched-glass tokens (apply alpha at the call-site) */
-    --glass-line:        0 0% 100%;   /* use as hsl(var(--glass-line) / 0.05) */
-    --glass-line-strong: 0 0% 100%;   /* use as hsl(var(--glass-line) / 0.10) */
+    --glass-line:        36 44% 90%; /* warm ivory tint, use as ... / 0.06 */
+    --glass-line-strong: 36 44% 90%; /* use as ... / 0.12 */
 
-    /* Brand — gold (institutional, never neon) */
-    --brand:    44 65% 52%;       /* #D4AF37 */
-    --brand-2:  44 70% 62%;
-    --brand-fg: 24 8% 5%;
+    /* Rules tokens (new, matches brief).  Use directly. */
+    --rule:       rgba(244, 239, 230, 0.08);
+    --rule-bold:  rgba(244, 239, 230, 0.16);
+    --rule-brand: rgba(201, 168, 76, 0.22);
 
-    /* Ambient glow channel (apply alpha at call-site) */
-    --glow-color: 30 65% 38%;     /* warm copper / sepia */
-    --glow-color-2: 18 60% 30%;   /* deeper umber (secondary orb) */
+    /* Brand — gold #C9A84C and family.  Same hues in both modes;
+       only the surrounding surfaces change. */
+    --brand:        45 53% 54%;
+    --brand-2:      46 75% 67%;
+    --brand-fg:     36 20% 5%;     /* warm graphite on gold buttons */
+    --brand-bright: 46 75% 67%;
+    --brand-dim:    43 74% 31%;
+    --brand-ink:    40 47% 20%;
 
-    --pos:  152 76% 50%;
-    --neg:  0   84% 60%;
-    --warn: 38  92% 56%;
-    --info: 199 89% 56%;
+    /* Ambient glow channel — kept for legacy call-sites but no glow on
+       new components per brief P7 (no shadows with blur > 0). */
+    --glow-color: 45 53% 54%;
 
-    --ring:   44 65% 60%;
-    --shadow: 0  0%  0%;
+    /* Semantic — same family as light mode for tonal consistency.
+       Slight lift in lightness so they remain readable on dark. */
+    --pos:  122 24% 50%;
+    --neg:    4 52% 50%;
+    --warn:  41 60% 52%;
+    --info: 199 89% 56%;          /* kept for legacy info pills */
+
+    --ring:   45 53% 60%;
+    --shadow: 36 25% 4%;          /* warm-ink, used only for legacy */
   }
 
-  /* Console DARK palette (kept) */
+  /* Console DARK palette — unified with marketing-shell so the whole
+     app reads as one warm-graphite register, not two separate aesthetics.
+     The previous cobalt palette was "tech startup"; this is "ink-darkened
+     oak."  All semantic + brand tokens align with the marketing dark
+     theme above so cross-cutting components (buttons, pills, status
+     dots) render identically whether they live in marketing or console. */
   html.dark .console-shell,
   .console-shell.dark,
   .console-shell[data-theme="dark"] {
     color-scheme: dark;
 
-    --bg:        222 47% 5%;
-    --bg-elev:   222 33% 8%;
-    --bg-sunken: 222 47% 4%;
-    --panel:     222 30% 9%;
-    --panel-2:   222 28% 11%;
+    --bg:        36 20% 5%;       /* #0F0D0A — warm graphite */
+    --bg-elev:   35 21% 6%;
+    --bg-sunken: 35 25% 4%;       /* slightly darker for inset/sunken */
+    --panel:     35 21% 6%;
+    --panel-2:   36 24% 8%;
+    --paper:     36 41% 93%;
 
-    --fg:        210 40% 98%;
-    --fg-muted:  215 18% 65%;
-    --fg-subtle: 215 14% 47%;
+    --fg:        36 44% 90%;      /* warm ivory */
+    --fg-muted:  35 18% 59%;
+    --fg-subtle: 38 21% 35%;
 
-    --border:        217 19% 18%;
-    --border-strong: 217 19% 24%;
+    --border:        36 30% 16%;
+    --border-strong: 36 30% 24%;
 
-    --brand:   217 91% 62%;
-    --brand-2: 217 91% 70%;
-    --brand-fg: 217 91% 12%;
+    --rule:       rgba(244, 239, 230, 0.08);
+    --rule-bold:  rgba(244, 239, 230, 0.16);
+    --rule-brand: rgba(201, 168, 76, 0.22);
 
-    --pos:  152 76% 50%;
-    --neg:  0   84% 60%;
-    --warn: 38  92% 56%;
+    --brand:        45 53% 54%;
+    --brand-2:      46 75% 67%;
+    --brand-fg:     36 20% 5%;
+    --brand-bright: 46 75% 67%;
+    --brand-dim:    43 74% 31%;
+    --brand-ink:    40 47% 20%;
+
+    --glow-color: 45 53% 54%;
+
+    --pos:  122 24% 50%;
+    --neg:    4 52% 50%;
+    --warn:  41 60% 52%;
     --info: 199 89% 56%;
 
-    --ring:   217 91% 65%;
-    --shadow: 0   0%  0%;
+    --ring:   45 53% 60%;
+    --shadow: 36 25% 4%;
   }
 
   html, body {
@@ -306,9 +292,207 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────
+   PAPER TEXTURE — the single subtle move that lifts everything
+   ─────────────────────────────────────────────────────────────────
+   Anthropic-style noise overlay: 2.4% opacity, fixed to viewport,
+   sits behind all interactive content via z-index: 1 with
+   pointer-events: none.  The eye shouldn't SEE the noise — it should
+   only feel that the page is slightly less digital.  Applies to
+   BOTH light and dark, BOTH shells.
+
+   Implementation note: this lives at body::before instead of
+   html::before so it inherits the body's stacking context and never
+   covers the modal-root or any z-indexed overlays that sit above
+   body's children. */
+@layer base {
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.024;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    mix-blend-mode: overlay;
+  }
+  /* Honour reduced-motion / reduced-transparency users: drop the
+     overlay entirely if the OS asks for less visual chrome. */
+  @media (prefers-reduced-transparency: reduce) {
+    body::before { display: none; }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────
    Typography utilities — editorial moments
    ───────────────────────────────────────────────────────────────── */
 @layer utilities {
+  /* ── Brief Part 2 typography vocabulary.  These are the NEW
+     editorial-register utilities; the older .display-1/.display-2/
+     .display-3/.eyebrow/.lede/.prose-body classes below are kept for
+     backwards compatibility (and re-skinned to the new palette via
+     token references) until per-page rebuilds adopt these directly. */
+
+  .display-hero {
+    font-family: var(--font-display), "Fraunces", Georgia, serif;
+    font-weight: 900;
+    font-size: clamp(56px, 8.5vw, 112px);
+    line-height: 0.95;
+    letter-spacing: -0.045em;
+    /* Fraunces variable-axis settings — tighter optical size + softer
+       terminals on hero-display weights for a printed-book feel. */
+    font-variation-settings: "opsz" 144, "SOFT" 50;
+  }
+
+  .display-section {
+    font-family: var(--font-display), "Fraunces", Georgia, serif;
+    font-weight: 700;
+    font-size: clamp(32px, 4vw, 56px);
+    line-height: 1.02;
+    letter-spacing: -0.032em;
+    font-variation-settings: "opsz" 96, "SOFT" 30;
+  }
+
+  .display-callout {
+    font-family: var(--font-display), "Fraunces", Georgia, serif;
+    font-weight: 500;
+    font-style: italic;
+    font-size: clamp(20px, 2.4vw, 28px);
+    line-height: 1.35;
+    letter-spacing: -0.012em;
+    color: hsl(var(--fg-muted));
+  }
+
+  .body-prose {
+    font-family: var(--font-sans), "Inter", system-ui, sans-serif;
+    font-weight: 400;
+    font-size: 15px;
+    line-height: 1.65;
+    letter-spacing: -0.005em;
+    color: hsl(var(--fg-muted));
+    max-width: 62ch;
+  }
+
+  .label-mono {
+    font-family: var(--font-mono), "JetBrains Mono", ui-monospace, monospace;
+    font-weight: 500;
+    font-size: 10px;
+    line-height: 1;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: hsl(var(--fg-subtle));
+  }
+
+  .data-mono {
+    font-family: var(--font-mono), "JetBrains Mono", ui-monospace, monospace;
+    font-weight: 500;
+    /* CRITICAL: tabular-nums + lining-nums is what separates a
+       Bloomberg terminal from a SaaS dashboard.  Every numeric value
+       across the app should inherit this. */
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1, "zero" 1;
+    letter-spacing: -0.01em;
+  }
+
+  /* ── Brief Part 3 card primitives.  Paper-and-ink layered cards,
+     no glassmorphism, no large radii, no offset shadows. */
+  .card-paper {
+    background: hsl(var(--panel));
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 24px 28px;
+    transition: border-color var(--t-quick) var(--ease-monument);
+  }
+  .card-paper:hover { border-color: var(--rule-bold); }
+
+  .card-paper-brand {
+    background: hsl(var(--panel));
+    border: 1px solid var(--rule-brand);
+    border-radius: 6px;
+    padding: 28px 32px;
+    position: relative;
+  }
+  /* Single gold hairline at the top — like a watermark on currency.
+     Brief: "Restrained."  This is the ONE gradient we keep in the
+     entire foundation, and it's a 1px horizontal sliver that fades
+     to transparent at the edges — closer to engraving than effect. */
+  .card-paper-brand::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, hsl(var(--brand)), transparent);
+    opacity: 0.4;
+  }
+
+  .card-section {
+    /* For major content blocks (Equity, Portfolio, Signals).  No card
+       border, no rounded corners, no shadow — just top and bottom
+       hairline rules and generous vertical breathing room.  How
+       The Economist sets a feature article. */
+    background: hsl(var(--bg));
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 48px 0;
+  }
+
+  /* ── Brief Part 5.6 button + input vocabulary.  Bauhaus discipline:
+     a flat gold rectangle for primary, a hairline-bordered transparent
+     rectangle for secondary, a single underline for inputs.  These
+     coexist with the legacy .btn-primary / .btn-ghost / .surface
+     classes for now; per-page rebuilds in PR-B adopt them directly. */
+  .btn-paper-primary {
+    display: inline-flex; align-items: center; gap: .5rem;
+    background: hsl(var(--brand));
+    color: hsl(var(--brand-fg));
+    border: none;
+    border-radius: 4px;
+    padding: 12px 24px;
+    font-family: var(--font-sans), "Inter", system-ui, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0;
+    cursor: pointer;
+    transition: background-color var(--t-quick) var(--ease-monument);
+  }
+  .btn-paper-primary:hover  { background: hsl(var(--brand-bright)); }
+  .btn-paper-primary:active { background: hsl(var(--brand-dim)); }
+
+  .btn-paper-secondary {
+    display: inline-flex; align-items: center; gap: .5rem;
+    background: transparent;
+    color: hsl(var(--fg));
+    border: 1px solid var(--rule-bold);
+    border-radius: 4px;
+    padding: 12px 24px;
+    font-family: var(--font-sans), "Inter", system-ui, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+      border-color var(--t-quick) var(--ease-monument),
+      color        var(--t-quick) var(--ease-monument);
+  }
+  .btn-paper-secondary:hover {
+    border-color: hsl(var(--brand-dim));
+    color: hsl(var(--brand));
+  }
+
+  .input-paper {
+    background: hsl(var(--bg));
+    border: none;
+    border-bottom: 1px solid var(--rule-bold);
+    border-radius: 0;
+    padding: 8px 0;
+    font-family: var(--font-mono), "JetBrains Mono", ui-monospace, monospace;
+    font-size: 14px;
+    color: hsl(var(--fg));
+    transition: border-color var(--t-quick) var(--ease-monument);
+  }
+  .input-paper:focus {
+    outline: none;
+    border-bottom-color: hsl(var(--brand));
+  }
+
   .font-display {
     font-family: var(--font-display), "Fraunces", "Source Serif 4",
       Georgia, "Times New Roman", serif;
@@ -380,25 +564,32 @@
   .rule-h { height: 1px; background: hsl(var(--border)); }
   .rule-v { width: 1px;  background: hsl(var(--border)); }
 
-  /* Tabular numerals */
+  /* Tabular numerals — every existing .num site gets aligned digit
+     columns (tabular-nums) AND fixed-height figures (lining-nums) so
+     columns of numbers stack vertically the way a Bloomberg terminal
+     does.  Brief P2: "the single most impactful change." */
   .num {
     font-family: var(--font-mono), ui-monospace, "SF Mono", Menlo, monospace;
-    font-feature-settings: "tnum", "zero", "ss01";
-    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1, "zero" 1, "ss01" 1;
+    font-variant-numeric: tabular-nums lining-nums;
   }
 
-  /* Console card surfaces (kept) */
+  /* Console card surfaces — re-skinned to the brief's "ink on paper"
+     register: 6px radius (closer to a printed card), single hairline,
+     no offset shadows.  Existing call-sites (className="card") keep
+     working; only the look changes. */
   .card {
     background: hsl(var(--panel));
-    border: 1px solid hsl(var(--border));
-    border-radius: 14px;
-    box-shadow: 0 1px 0 hsl(var(--border) / 0.4),
-                0 12px 24px -16px hsl(var(--shadow) / 0.18);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    box-shadow: none;
+    transition: border-color var(--t-quick) var(--ease-monument);
   }
+  .card:hover { border-color: var(--rule-bold); }
   .card-soft {
     background: hsl(var(--panel-2));
-    border: 1px solid hsl(var(--border));
-    border-radius: 12px;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
   }
 
   /* Marketing surfaces — flat, almost no shadow */
@@ -458,12 +649,18 @@
   .dot-down { background: hsl(var(--neg)); box-shadow: 0 0 0 4px hsl(var(--neg) / 0.18); }
   .dot-idle { background: hsl(var(--fg-subtle)); box-shadow: 0 0 0 4px hsl(var(--fg-subtle) / 0.15); }
 
-  .pulse-live { animation: pulse-live 1.6s ease-in-out infinite; }
-  .glow-cyan  { box-shadow: 0 0 18px hsl(var(--info) / 0.45); }
-  .glow-amber { box-shadow: 0 0 18px hsl(var(--warn) / 0.55); }
-  .glow-red   { box-shadow: 0 0 18px hsl(var(--neg) / 0.55); }
-  .pulse-ring { animation: pulse-ring 2s ease-out infinite; }
-  .ink-divider { background: linear-gradient(90deg, transparent, hsl(var(--border-strong)), transparent); height: 1px; }
+  .pulse-live { animation: pulse-live 1.6s var(--ease-paper) infinite; }
+  /* Glow utilities re-skinned to hairlines per brief P7 ("no shadows
+     with offset or blur > 0").  Existing call-sites keep working but
+     no longer render a halo — the colour shifts to a 1px ring instead. */
+  .glow-cyan  { box-shadow: 0 0 0 1px hsl(var(--info) / 0.55); }
+  .glow-amber { box-shadow: 0 0 0 1px hsl(var(--warn) / 0.65); }
+  .glow-red   { box-shadow: 0 0 0 1px hsl(var(--neg) / 0.65); }
+  .pulse-ring { animation: pulse-ring 2s var(--ease-paper) infinite; }
+  .ink-divider {
+    background: linear-gradient(90deg, transparent, var(--rule-bold), transparent);
+    height: 1px;
+  }
 
   .skeleton {
     background: linear-gradient(90deg,
@@ -528,8 +725,8 @@
     font-weight: 600;
     letter-spacing: -0.01em;
     line-height: 1.05;
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum", "zero", "ss01";
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1, "zero" 1, "ss01" 1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -545,14 +742,17 @@
      adding three.js.  Three layers stacked with mix-blend-mode +
      conic gradients give the hero a real sense of light and depth.
      ───────────────────────────────────────────────────────────────── */
+  /* .mesh-aurora — was a triple radial-gradient atmospheric backdrop.
+     Brief Part 7 removes all decorative gradients.  Kept as an empty
+     positioned element so existing layouts that rely on it being
+     `position:absolute` don't reflow; the visual contribution is now
+     nil and the .graph-stage / .hero containers should be reworked in
+     PR-B to drop the wrapper entirely. */
   .mesh-aurora {
     position: absolute;
     inset: 0;
-    background:
-      radial-gradient(ellipse 70% 55% at 18% 30%, hsl(var(--brand) / 0.18), transparent 60%),
-      radial-gradient(ellipse 45% 40% at 82% 22%, hsl(218 90% 56% / 0.12), transparent 60%),
-      radial-gradient(ellipse 60% 50% at 70% 85%, hsl(280 70% 50% / 0.08), transparent 65%);
-    filter: blur(0.3px);
+    background: transparent;
+    filter: none;
     pointer-events: none;
   }
   .mesh-grain {
@@ -573,17 +773,18 @@
     display: none;
   }
 
-  /* Glass-like card used for the hero metric strip and a few feature
-     panels — soft tint, hairline border, very subtle inner highlight. */
+  /* Glass card — name kept for backwards compatibility, but
+     glassmorphism is OUT per brief Part 3.  Re-skinned to paper-and-ink:
+     flat panel surface, single hairline border, no backdrop-filter,
+     no gradient, no offset shadow.  Visual register shifts from
+     "frosted overlay" to "paper card on paper". */
   .glass {
-    background:
-      linear-gradient(180deg, hsl(var(--panel) / 0.8), hsl(var(--panel) / 0.6));
-    border: 1px solid hsl(var(--border));
-    backdrop-filter: blur(12px) saturate(140%);
-    -webkit-backdrop-filter: blur(12px) saturate(140%);
-    box-shadow:
-      inset 0 1px 0 hsl(0 0% 100% / 0.5),
-      0 24px 60px -32px hsl(var(--shadow) / 0.18);
+    background: hsl(var(--panel));
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
   }
 
   /* Floating "live" dot used in the hero — combines a soft halo with
@@ -624,15 +825,15 @@
      white/black anywhere in the SVG).
      ───────────────────────────────────────────────────────────────── */
 
-  /* Subtle perspective backdrop behind the canvas */
+  /* Perspective backdrop for GraphPropagation — re-skinned to flat
+     panel surface + hairline.  Was a triple-gradient "atmosphere"
+     mix; brief P7 removes that.  The inner SVG and its data are
+     untouched. */
   .graph-stage {
     position: relative;
-    border-radius: 16px;
-    background:
-      radial-gradient(120% 80% at 50% 35%, hsl(var(--brand) / 0.07), transparent 65%),
-      radial-gradient(80% 50% at 30% 80%, hsl(280 60% 50% / 0.05), transparent 70%),
-      linear-gradient(180deg, hsl(var(--bg-elev)), hsl(var(--bg-sunken)));
-    border: 1px solid hsl(var(--border));
+    border-radius: 6px;
+    background: hsl(var(--panel));
+    border: 1px solid var(--rule);
     overflow: hidden;
     isolation: isolate;
   }
@@ -738,31 +939,33 @@
     animation: pulse-live 2s ease-in-out infinite;
   }
 
-  /* Big rounded tile — the workhorse card of the redesign */
+  /* Workhorse tile — re-skinned to the brief's "printed card" register.
+     Was 24px radius + lift-on-hover shadow ("SaaS"); now 6px radius
+     + hairline-color hover, no offset shadow ("private bank report"). */
   .tile {
     position: relative;
     background: hsl(var(--panel));
-    border: 1px solid hsl(var(--border));
-    border-radius: 24px;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
     padding: clamp(1.25rem, 2.4vw, 2rem);
-    transition: transform .25s cubic-bezier(0.2, 0.8, 0.2, 1),
-                border-color .25s ease, background-color .25s ease,
-                box-shadow .25s ease;
+    transition:
+      border-color var(--t-quick) var(--ease-monument),
+      background-color var(--t-quick) var(--ease-monument);
   }
   .tile:hover {
-    border-color: hsl(var(--border-strong));
-    box-shadow: 0 24px 60px -32px hsl(var(--shadow) / 0.25);
+    border-color: var(--rule-bold);
+    box-shadow: none;
   }
   .tile-soft {
     background: hsl(var(--panel-2));
-    border-radius: 24px;
-    border: 1px solid hsl(var(--border));
+    border-radius: 6px;
+    border: 1px solid var(--rule);
     padding: clamp(1.25rem, 2.4vw, 2rem);
   }
   .tile-ink {
     background: hsl(var(--fg));
     color: hsl(var(--bg));
-    border-radius: 24px;
+    border-radius: 6px;
     padding: clamp(1.5rem, 3vw, 2.5rem);
   }
   /* Body content inherits the inverted colour by default — we don't
@@ -773,17 +976,17 @@
   .tile-brand {
     background: hsl(var(--brand));
     color: hsl(var(--brand-fg));
-    border-radius: 24px;
+    border-radius: 6px;
     padding: clamp(1.5rem, 3vw, 2.5rem);
   }
 
-  /* Numbered process card — used in the "How it works" section */
+  /* Numbered process card — re-skinned: 6px radius, monument ease. */
   .process-card {
     background: hsl(var(--panel));
-    border: 1px solid hsl(var(--border));
-    border-radius: 24px;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
     padding: clamp(1.5rem, 2.6vw, 2rem);
-    transition: transform .3s cubic-bezier(0.2, 0.8, 0.2, 1), background-color .3s ease;
+    transition: background-color var(--t-quick) var(--ease-monument);
   }
   .process-card:hover { background: hsl(var(--panel-2)); }
   .process-num {
@@ -797,14 +1000,15 @@
     border: 1px solid hsl(var(--border));
   }
 
-  /* Comparison row — "AYVID vs traditional" matrix */
+  /* Comparison row — re-skinned: 6px radius, rule tokens, no rounded
+     "card" look.  Reads as a typeset matrix, not a SaaS comparison. */
   .compare-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1px;
-    background: hsl(var(--border));
-    border: 1px solid hsl(var(--border));
-    border-radius: 20px;
+    background: var(--rule);
+    border: 1px solid var(--rule-bold);
+    border-radius: 6px;
     overflow: hidden;
   }
   .compare-cell {

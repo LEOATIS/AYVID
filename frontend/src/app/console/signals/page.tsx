@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LineChart } from "lucide-react";
-import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { Empty } from "@/components/ui/Empty";
 import { useSignals, useSignalsHistory } from "@/lib/hooks";
 import type {
@@ -14,17 +12,39 @@ import type {
 } from "@/lib/api";
 import { fmtAge, fmtMoney, fmtNumber } from "@/lib/format";
 
+/**
+ * AYVID signals — specimen cards on warm paper, per brief §5.4.
+ *
+ * Each signal is treated like an entry in a museum catalogue:
+ *  • Card surface: var(--bg-1) on a 1px var(--rule), 6px radius, no shadow.
+ *  • Strict 12-column grid:
+ *      ├─ col 1-2  asset tag · ticker (Fraunces 24px) · direction · strategy
+ *      ├─ col 3-9  CURRENT / ENTRY / SL / TARGET / QTY / R:R as small
+ *      │           numeric blocks — .label-mono on top, .data-mono large below
+ *      └─ col 10-12  conviction bar · status pill · expiry
+ *  • SL/TP bar: 2px thin horizontal line with tick markers (was a thick
+ *    coloured bar).
+ *  • READY status: small filled gold square (4×4px) + "ROUTING"
+ *  • WAITING: empty 1px-border gold square + "AWAITING ENTRY"
+ *  • EXPIRED: muted text, no square, just "WINDOW CLOSED"
+ *
+ * Every existing hook (useSignals, useSignalsHistory, SSE for READY
+ * flash) is preserved verbatim.  Only the visual surface changes.
+ */
+
 // ── Asset-class palette ────────────────────────────────────────────
+// Slightly desaturated from the original so they harmonise with the
+// gold + warm-graphite register instead of fighting it.
 const ASSET_COLOR: Record<string, string> = {
-  EQUITY: "#3B82F6",
-  INDEX: "#8B5CF6",
-  FX: "#22C55E",
-  FUTURE: "#F59E0B",
-  CRYPTO: "#F97316",
-  ETF: "#06B6D4",
-  OPTION: "#EC4899",
-  COMMODITY: "#EAB308",
-  BOND: "#14B8A6",
+  EQUITY: "#5B7BAF",
+  INDEX: "#7B6BB0",
+  FX: "#5B8B5B",
+  FUTURE: "#B8862B",
+  CRYPTO: "#A8413A",
+  ETF: "#3D8B9B",
+  OPTION: "#A55B7B",
+  COMMODITY: "#C9A84C",
+  BOND: "#5B9B8B",
 };
 
 const ASSET_FILTERS = [
@@ -42,13 +62,75 @@ const ASSET_FILTERS = [
 type AssetFilter = (typeof ASSET_FILTERS)[number];
 type StatusFilter = "ALL" | ReadinessStatus;
 
-// ── Readiness badge ────────────────────────────────────────────────
-function ReadinessBadge({ status }: { status: string | undefined | null }) {
+// ── Status token ───────────────────────────────────────────────────
+function StatusToken({ status }: { status: string | undefined | null }) {
   const s = (status || "WAITING").toUpperCase();
-  if (s === "READY") return <Badge variant="pos">● READY</Badge>;
-  if (s === "EXPIRED") return <Badge variant="neutral">EXPIRED</Badge>;
-  if (s === "CANCELLED") return <Badge variant="neg">CANCELLED</Badge>;
-  return <Badge variant="warn">◌ WAITING</Badge>;
+  if (s === "READY") {
+    return (
+      <span
+        className="label-mono inline-flex items-center"
+        style={{ gap: 8, color: "hsl(var(--brand))" }}
+      >
+        <span
+          aria-hidden
+          style={{
+            width: 4,
+            height: 4,
+            background: "hsl(var(--brand))",
+            display: "inline-block",
+          }}
+        />
+        Routing
+      </span>
+    );
+  }
+  if (s === "EXPIRED") {
+    return (
+      <span
+        className="label-mono"
+        style={{ color: "hsl(var(--fg-subtle))" }}
+      >
+        Window closed
+      </span>
+    );
+  }
+  if (s === "CANCELLED") {
+    return (
+      <span
+        className="label-mono inline-flex items-center"
+        style={{ gap: 8, color: "hsl(var(--neg))" }}
+      >
+        <span
+          aria-hidden
+          style={{
+            width: 4,
+            height: 4,
+            border: "1px solid hsl(var(--neg))",
+            display: "inline-block",
+          }}
+        />
+        Cancelled
+      </span>
+    );
+  }
+  // WAITING — empty gold square
+  return (
+    <span
+      className="label-mono inline-flex items-center"
+      style={{ gap: 8, color: "hsl(var(--brand))" }}
+    >
+      <span
+        aria-hidden
+        style={{
+          width: 4,
+          height: 4,
+          border: "1px solid hsl(var(--brand))",
+          display: "inline-block",
+        }}
+      />
+      Awaiting entry
+    </span>
+  );
 }
 
 // ── Distance-to-entry indicator ────────────────────────────────────
@@ -60,37 +142,42 @@ function DistanceIndicator({
   direction: string;
 }) {
   if (pct === null || pct === undefined || Number.isNaN(pct)) {
-    return <span className="text-muted">—</span>;
+    return (
+      <span
+        className="data-mono"
+        style={{ color: "hsl(var(--fg-subtle))", fontSize: 14 }}
+      >
+        —
+      </span>
+    );
   }
   const isLong = direction === "LONG";
   const absPct = Math.abs(pct) * 100;
-  // For LONG: negative pct = current below entry = approaching from below.
-  // For SHORT: positive pct = current above entry = approaching from above.
   const isApproaching = isLong ? pct <= 0 : pct >= 0;
-  const color = absPct < 0.3 ? "var(--pos)" : absPct < 1.0 ? "var(--warn)" : "var(--muted)";
-  const label = absPct < 0.3 ? "AT ENTRY" : isApproaching ? "APPROACHING" : "AWAY";
+  const color =
+    absPct < 0.3
+      ? "hsl(var(--pos))"
+      : absPct < 1.0
+      ? "hsl(var(--warn))"
+      : "hsl(var(--fg-muted))";
+  const label =
+    absPct < 0.3 ? "At entry" : isApproaching ? "Approaching" : "Away";
 
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="num text-[12px] font-semibold" style={{ color }}>
+    <div className="flex flex-col" style={{ gap: 4 }}>
+      <span className="data-mono" style={{ fontSize: 14, color }}>
         {pct > 0 ? "+" : ""}
         {(pct * 100).toFixed(2)}%
       </span>
-      <div className="h-[3px] w-[60px] rounded-full bg-[hsl(var(--bg-sunken))]">
-        <div
-          className="h-full rounded-full transition-[width] duration-500"
-          style={{
-            width: `${Math.min((absPct / 2) * 100, 100)}%`,
-            background: color,
-          }}
-        />
-      </div>
-      <span className="num text-[9px] text-muted">{label}</span>
+      <span className="label-mono" style={{ color }}>
+        {label}
+      </span>
     </div>
   );
 }
 
-// ── SL / TP visual bar ─────────────────────────────────────────────
+// ── SL / TP tick bar ───────────────────────────────────────────────
+// Brief §5.4: "reduce it to a 2px thin horizontal line with tick markers"
 function SlTpBar({ signal }: { signal: Signal }) {
   const cp = signal.current_price ?? 0;
   const ep = signal.entry_price ?? 0;
@@ -105,49 +192,71 @@ function SlTpBar({ signal }: { signal: Signal }) {
   const entryPct = ((ep - lo) / range) * 100;
   const currentPct = ((cp - lo) / range) * 100;
   const clamp = (v: number) => Math.max(0, Math.min(100, v));
-  const isLong = signal.direction === "LONG";
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="relative h-1.5 w-[160px] rounded-full bg-[hsl(var(--bg-sunken))]">
+    <div className="flex flex-col" style={{ gap: 8 }}>
+      <div
+        style={{
+          position: "relative",
+          height: 2,
+          width: "100%",
+          background: "var(--rule-bold)",
+        }}
+      >
+        {/* Entry tick — 8px tall vertical gold mark */}
         <div
-          className="absolute left-0 h-full rounded-l-full"
+          aria-hidden
           style={{
-            width: `${entryPct}%`,
-            background: isLong ? "hsl(var(--neg) / 0.25)" : "hsl(var(--pos) / 0.20)",
+            position: "absolute",
+            top: -3,
+            height: 8,
+            width: 1,
+            background: "hsl(var(--brand))",
+            left: `${clamp(entryPct)}%`,
+            transform: "translateX(-50%)",
           }}
         />
+        {/* Current price tick — 10px tall warm ivory mark */}
         <div
-          className="absolute h-full rounded-r-full"
+          aria-hidden
           style={{
-            left: `${entryPct}%`,
-            width: `${100 - entryPct}%`,
-            background: isLong ? "hsl(var(--pos) / 0.20)" : "hsl(var(--neg) / 0.25)",
+            position: "absolute",
+            top: -4,
+            height: 10,
+            width: 1,
+            background: "hsl(var(--fg))",
+            left: `${clamp(currentPct)}%`,
+            transform: "translateX(-50%)",
+            transition: "left var(--t-settle) var(--ease-paper)",
           }}
-        />
-        {/* Entry tick */}
-        <div
-          className="absolute -top-0.5 h-[10px] w-[2px] rounded-full bg-brand"
-          style={{ left: `${clamp(entryPct)}%`, transform: "translateX(-50%)" }}
-        />
-        {/* Current price marker */}
-        <div
-          className="absolute -top-1 h-3 w-[3px] rounded-full bg-fg transition-[left] duration-500"
-          style={{ left: `${clamp(currentPct)}%`, transform: "translateX(-50%)" }}
         />
       </div>
-      <div className="flex w-[160px] justify-between text-[9px] text-muted">
-        <span className="num text-neg">SL {fmtMoney(sl)}</span>
-        <span className="num text-pos">TP {fmtMoney(tp)}</span>
+      <div
+        className="flex"
+        style={{
+          justifyContent: "space-between",
+          width: "100%",
+          gap: 16,
+        }}
+      >
+        <span
+          className="data-mono"
+          style={{ fontSize: 10, color: "hsl(var(--neg))" }}
+        >
+          SL {fmtMoney(sl)}
+        </span>
+        <span
+          className="data-mono"
+          style={{ fontSize: 10, color: "hsl(var(--pos))" }}
+        >
+          TP {fmtMoney(tp)}
+        </span>
       </div>
     </div>
   );
 }
 
-// ── Main page ──────────────────────────────────────────────────────
-// Cast a single SignalHistoryRecord into the Signal shape the rest of
-// this page renders. History rows can be missing some fields (especially
-// the inferred PORTFOLIO markers), so we fill in safe defaults.
+// ── History adapter ────────────────────────────────────────────────
 function _historyRecordToSignal(r: SignalHistoryRecord): Signal {
   return {
     ticker: r.ticker ?? "?",
@@ -224,8 +333,8 @@ export default function SignalsPage() {
   const [flashTickers, setFlashTickers] = useState<Set<string>>(new Set());
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  // Subscribe to SSE for real-time readiness changes — flash any
-  // ticker that just promoted to READY.
+  // SSE — flash any ticker that just promoted to READY.  Preserved
+  // verbatim from the previous version.
   useEffect(() => {
     if (typeof EventSource === "undefined") return;
     const apiBase = (process.env.NEXT_PUBLIC_API_BASE || "/api/v1").replace(/\/$/, "");
@@ -279,9 +388,6 @@ export default function SignalsPage() {
     view === "active"
       ? activeData?.signals ?? []
       : (historyData?.records ?? [])
-          // Skip the synthetic PORTFOLIO markers that have no ticker —
-          // they're useful for the timeline summary but don't render
-          // as signal cards.
           .filter((r) => r.ticker && r.ticker !== "PORTFOLIO")
           .map(_historyRecordToSignal);
 
@@ -295,7 +401,6 @@ export default function SignalsPage() {
     });
   }, [signals, statusFilter, assetFilter]);
 
-  // Sort: READY first, then highest conviction.
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
       const aReady = a.readiness_status === "READY" ? 0 : 1;
@@ -305,21 +410,13 @@ export default function SignalsPage() {
     });
   }, [filtered]);
 
-  // Counts come from the active SignalsResponse in active view, and
-  // from the history endpoint's by_status aggregate in history view.
   const histCounts = historyData?.by_status ?? {};
   const ready =
-    view === "active"
-      ? activeData?.ready_count ?? 0
-      : histCounts.READY ?? 0;
+    view === "active" ? activeData?.ready_count ?? 0 : histCounts.READY ?? 0;
   const waiting =
-    view === "active"
-      ? activeData?.waiting_count ?? 0
-      : histCounts.WAITING ?? 0;
+    view === "active" ? activeData?.waiting_count ?? 0 : histCounts.WAITING ?? 0;
   const expired =
-    view === "active"
-      ? activeData?.expired_count ?? 0
-      : histCounts.EXPIRED ?? 0;
+    view === "active" ? activeData?.expired_count ?? 0 : histCounts.EXPIRED ?? 0;
   const cancelled =
     view === "active"
       ? activeData?.cancelled_count ?? 0
@@ -339,35 +436,55 @@ export default function SignalsPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-6 fade-up">
-      {/* View toggle + date range — sits above the existing header */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="inline-flex rounded-full bg-[hsl(var(--bg-sunken))] p-0.5">
-          <button
-            type="button"
-            onClick={() => setView("active")}
-            className={[
-              "px-4 py-1.5 text-[11px] font-mono font-medium tracking-[0.06em] rounded-full transition-colors",
-              view === "active"
-                ? "bg-brand text-bg"
-                : "text-muted hover:text-fg",
-            ].join(" ")}
-          >
-            ◌ ACTIVE BOOK
-          </button>
-          <button
-            type="button"
-            onClick={() => setView("history")}
-            className={[
-              "px-4 py-1.5 text-[11px] font-mono font-medium tracking-[0.06em] rounded-full transition-colors",
-              view === "history"
-                ? "bg-brand text-bg"
-                : "text-muted hover:text-fg",
-            ].join(" ")}
-          >
-            ⏱ FULL HISTORY
-          </button>
-        </div>
+    <div className="flex flex-col" style={{ gap: 32 }}>
+      {/* ── Masthead ─────────────────────────────────────────── */}
+      <section>
+        <p className="label-mono" style={{ color: "hsl(var(--brand))" }}>
+          Signal book
+        </p>
+        <h1
+          className="display-section"
+          style={{ marginTop: 12, color: "hsl(var(--fg))" }}
+        >
+          What the engine wants to do next.
+        </h1>
+        <p className="body-prose" style={{ marginTop: 16 }}>
+          <span className="data-mono" style={{ color: "hsl(var(--pos))" }}>
+            {ready}
+          </span>{" "}
+          ready ·{" "}
+          <span className="data-mono" style={{ color: "hsl(var(--brand))" }}>
+            {waiting}
+          </span>{" "}
+          waiting · updated{" "}
+          {data?.snapshot_at
+            ? fmtAge((Date.now() - new Date(data.snapshot_at).getTime()) / 1000)
+            : "—"}
+        </p>
+      </section>
+
+      {/* ── View toggle + date range ─────────────────────────── */}
+      <section
+        className="flex flex-wrap items-center"
+        style={{
+          gap: 16,
+          paddingTop: 24,
+          borderTop: "1px solid var(--rule)",
+        }}
+      >
+        <ToggleButton
+          active={view === "active"}
+          onClick={() => setView("active")}
+        >
+          Active book
+        </ToggleButton>
+        <ToggleButton
+          active={view === "history"}
+          onClick={() => setView("history")}
+        >
+          Full history
+        </ToggleButton>
+
         {view === "history" && (
           <>
             <input
@@ -375,65 +492,77 @@ export default function SignalsPage() {
               value={dateStart}
               onChange={(e) => setDateStart(e.target.value)}
               max={dateEnd}
-              className="num rounded-md bg-[hsl(var(--bg-sunken))] px-3 py-1.5 text-[12px] text-fg ring-1 ring-inset ring-[hsl(var(--border))] focus:outline-none focus:ring-brand"
+              className="input-paper"
+              style={{ width: 140 }}
             />
-            <span className="text-[12px] text-subtle">→</span>
+            <span
+              className="label-mono"
+              style={{ color: "hsl(var(--fg-subtle))" }}
+            >
+              →
+            </span>
             <input
               type="date"
               value={dateEnd}
               onChange={(e) => setDateEnd(e.target.value)}
               min={dateStart}
               max={_today()}
-              className="num rounded-md bg-[hsl(var(--bg-sunken))] px-3 py-1.5 text-[12px] text-fg ring-1 ring-inset ring-[hsl(var(--border))] focus:outline-none focus:ring-brand"
+              className="input-paper"
+              style={{ width: 140 }}
             />
-            <span className="num text-[10px] tracking-wider text-subtle">
+            <span
+              className="label-mono"
+              style={{ color: "hsl(var(--fg-subtle))" }}
+            >
               {historyData?.total ?? 0} records
               {historyData?.earliest && historyData.latest && (
                 <>
                   {" · "}
-                  {historyData.earliest.slice(0, 16)} → {historyData.latest.slice(0, 16)}
+                  {historyData.earliest.slice(0, 16)} →{" "}
+                  {historyData.latest.slice(0, 16)}
                 </>
               )}
-              {filled > 0 && <> · <span className="text-pos">{filled} FILLED</span></>}
+              {filled > 0 && (
+                <>
+                  {" · "}
+                  <span style={{ color: "hsl(var(--pos))" }}>
+                    {filled} filled
+                  </span>
+                </>
+              )}
             </span>
           </>
         )}
-      </div>
+      </section>
 
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-[26px] font-semibold tracking-tight text-fg">Signals</h1>
-          <p className="mt-1 text-[13px] text-muted">
-            <span className="num font-semibold text-pos">{ready}</span> ready ·{" "}
-            <span className="num font-semibold text-warn">{waiting}</span> waiting · updated{" "}
-            {data?.snapshot_at
-              ? fmtAge((Date.now() - new Date(data.snapshot_at).getTime()) / 1000)
-              : "—"}
-          </p>
-        </div>
+      {/* ── Status filter pills ──────────────────────────────── */}
+      <section
+        className="flex flex-wrap"
+        style={{
+          gap: 8,
+          paddingTop: 16,
+        }}
+      >
+        {filterPills.map((f) => (
+          <FilterPill
+            key={f.label}
+            active={statusFilter === f.label}
+            onClick={() => setStatusFilter(f.label)}
+          >
+            {f.label}
+            {f.count > 0 && (
+              <span
+                className="data-mono"
+                style={{ marginLeft: 8, opacity: 0.7 }}
+              >
+                {f.count}
+              </span>
+            )}
+          </FilterPill>
+        ))}
+      </section>
 
-        <div className="flex flex-wrap gap-2">
-          {filterPills.map((f) => (
-            <button
-              key={f.label}
-              onClick={() => setStatusFilter(f.label)}
-              className={[
-                "px-3 py-1 text-[11px] font-medium tracking-wider rounded-full",
-                "ring-1 ring-inset transition-colors",
-                statusFilter === f.label
-                  ? "bg-brand text-bg ring-brand"
-                  : "bg-[hsl(var(--bg-sunken))] text-muted ring-[hsl(var(--border))] hover:text-fg",
-              ].join(" ")}
-              type="button"
-            >
-              {f.label}
-              {f.count > 0 && <span className="num ml-1.5 opacity-70">({f.count})</span>}
-            </button>
-          ))}
-        </div>
-      </header>
-
-      <div className="-mt-2 flex flex-wrap gap-1">
+      <section className="flex flex-wrap" style={{ gap: 6 }}>
         {ASSET_FILTERS.map((ac) => {
           const active = assetFilter === ac;
           const color = ac === "ALL" ? undefined : ASSET_COLOR[ac];
@@ -441,36 +570,56 @@ export default function SignalsPage() {
             <button
               key={ac}
               onClick={() => setAssetFilter(ac)}
-              className={[
-                "px-2.5 py-1 text-[10px] font-medium tracking-wider rounded-full transition-colors",
-                "ring-1 ring-inset",
-                active
-                  ? "bg-[hsl(var(--bg-sunken))] text-fg"
-                  : "bg-transparent text-muted hover:text-fg",
-              ].join(" ")}
-              style={
-                active && color
-                  ? {
-                      color,
-                      borderColor: color,
-                      background: `${color}15`,
-                      boxShadow: `inset 0 0 0 1px ${color}50`,
-                    }
-                  : undefined
-              }
+              className="label-mono transition-colors"
               type="button"
+              style={{
+                padding: "5px 10px",
+                background: active && color ? `${color}15` : "transparent",
+                border: `1px solid ${
+                  active
+                    ? color ?? "hsl(var(--brand))"
+                    : "var(--rule)"
+                }`,
+                color: active
+                  ? color ?? "hsl(var(--brand))"
+                  : "hsl(var(--fg-muted))",
+                borderRadius: 2,
+                cursor: "pointer",
+                transitionDuration: "var(--t-quick)",
+                transitionTimingFunction: "var(--ease-monument)",
+              }}
             >
               {ac}
             </button>
           );
         })}
-      </div>
+      </section>
 
-      <Card
-        title={`Signal book · ${sorted.length} match${sorted.length === 1 ? "" : "es"}`}
-        subtitle="Live SL/TP, sizing, and trade-readiness — refresh every 3s, real-time SSE flash on READY"
+      {/* ── Specimen cards ───────────────────────────────────── */}
+      <section
+        style={{
+          paddingTop: 24,
+          borderTop: "1px solid var(--rule)",
+        }}
       >
-        {isLoading && <div className="skeleton h-32" />}
+        <p
+          className="label-mono"
+          style={{ color: "hsl(var(--fg-subtle))", marginBottom: 16 }}
+        >
+          {sorted.length} {sorted.length === 1 ? "match" : "matches"} · live SL/TP,
+          sizing, trade-readiness
+        </p>
+
+        {isLoading && (
+          <div
+            style={{
+              height: 128,
+              background: "hsl(var(--panel))",
+              border: "1px solid var(--rule)",
+              borderRadius: 6,
+            }}
+          />
+        )}
         {error && (
           <Empty
             icon={<LineChart className="h-8 w-8" />}
@@ -487,11 +636,10 @@ export default function SignalsPage() {
         )}
 
         {sorted.length > 0 && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col" style={{ gap: 8 }}>
             {sorted.map((s, idx) => {
               const ac = (s.asset_class || "EQUITY") as string;
               const color = ASSET_COLOR[ac] ?? "#64748B";
-              const isReady = s.readiness_status === "READY";
               const isFlashing = s.ticker ? flashTickers.has(s.ticker) : false;
               const isLong = s.direction === "LONG";
               const isHold = s.direction === "HOLD";
@@ -508,192 +656,384 @@ export default function SignalsPage() {
                   : "shares";
 
               return (
-                <div
+                <SpecimenCard
                   key={`${s.ticker}-${s.regime_fingerprint ?? "norfp"}-${idx}`}
-                  className={[
-                    "rounded-xl border px-5 py-4 transition-all duration-300",
-                    isReady
-                      ? "border-pos/30 bg-gradient-to-br from-pos/5 to-transparent"
-                      : "border-app bg-[hsl(var(--bg))]",
-                    isFlashing ? "animate-flash-ready" : "",
-                  ].join(" ")}
+                  flashing={isFlashing}
                 >
-                  {/* Row 1: identity + readiness */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-3">
+                  {/* Header row — asset class chip + ticker + direction + strategy */}
+                  <div
+                    className="flex flex-wrap items-center"
+                    style={{ gap: 14, marginBottom: 18 }}
+                  >
+                    <span
+                      className="label-mono"
+                      style={{
+                        padding: "3px 7px",
+                        color,
+                        border: `1px solid ${color}50`,
+                        borderRadius: 2,
+                      }}
+                    >
+                      {ac}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily:
+                          'var(--font-display), "Fraunces", Georgia, serif',
+                        fontSize: 24,
+                        fontWeight: 600,
+                        letterSpacing: "-0.02em",
+                        color: "hsl(var(--fg))",
+                      }}
+                    >
+                      {s.ticker}
+                    </span>
+                    <span
+                      className="label-mono"
+                      style={{
+                        color: isLong
+                          ? "hsl(var(--pos))"
+                          : isHold
+                          ? "hsl(var(--fg-muted))"
+                          : "hsl(var(--neg))",
+                      }}
+                    >
+                      {isLong ? "▲ Long" : isHold ? "◇ Hold" : "▼ Short"}
+                    </span>
+                    {s.strategy_name && (
                       <span
-                        className="num inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wider ring-1 ring-inset"
+                        className="label-mono"
+                        style={{ color: "hsl(var(--fg-subtle))" }}
+                      >
+                        {s.strategy_name}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Number grid + right rail */}
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 220px",
+                      gap: 24,
+                      marginBottom: 18,
+                    }}
+                    className="signal-specimen-grid"
+                  >
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "repeat(auto-fit, minmax(96px, 1fr))",
+                        gap: 18,
+                      }}
+                    >
+                      <NumCell
+                        label="Current"
+                        value={s.current_price ? fmtMoney(s.current_price) : "—"}
+                      />
+                      <NumCell
+                        label="Entry"
+                        value={s.entry_price ? fmtMoney(s.entry_price) : "—"}
+                        valueColor="hsl(var(--brand))"
+                      />
+                      <NumCell
+                        label="Stop loss"
+                        value={
+                          s.stop_loss_price ? fmtMoney(s.stop_loss_price) : "—"
+                        }
+                        sub={s.stop_loss_pct ? `−${fmtNumber(s.stop_loss_pct, 2)}%` : null}
+                        valueColor="hsl(var(--neg))"
+                      />
+                      <NumCell
+                        label="Target"
+                        value={
+                          s.take_profit_price ? fmtMoney(s.take_profit_price) : "—"
+                        }
+                        sub={s.take_profit_pct ? `+${fmtNumber(s.take_profit_pct, 2)}%` : null}
+                        valueColor="hsl(var(--pos))"
+                      />
+                      <NumCell
+                        label="Quantity"
+                        value={qty ? fmtNumber(qty, qty < 1 ? 4 : 0) : "—"}
+                        sub={qty ? qtyUnit : null}
+                      />
+                      <NumCell
+                        label="R : R"
+                        value={
+                          s.risk_reward_ratio
+                            ? `1:${(s.risk_reward_ratio ?? 0).toFixed(1)}`
+                            : "—"
+                        }
+                        sub={
+                          s.risk_amount
+                            ? `risk ${fmtMoney(s.risk_amount)}`
+                            : null
+                        }
+                      />
+                      <div className="flex flex-col" style={{ gap: 6 }}>
+                        <span className="label-mono">Distance</span>
+                        <DistanceIndicator
+                          pct={s.distance_to_entry_pct}
+                          direction={String(s.direction)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Right rail — conviction bar, status token, expiry */}
+                    <div className="flex flex-col" style={{ gap: 14 }}>
+                      <div className="flex flex-col" style={{ gap: 6 }}>
+                        <span className="label-mono">Conviction</span>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                          }}
+                        >
+                          <div
+                            style={{
+                              flex: 1,
+                              height: 1,
+                              background: "var(--rule-bold)",
+                              position: "relative",
+                            }}
+                          >
+                            <div
+                              style={{
+                                position: "absolute",
+                                left: 0,
+                                top: 0,
+                                height: "100%",
+                                width: `${conv}%`,
+                                background: "hsl(var(--brand))",
+                                transition:
+                                  "width var(--t-settle) var(--ease-paper)",
+                              }}
+                            />
+                          </div>
+                          <span
+                            className="data-mono"
+                            style={{
+                              fontSize: 13,
+                              color: "hsl(var(--brand))",
+                              minWidth: 32,
+                              textAlign: "right",
+                            }}
+                          >
+                            {conv.toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
+
+                      <StatusToken status={s.readiness_status} />
+
+                      {s.expires_at && (
+                        <span
+                          className="label-mono"
+                          style={{ color: "hsl(var(--fg-subtle))" }}
+                        >
+                          Expires{" "}
+                          {fmtAge(
+                            (new Date(s.expires_at).getTime() - Date.now()) /
+                              1000,
+                          )}
+                        </span>
+                      )}
+
+                      {s.notional_value && s.notional_value > 0 && (
+                        <span
+                          className="label-mono"
+                          style={{ color: "hsl(var(--fg-subtle))" }}
+                        >
+                          Notional {fmtMoney(s.notional_value)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* SL/TP bar + rationale */}
+                  <div
+                    className="flex flex-wrap items-end"
+                    style={{ gap: 24, justifyContent: "space-between" }}
+                  >
+                    <div style={{ flex: 1, minWidth: 220, maxWidth: 320 }}>
+                      <SlTpBar signal={s} />
+                    </div>
+                    {s.rationale && (
+                      <p
+                        className="display-callout"
                         style={{
-                          color,
-                          borderColor: `${color}50`,
-                          background: `${color}15`,
-                          boxShadow: `inset 0 0 0 1px ${color}40`,
+                          fontSize: 14,
+                          flex: 2,
+                          minWidth: 220,
+                          maxWidth: "60ch",
+                          margin: 0,
                         }}
                       >
-                        {ac}
-                      </span>
-                      <span className="text-[18px] font-semibold tracking-tight text-fg">
-                        {s.ticker}
-                      </span>
-                      <Badge variant={isLong ? "pos" : isHold ? "neutral" : "neg"}>
-                        {isLong ? "▲ LONG" : isHold ? "◇ HOLD" : "▼ SHORT"}
-                      </Badge>
-                      <span className="num text-[11px] text-muted">{s.strategy_name}</span>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-1.5">
-                        <span className="num text-[10px] tracking-wider text-muted">
-                          CONVICTION
-                        </span>
-                        <div className="h-1 w-12 rounded-full bg-[hsl(var(--bg-sunken))]">
-                          <div
-                            className="h-full rounded-full bg-brand transition-[width] duration-500"
-                            style={{ width: `${conv}%` }}
-                          />
-                        </div>
-                        <span className="num text-[11px] text-brand">
-                          {conv.toFixed(0)}%
-                        </span>
-                      </div>
-                      <ReadinessBadge status={s.readiness_status} />
-                    </div>
+                        “{s.rationale}”
+                      </p>
+                    )}
                   </div>
 
-                  {/* Row 2: numbers grid */}
-                  <div className="grid gap-4 mb-3 grid-cols-[repeat(auto-fit,minmax(110px,1fr))]">
-                    <Tile label="CURRENT" value={s.current_price ? fmtMoney(s.current_price) : "—"} />
-                    <Tile
-                      label="ENTRY"
-                      value={s.entry_price ? fmtMoney(s.entry_price) : "—"}
-                      valueClass="text-brand"
-                    />
-                    <Tile
-                      label="STOP LOSS"
-                      value={s.stop_loss_price ? fmtMoney(s.stop_loss_price) : "—"}
-                      sub={
-                        s.stop_loss_pct ? `−${fmtNumber(s.stop_loss_pct, 2)}%` : null
-                      }
-                      valueClass="text-neg"
-                      subClass="text-neg/80"
-                    />
-                    <Tile
-                      label="TARGET"
-                      value={s.take_profit_price ? fmtMoney(s.take_profit_price) : "—"}
-                      sub={
-                        s.take_profit_pct ? `+${fmtNumber(s.take_profit_pct, 2)}%` : null
-                      }
-                      valueClass="text-pos"
-                      subClass="text-pos/80"
-                    />
-                    <Tile
-                      label="QTY"
-                      value={qty ? fmtNumber(qty, qty < 1 ? 4 : 0) : "—"}
-                      sub={qty ? qtyUnit : null}
-                    />
-                    <Tile
-                      label="R:R"
-                      value={
-                        s.risk_reward_ratio
-                          ? `1:${(s.risk_reward_ratio ?? 0).toFixed(1)}`
-                          : "—"
-                      }
-                      sub={
-                        s.risk_amount ? `risk ${fmtMoney(s.risk_amount)}` : null
-                      }
-                    />
-                    <div className="flex flex-col gap-1">
-                      <span className="num text-[10px] tracking-wider text-muted">
-                        DISTANCE
-                      </span>
-                      <DistanceIndicator
-                        pct={s.distance_to_entry_pct}
-                        direction={String(s.direction)}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Row 3: SL/TP bar + rationale + status footer */}
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <SlTpBar signal={s} />
-
-                    <p className="min-w-[200px] flex-1 text-[12px] italic text-muted leading-relaxed">
-                      {s.rationale ? `"${s.rationale}"` : ""}
+                  {s.readiness_status === "WAITING" && s.readiness_reason && (
+                    <p
+                      className="label-mono"
+                      style={{
+                        marginTop: 12,
+                        color: "hsl(var(--warn))",
+                      }}
+                    >
+                      ◌ {s.readiness_reason}
                     </p>
-
-                    <div className="flex flex-col items-end gap-0.5">
-                      <span className="num text-[10px] text-muted">
-                        {s.expires_at
-                          ? `expires ${fmtAge((new Date(s.expires_at).getTime() - Date.now()) / 1000)}`
-                          : ""}
-                      </span>
-                      {s.readiness_status === "WAITING" && s.readiness_reason && (
-                        <span className="num text-[10px] text-warn">
-                          ◌ {s.readiness_reason}
-                        </span>
-                      )}
-                      {s.readiness_status === "READY" && (
-                        <span className="num text-[10px] font-semibold text-pos">
-                          ● ROUTING TO BROKER
-                        </span>
-                      )}
-                      {s.notional_value !== null && s.notional_value !== undefined && s.notional_value > 0 && (
-                        <span className="num text-[10px] text-muted">
-                          notional {fmtMoney(s.notional_value)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                  )}
+                </SpecimenCard>
               );
             })}
           </div>
         )}
-      </Card>
+      </section>
 
       <style jsx global>{`
-        @keyframes flash-ready {
+        @keyframes specimen-flash {
           0%,
           100% {
-            border-color: hsl(var(--pos) / 0.3);
-            box-shadow: 0 0 0 rgba(34, 197, 94, 0);
+            border-color: var(--rule);
           }
           50% {
-            border-color: hsl(var(--pos) / 0.7);
-            box-shadow: 0 0 24px rgba(34, 197, 94, 0.18);
+            border-color: hsl(var(--brand) / 0.7);
           }
         }
-        .animate-flash-ready {
-          animation: flash-ready 0.6s ease-in-out 3;
+        .specimen-flashing {
+          animation: specimen-flash 0.6s var(--ease-paper) 3;
+        }
+        @media (max-width: 760px) {
+          .signal-specimen-grid {
+            grid-template-columns: 1fr !important;
+          }
         }
       `}</style>
     </div>
   );
 }
 
-function Tile({
+/* ─── Sub-components ──────────────────────────────────────────────── */
+
+function SpecimenCard({
+  flashing,
+  children,
+}: {
+  flashing: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <article
+      className={flashing ? "card-paper specimen-flashing" : "card-paper"}
+      style={{ padding: "24px 28px" }}
+    >
+      {children}
+    </article>
+  );
+}
+
+function NumCell({
   label,
   value,
   sub,
-  valueClass,
-  subClass,
+  valueColor,
 }: {
   label: string;
-  value: string | number;
+  value: string;
   sub?: string | null;
-  valueClass?: string;
-  subClass?: string;
+  valueColor?: string;
 }) {
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="num text-[10px] tracking-wider text-muted">{label}</span>
+    <div className="flex flex-col" style={{ gap: 4 }}>
+      <span className="label-mono">{label}</span>
       <span
-        className={["num text-[16px] font-semibold tracking-tight", valueClass ?? "text-fg"].join(" ")}
+        className="data-mono"
+        style={{
+          fontSize: 16,
+          fontWeight: 600,
+          color: valueColor ?? "hsl(var(--fg))",
+        }}
       >
         {value}
       </span>
-      {sub && <span className={["num text-[10px]", subClass ?? "text-muted"].join(" ")}>{sub}</span>}
+      {sub && (
+        <span
+          className="data-mono"
+          style={{
+            fontSize: 10,
+            color: valueColor
+              ? `${valueColor}`
+              : "hsl(var(--fg-subtle))",
+            opacity: valueColor ? 0.8 : 1,
+          }}
+        >
+          {sub}
+        </span>
+      )}
     </div>
   );
 }
 
+function ToggleButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="label-mono transition-colors"
+      style={{
+        padding: "8px 16px",
+        background: active ? "hsl(var(--brand))" : "transparent",
+        color: active ? "hsl(var(--brand-fg))" : "hsl(var(--fg-muted))",
+        border: `1px solid ${active ? "hsl(var(--brand))" : "var(--rule-bold)"}`,
+        borderRadius: 4,
+        cursor: "pointer",
+        transitionDuration: "var(--t-quick)",
+        transitionTimingFunction: "var(--ease-monument)",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function FilterPill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="label-mono transition-colors"
+      style={{
+        padding: "6px 12px",
+        background: active ? "hsl(var(--brand) / 0.10)" : "transparent",
+        color: active ? "hsl(var(--brand))" : "hsl(var(--fg-muted))",
+        border: `1px solid ${active ? "hsl(var(--brand))" : "var(--rule)"}`,
+        borderRadius: 2,
+        cursor: "pointer",
+        transitionDuration: "var(--t-quick)",
+        transitionTimingFunction: "var(--ease-monument)",
+      }}
+    >
+      {children}
+    </button>
+  );
+}

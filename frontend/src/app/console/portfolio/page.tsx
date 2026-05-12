@@ -1,11 +1,26 @@
 "use client";
-import { Briefcase, CircleDollarSign, Wallet } from "lucide-react";
-import { Card } from "@/components/ui/Card";
-import { StatTile } from "@/components/ui/StatTile";
+import { Briefcase } from "lucide-react";
 import { Empty } from "@/components/ui/Empty";
-import { Badge } from "@/components/ui/Badge";
 import { useEquity, usePositions, useRunner, useTrades } from "@/lib/hooks";
 import { fmtMoney, fmtNumber, fmtPct, fmtTime, fmtDate } from "@/lib/format";
+
+/**
+ * AYVID portfolio — private-bank holding statement, per brief §5.5.
+ *
+ *  • Eyebrow ".label-mono · POSITIONS · LIVE" + Fraunces section title.
+ *  • Equity / Cash / Position Value / Open positions = row of text, no cards.
+ *  • Open-positions table:
+ *      - table-layout: fixed, border-collapse: collapse
+ *      - th: .label-mono, padding 12px 16px, border-bottom 1px var(--rule-bold)
+ *      - td: .data-mono 14px, padding 12px 16px, border-bottom 1px var(--rule)
+ *      - row hover: background hsl(var(--bg-1)), no transform
+ *      - LONG / SHORT: 4px tall vertical coloured bar to the left of symbol
+ *      - Negative P&L: var(--neg) (terracotta), positive: var(--pos) (forest)
+ *  • Recent fills: identical treatment — the two tables read as a matched
+ *    pair, like assets and transactions on a quarterly statement.
+ *
+ * Every existing hook + data shape is preserved.
+ */
 
 interface PositionRow {
   ticker?: string;
@@ -31,24 +46,6 @@ interface PositionRow {
   strategy_name?: string | null;
 }
 
-const STALE_WARN_SEC = 600; // 10 min — yellow
-const STALE_BAD_SEC = 3600; // 1 hr — red
-
-function formatAge(seconds: number | null | undefined): string {
-  if (seconds == null || !Number.isFinite(seconds)) return "—";
-  if (seconds < 60) return `${Math.round(seconds)}s ago`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
-  return `${Math.round(seconds / 86400)}d ago`;
-}
-
-function ageVariant(seconds: number | null | undefined): "pos" | "info" | "neg" {
-  if (seconds == null || !Number.isFinite(seconds)) return "info";
-  if (seconds >= STALE_BAD_SEC) return "neg";
-  if (seconds >= STALE_WARN_SEC) return "info";
-  return "pos";
-}
-
 interface TradeRow {
   timestamp?: string;
   ticker?: string;
@@ -64,6 +61,24 @@ interface TradeRow {
   status?: string;
 }
 
+const STALE_WARN_SEC = 600; // 10 min — amber
+const STALE_BAD_SEC = 3600; // 1 hr  — terracotta
+
+function formatAge(seconds: number | null | undefined): string {
+  if (seconds == null || !Number.isFinite(seconds)) return "—";
+  if (seconds < 60) return `${Math.round(seconds)}s ago`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
+  return `${Math.round(seconds / 86400)}d ago`;
+}
+
+function ageColor(seconds: number | null | undefined): string {
+  if (seconds == null || !Number.isFinite(seconds)) return "hsl(var(--fg-muted))";
+  if (seconds >= STALE_BAD_SEC) return "hsl(var(--neg))";
+  if (seconds >= STALE_WARN_SEC) return "hsl(var(--warn))";
+  return "hsl(var(--pos))";
+}
+
 export default function PortfolioPage() {
   const { data: equity } = useEquity(500);
   const { data: positions } = usePositions();
@@ -76,234 +91,618 @@ export default function PortfolioPage() {
   const positionRows: PositionRow[] = positions?.positions ?? [];
   const tradeRows: TradeRow[] = trades?.trades ?? [];
 
-  return (
-    <div className="flex flex-col gap-7 fade-up">
-      <header>
-        <h1 className="text-[26px] font-semibold tracking-tight text-fg">Portfolio</h1>
-        <p className="mt-1 text-[13px] text-muted">
-          Open positions, realized & unrealized P&amp;L, and recent fills from the
-          live IB paper account.
-        </p>
-      </header>
+  const cashLatest = equity?.snapshots?.[equity.snapshots.length - 1]?.cash;
+  const posLatest =
+    equity?.snapshots?.[equity.snapshots.length - 1]?.position_value;
+  const totalReturnPct = summary?.total_return_pct ?? 0;
 
-      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatTile
+  return (
+    <div className="flex flex-col" style={{ gap: 48 }}>
+      {/* ── Masthead ─────────────────────────────────────────── */}
+      <section>
+        <p className="label-mono" style={{ color: "hsl(var(--brand))" }}>
+          Positions · Live
+        </p>
+        <h1
+          className="display-section"
+          style={{ marginTop: 12, color: "hsl(var(--fg))" }}
+        >
+          Holdings statement.
+        </h1>
+        <p className="body-prose" style={{ marginTop: 16 }}>
+          Open positions, realised and unrealised P&amp;L, and recent fills from
+          the live IB paper account. Issued{" "}
+          {positions?.as_of ? fmtTime(positions.as_of) : "—"}.
+        </p>
+      </section>
+
+      {/* ── Top-of-statement KPI row (no cards) ──────────────── */}
+      <section
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, 1fr)",
+          paddingTop: 32,
+          borderTop: "1px solid var(--rule)",
+        }}
+        className="portfolio-kpi-grid"
+      >
+        <KpiCell
+          first
           label="Equity"
           value={fmtMoney(final, { decimals: 0 })}
-          delta={fmtPct(summary?.total_return_pct ?? 0)}
-          trend={(summary?.total_return_pct ?? 0) >= 0 ? "up" : "down"}
+          delta={`${totalReturnPct >= 0 ? "+" : ""}${fmtPct(totalReturnPct)}`}
+          deltaColor={
+            totalReturnPct >= 0 ? "hsl(var(--pos))" : "hsl(var(--neg))"
+          }
           hint={`vs ${fmtMoney(initial, { decimals: 0 })} start`}
-          icon={<Wallet className="h-4 w-4" />}
-          loading={!summary}
         />
-        <StatTile
+        <KpiCell
           label="Cash"
-          value={fmtMoney(equity?.snapshots?.[equity.snapshots.length - 1]?.cash, { decimals: 0 })}
-          icon={<CircleDollarSign className="h-4 w-4" />}
-          loading={!summary}
+          value={fmtMoney(cashLatest, { decimals: 0 })}
+          hint="Settled, available for entries"
         />
-        <StatTile
+        <KpiCell
           label="Position value"
-          value={fmtMoney(equity?.snapshots?.[equity.snapshots.length - 1]?.position_value, { decimals: 0 })}
-          icon={<Briefcase className="h-4 w-4" />}
-          loading={!summary}
+          value={fmtMoney(posLatest, { decimals: 0 })}
+          hint="Marked-to-market"
         />
-        <StatTile
+        <KpiCell
           label="Open positions"
           value={fmtNumber(summary?.open_positions ?? 0)}
-          hint={`mode: ${runner?.mode ?? "—"}`}
-          loading={!summary || !runner}
+          hint={`Mode · ${runner?.mode ?? "—"}`}
         />
       </section>
 
-      <Card
-        title="Open positions"
-        subtitle={
-          positions?.as_of ? (
-            <span className="flex items-center gap-2">
-              <span>as of {fmtTime(positions.as_of)}</span>
+      {/* ── Open positions ─────────────────────────────────── */}
+      <section
+        style={{
+          paddingTop: 32,
+          borderTop: "1px solid var(--rule)",
+        }}
+      >
+        <header
+          className="flex flex-wrap items-baseline justify-between"
+          style={{ gap: 16 }}
+        >
+          <div>
+            <p className="label-mono" style={{ color: "hsl(var(--fg-subtle))" }}>
+              Open positions
+            </p>
+            <p
+              className="body-prose"
+              style={{ marginTop: 8, maxWidth: "70ch" }}
+            >
+              As of {positions?.as_of ? fmtTime(positions.as_of) : "—"}
               {positions?.mode === "shadow" && (
-                <Badge variant="info">SHADOW MODE</Badge>
+                <>
+                  {" "}
+                  ·{" "}
+                  <span
+                    className="label-mono"
+                    style={{ color: "hsl(var(--warn))" }}
+                  >
+                    Shadow mode
+                  </span>
+                </>
               )}
               {positions?.max_mark_age_seconds != null &&
                 positions.max_mark_age_seconds >= STALE_WARN_SEC && (
-                  <Badge variant={positions.max_mark_age_seconds >= STALE_BAD_SEC ? "neg" : "info"}>
-                    MARKS {formatAge(positions.max_mark_age_seconds)}
-                  </Badge>
+                  <>
+                    {" "}
+                    ·{" "}
+                    <span
+                      className="label-mono"
+                      style={{
+                        color:
+                          positions.max_mark_age_seconds >= STALE_BAD_SEC
+                            ? "hsl(var(--neg))"
+                            : "hsl(var(--warn))",
+                      }}
+                    >
+                      Marks {formatAge(positions.max_mark_age_seconds)}
+                    </span>
+                  </>
                 )}
-            </span>
-          ) : undefined
-        }
-      >
-        {positionRows.length === 0 ? (
-          <Empty
-            icon={<Briefcase className="h-8 w-8" />}
-            title="No open positions"
-            hint="The runner has not opened any positions yet, or this snapshot is empty."
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="border-b border-app text-left text-[11px] uppercase tracking-wider text-muted">
-                  <th className="py-2 pr-4 font-medium">Symbol</th>
-                  <th className="py-2 pr-4 font-medium">Side</th>
-                  <th className="py-2 pr-4 text-right font-medium">Qty</th>
-                  <th className="py-2 pr-4 text-right font-medium">Avg</th>
-                  <th className="py-2 pr-4 text-right font-medium">Mark</th>
-                  <th className="py-2 pr-4 font-medium">Mark age</th>
-                  <th className="py-2 pr-4 text-right font-medium" style={{ color: "hsl(var(--neg))" }}>
-                    Stop Loss
-                  </th>
-                  <th className="py-2 pr-4 text-right font-medium" style={{ color: "hsl(var(--pos))" }}>
-                    Target
-                  </th>
-                  <th className="py-2 pr-4 text-right font-medium">Market value</th>
-                  <th className="py-2 text-right font-medium">Unrealized P&amp;L</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[hsl(var(--border))]">
-                {positionRows.map((p, i) => {
-                  const sym = p.ticker ?? p.symbol ?? "—";
-                  const qty = p.quantity ?? p.qty ?? 0;
-                  const upnl = p.unrealized_pnl ?? 0;
-                  const sideLong = (p.side ?? (qty >= 0 ? "LONG" : "SHORT")).toUpperCase();
-                  const ageVar = ageVariant(p.mark_age_seconds);
-                  const avgEntry = p.avg_price ?? p.avg_cost ?? null;
-                  // Resolve SL: prefer absolute price; fall back to pct × avg.
-                  const slPrice =
-                    p.stop_loss_price ??
-                    (avgEntry != null && p.stop_loss_pct != null
-                      ? sideLong === "LONG"
-                        ? avgEntry * (1 - p.stop_loss_pct / 100)
-                        : avgEntry * (1 + p.stop_loss_pct / 100)
-                      : null);
-                  const tpPrice =
-                    p.take_profit_price ??
-                    (avgEntry != null && p.take_profit_pct != null
-                      ? sideLong === "LONG"
-                        ? avgEntry * (1 + p.take_profit_pct / 100)
-                        : avgEntry * (1 - p.take_profit_pct / 100)
-                      : null);
-                  return (
-                    <tr key={`${sym}-${i}`} className="hover:bg-[hsl(var(--bg-sunken))]">
-                      <td className="num py-2 pr-4 font-medium text-fg">{sym}</td>
-                      <td className="py-2 pr-4">
-                        <Badge variant={sideLong === "LONG" ? "pos" : "neg"}>{sideLong}</Badge>
-                      </td>
-                      <td className="num py-2 pr-4 text-right text-fg">{fmtNumber(qty)}</td>
-                      <td className="num py-2 pr-4 text-right text-muted">{fmtMoney(avgEntry)}</td>
-                      <td className="num py-2 pr-4 text-right text-muted">{fmtMoney(p.market_price)}</td>
-                      <td className="py-2 pr-4">
-                        <span
-                          title={`source=${p.mark_price_source ?? "?"} ts=${p.mark_price_timestamp ?? "?"}`}
+            </p>
+          </div>
+          <span
+            className="label-mono"
+            style={{ color: "hsl(var(--fg-subtle))" }}
+          >
+            {positionRows.length} position{positionRows.length === 1 ? "" : "s"}
+          </span>
+        </header>
+
+        <div style={{ marginTop: 24 }}>
+          {positionRows.length === 0 ? (
+            <Empty
+              icon={<Briefcase className="h-8 w-8" />}
+              title="No open positions"
+              hint="The runner has not opened any positions yet, or this snapshot is empty."
+            />
+          ) : (
+            <StatementTable
+              columns={[
+                { label: "Symbol", align: "left", width: "auto" },
+                { label: "Side", align: "left", width: "80px" },
+                { label: "Qty", align: "right" },
+                { label: "Avg", align: "right" },
+                { label: "Mark", align: "right" },
+                { label: "Mark age", align: "left" },
+                {
+                  label: "Stop loss",
+                  align: "right",
+                  color: "hsl(var(--neg))",
+                },
+                {
+                  label: "Target",
+                  align: "right",
+                  color: "hsl(var(--pos))",
+                },
+                { label: "Market value", align: "right" },
+                { label: "Unrealised P&L", align: "right" },
+              ]}
+            >
+              {positionRows.map((p, i) => {
+                const sym = p.ticker ?? p.symbol ?? "—";
+                const qty = p.quantity ?? p.qty ?? 0;
+                const upnl = p.unrealized_pnl ?? 0;
+                const sideLong = (
+                  p.side ?? (qty >= 0 ? "LONG" : "SHORT")
+                ).toUpperCase();
+                const avgEntry = p.avg_price ?? p.avg_cost ?? null;
+                const slPrice =
+                  p.stop_loss_price ??
+                  (avgEntry != null && p.stop_loss_pct != null
+                    ? sideLong === "LONG"
+                      ? avgEntry * (1 - p.stop_loss_pct / 100)
+                      : avgEntry * (1 + p.stop_loss_pct / 100)
+                    : null);
+                const tpPrice =
+                  p.take_profit_price ??
+                  (avgEntry != null && p.take_profit_pct != null
+                    ? sideLong === "LONG"
+                      ? avgEntry * (1 + p.take_profit_pct / 100)
+                      : avgEntry * (1 - p.take_profit_pct / 100)
+                    : null);
+                const sideColor =
+                  sideLong === "LONG"
+                    ? "hsl(var(--pos))"
+                    : "hsl(var(--neg))";
+                const ageColr = ageColor(p.mark_age_seconds);
+                return (
+                  <StatementRow key={`${sym}-${i}`}>
+                    <SymbolCell symbol={sym} sideColor={sideColor} />
+                    <td style={tdStyle("left")}>
+                      <span
+                        className="label-mono"
+                        style={{ color: sideColor }}
+                      >
+                        {sideLong}
+                      </span>
+                    </td>
+                    <td style={tdStyle("right")}>{fmtNumber(qty)}</td>
+                    <td style={tdStyle("right", "hsl(var(--fg-muted))")}>
+                      {fmtMoney(avgEntry)}
+                    </td>
+                    <td style={tdStyle("right", "hsl(var(--fg-muted))")}>
+                      {fmtMoney(p.market_price)}
+                    </td>
+                    <td style={tdStyle("left")}>
+                      <span
+                        className="label-mono"
+                        style={{ color: ageColr }}
+                        title={`source=${p.mark_price_source ?? "?"} ts=${
+                          p.mark_price_timestamp ?? "?"
+                        }`}
+                      >
+                        {formatAge(p.mark_age_seconds)}
+                      </span>
+                    </td>
+                    <td style={tdStyle("right", "hsl(var(--neg))")}>
+                      {slPrice != null ? fmtMoney(slPrice) : "—"}
+                      {p.stop_loss_pct != null && (
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: "hsl(var(--neg) / 0.7)",
+                            marginTop: 2,
+                          }}
                         >
-                          <Badge variant={ageVar}>{formatAge(p.mark_age_seconds)}</Badge>
-                        </span>
-                      </td>
-                      <td className="num py-2 pr-4 text-right" style={{ color: "hsl(var(--neg))" }}>
-                        {slPrice != null ? fmtMoney(slPrice) : "—"}
-                        {p.stop_loss_pct != null && (
-                          <div
-                            className="text-[9px]"
-                            style={{ color: "hsl(var(--neg) / 0.6)" }}
-                          >
-                            −{p.stop_loss_pct.toFixed(1)}%
-                          </div>
-                        )}
-                      </td>
-                      <td className="num py-2 pr-4 text-right" style={{ color: "hsl(var(--pos))" }}>
-                        {tpPrice != null ? fmtMoney(tpPrice) : "—"}
-                        {p.take_profit_pct != null && (
-                          <div
-                            className="text-[9px]"
-                            style={{ color: "hsl(var(--pos) / 0.6)" }}
-                          >
-                            +{p.take_profit_pct.toFixed(1)}%
-                          </div>
-                        )}
-                      </td>
-                      <td className="num py-2 pr-4 text-right text-fg">{fmtMoney(p.market_value)}</td>
-                      <td className={`num py-2 text-right ${upnl >= 0 ? "text-pos" : "text-neg"}`}>
-                        {fmtMoney(upnl)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+                          −{p.stop_loss_pct.toFixed(1)}%
+                        </div>
+                      )}
+                    </td>
+                    <td style={tdStyle("right", "hsl(var(--pos))")}>
+                      {tpPrice != null ? fmtMoney(tpPrice) : "—"}
+                      {p.take_profit_pct != null && (
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: "hsl(var(--pos) / 0.7)",
+                            marginTop: 2,
+                          }}
+                        >
+                          +{p.take_profit_pct.toFixed(1)}%
+                        </div>
+                      )}
+                    </td>
+                    <td style={tdStyle("right")}>
+                      {fmtMoney(p.market_value)}
+                    </td>
+                    <td
+                      style={tdStyle(
+                        "right",
+                        upnl >= 0 ? "hsl(var(--pos))" : "hsl(var(--neg))",
+                      )}
+                    >
+                      {fmtMoney(upnl)}
+                    </td>
+                  </StatementRow>
+                );
+              })}
+            </StatementTable>
+          )}
+        </div>
+      </section>
 
-      <Card title="Recent fills" subtitle="Latest trades from the live runner">
-        {tradeRows.length === 0 ? (
-          <Empty
-            icon={<Briefcase className="h-8 w-8" />}
-            title="No fills yet"
-            hint="The runner has not executed any trades. Fills appear here when AUTO_EXECUTE is on or you trigger /api/v1/trade/execute."
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="border-b border-app text-left text-[11px] uppercase tracking-wider text-muted">
-                  <th className="py-2 pr-4 font-medium">Time</th>
-                  <th className="py-2 pr-4 font-medium">Symbol</th>
-                  <th className="py-2 pr-4 font-medium">Side</th>
-                  <th className="py-2 pr-4 text-right font-medium">Qty</th>
-                  <th className="py-2 pr-4 text-right font-medium">Price</th>
-                  <th className="py-2 pr-4 text-right font-medium">Notional</th>
-                  <th className="py-2 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[hsl(var(--border))]">
-                {tradeRows.map((t, i) => {
-                  const sym = t.ticker ?? t.symbol ?? "—";
-                  const side = (t.side ?? t.action ?? "—").toUpperCase();
-                  const qtyRaw = t.quantity ?? t.qty ?? t.shares ?? 0;
-                  const qty = Math.abs(Number(qtyRaw) || 0);
-                  const price = t.price ?? t.fill_price;
-                  const status = (t.status ?? "—").toUpperCase();
-                  return (
-                    <tr key={`${sym}-${i}`} className="hover:bg-[hsl(var(--bg-sunken))]">
-                      <td className="num py-2 pr-4 text-muted">{fmtTime(t.timestamp)}</td>
-                      <td className="num py-2 pr-4 font-medium text-fg">{sym}</td>
-                      <td className="py-2 pr-4">
-                        <Badge variant={side.includes("BUY") || side === "LONG" ? "pos" : "neg"}>{side}</Badge>
-                      </td>
-                      <td className="num py-2 pr-4 text-right">{fmtNumber(qty)}</td>
-                      <td className="num py-2 pr-4 text-right">{fmtMoney(price)}</td>
-                      <td className="num py-2 pr-4 text-right">{fmtMoney(t.notional)}</td>
-                      <td className="py-2">
-                        <Badge variant={status === "FILLED" ? "pos" : "info"}>{status}</Badge>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      {/* ── Recent fills ────────────────────────────────────── */}
+      <section
+        style={{
+          paddingTop: 32,
+          borderTop: "1px solid var(--rule)",
+        }}
+      >
+        <header
+          className="flex flex-wrap items-baseline justify-between"
+          style={{ gap: 16 }}
+        >
+          <div>
+            <p className="label-mono" style={{ color: "hsl(var(--fg-subtle))" }}>
+              Recent fills
+            </p>
+            <p className="body-prose" style={{ marginTop: 8 }}>
+              Latest trades executed by the live runner.
+            </p>
           </div>
-        )}
-      </Card>
+          <span
+            className="label-mono"
+            style={{ color: "hsl(var(--fg-subtle))" }}
+          >
+            {tradeRows.length} fill{tradeRows.length === 1 ? "" : "s"}
+          </span>
+        </header>
 
-      <Card title="Run metadata">
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-[12px] sm:grid-cols-4">
+        <div style={{ marginTop: 24 }}>
+          {tradeRows.length === 0 ? (
+            <Empty
+              icon={<Briefcase className="h-8 w-8" />}
+              title="No fills yet"
+              hint="The runner has not executed any trades. Fills appear here when AUTO_EXECUTE is on or you trigger /api/v1/trade/execute."
+            />
+          ) : (
+            <StatementTable
+              columns={[
+                { label: "Time", align: "left" },
+                { label: "Symbol", align: "left" },
+                { label: "Side", align: "left", width: "80px" },
+                { label: "Qty", align: "right" },
+                { label: "Price", align: "right" },
+                { label: "Notional", align: "right" },
+                { label: "Status", align: "left", width: "120px" },
+              ]}
+            >
+              {tradeRows.map((t, i) => {
+                const sym = t.ticker ?? t.symbol ?? "—";
+                const side = (t.side ?? t.action ?? "—").toUpperCase();
+                const qtyRaw = t.quantity ?? t.qty ?? t.shares ?? 0;
+                const qty = Math.abs(Number(qtyRaw) || 0);
+                const price = t.price ?? t.fill_price;
+                const status = (t.status ?? "—").toUpperCase();
+                const sideColor =
+                  side.includes("BUY") || side === "LONG"
+                    ? "hsl(var(--pos))"
+                    : "hsl(var(--neg))";
+                return (
+                  <StatementRow key={`${sym}-${i}`}>
+                    <td style={tdStyle("left", "hsl(var(--fg-muted))")}>
+                      {fmtTime(t.timestamp)}
+                    </td>
+                    <SymbolCell symbol={sym} sideColor={sideColor} />
+                    <td style={tdStyle("left")}>
+                      <span
+                        className="label-mono"
+                        style={{ color: sideColor }}
+                      >
+                        {side}
+                      </span>
+                    </td>
+                    <td style={tdStyle("right")}>{fmtNumber(qty)}</td>
+                    <td style={tdStyle("right")}>{fmtMoney(price)}</td>
+                    <td style={tdStyle("right")}>{fmtMoney(t.notional)}</td>
+                    <td style={tdStyle("left")}>
+                      <span
+                        className="label-mono"
+                        style={{
+                          color:
+                            status === "FILLED"
+                              ? "hsl(var(--pos))"
+                              : "hsl(var(--fg-muted))",
+                        }}
+                      >
+                        {status}
+                      </span>
+                    </td>
+                  </StatementRow>
+                );
+              })}
+            </StatementTable>
+          )}
+        </div>
+      </section>
+
+      {/* ── Run metadata ─────────────────────────────────────── */}
+      <section
+        style={{
+          paddingTop: 32,
+          borderTop: "1px solid var(--rule)",
+        }}
+      >
+        <p className="label-mono" style={{ color: "hsl(var(--fg-subtle))" }}>
+          Run metadata
+        </p>
+        <dl
+          style={{
+            marginTop: 16,
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: 24,
+          }}
+          className="metadata-grid"
+        >
           <Meta label="Started" value={fmtDate(equity?.meta?.started_at)} />
           <Meta label="Mode" value={equity?.meta?.mode ?? "—"} />
-          <Meta label="IB endpoint" value={`${equity?.meta?.ib_host}:${equity?.meta?.ib_port}`} />
-          <Meta label="Auto execute" value={equity?.meta?.auto_execute ? "ON" : "off"} />
+          <Meta
+            label="IB endpoint"
+            value={`${equity?.meta?.ib_host}:${equity?.meta?.ib_port}`}
+          />
+          <Meta
+            label="Auto execute"
+            value={equity?.meta?.auto_execute ? "On" : "Off"}
+          />
         </dl>
-      </Card>
+      </section>
+
+      <style jsx>{`
+        @media (max-width: 800px) {
+          :global(.portfolio-kpi-grid) {
+            grid-template-columns: repeat(2, 1fr) !important;
+            row-gap: 24px;
+          }
+          :global(.portfolio-kpi-grid > div:nth-child(2n + 1)) {
+            border-left: none !important;
+            padding-left: 0 !important;
+          }
+        }
+        @media (max-width: 600px) {
+          :global(.metadata-grid) {
+            grid-template-columns: repeat(2, 1fr) !important;
+            row-gap: 16px;
+          }
+        }
+      `}</style>
     </div>
   );
 }
 
+/* ─── Sub-components ──────────────────────────────────────────────── */
+
+function KpiCell({
+  label,
+  value,
+  delta,
+  deltaColor,
+  hint,
+  first,
+}: {
+  label: string;
+  value: string;
+  delta?: string;
+  deltaColor?: string;
+  hint?: string;
+  first?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        paddingLeft: first ? 0 : 24,
+        paddingRight: 24,
+        borderLeft: first ? "none" : "1px solid var(--rule)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        minWidth: 0,
+      }}
+    >
+      <span
+        className="data-mono"
+        style={{
+          fontSize: "clamp(26px, 2.6vw, 36px)",
+          lineHeight: 1.05,
+          fontWeight: 600,
+          color: "hsl(var(--fg))",
+          letterSpacing: "-0.02em",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {value}
+      </span>
+      {delta && (
+        <span
+          className="data-mono"
+          style={{ fontSize: 11, color: deltaColor }}
+        >
+          {delta}
+        </span>
+      )}
+      <span className="label-mono" style={{ marginTop: 4 }}>
+        {label}
+      </span>
+      {hint && (
+        <span
+          style={{
+            fontFamily: 'var(--font-sans), "Inter", system-ui, sans-serif',
+            fontSize: 11,
+            color: "hsl(var(--fg-subtle))",
+            lineHeight: 1.4,
+          }}
+        >
+          {hint}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** A holding-statement table — fixed layout, hairline rules, mono body. */
+function StatementTable({
+  columns,
+  children,
+}: {
+  columns: { label: string; align: "left" | "right"; width?: string; color?: string }[];
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          tableLayout: "fixed",
+          minWidth: 720,
+        }}
+      >
+        <colgroup>
+          {columns.map((c) => (
+            <col
+              key={c.label}
+              style={{ width: c.width ?? undefined }}
+            />
+          ))}
+        </colgroup>
+        <thead>
+          <tr style={{ borderBottom: "1px solid var(--rule-bold)" }}>
+            {columns.map((c) => (
+              <th
+                key={c.label}
+                className="label-mono"
+                style={{
+                  padding: "12px 16px",
+                  textAlign: c.align,
+                  fontWeight: 500,
+                  color: c.color ?? "hsl(var(--fg-subtle))",
+                }}
+              >
+                {c.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+
+function StatementRow({ children }: { children: React.ReactNode }) {
+  return (
+    <tr
+      className="statement-row"
+      style={{ borderBottom: "1px solid var(--rule)" }}
+    >
+      {children}
+      <style jsx>{`
+        :global(.statement-row:hover) {
+          background: hsl(var(--bg-elev));
+        }
+      `}</style>
+    </tr>
+  );
+}
+
+function SymbolCell({
+  symbol,
+  sideColor,
+}: {
+  symbol: string;
+  sideColor: string;
+}) {
+  return (
+    <td
+      style={{
+        padding: 0,
+        position: "relative",
+      }}
+    >
+      {/* 4px vertical bar to the left of the symbol cell — coloured by
+          side (LONG → pos, SHORT → neg).  Replaces the rounded pill. */}
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          left: 0,
+          top: "50%",
+          transform: "translateY(-50%)",
+          width: 2,
+          height: 18,
+          background: sideColor,
+        }}
+      />
+      <span
+        className="data-mono"
+        style={{
+          display: "inline-block",
+          padding: "12px 16px 12px 16px",
+          fontSize: 14,
+          color: "hsl(var(--fg))",
+          fontWeight: 600,
+        }}
+      >
+        {symbol}
+      </span>
+    </td>
+  );
+}
+
+function tdStyle(
+  align: "left" | "right",
+  color?: string,
+): React.CSSProperties {
+  return {
+    padding: "12px 16px",
+    textAlign: align,
+    fontFamily: 'var(--font-mono), "JetBrains Mono", ui-monospace, monospace',
+    fontSize: 14,
+    fontVariantNumeric: "tabular-nums lining-nums",
+    color: color ?? "hsl(var(--fg))",
+  };
+}
+
 function Meta({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div>
-      <dt className="text-[11px] uppercase tracking-wider text-muted">{label}</dt>
-      <dd className="num mt-0.5 text-[13px] text-fg">{value}</dd>
+    <div className="flex flex-col" style={{ gap: 6 }}>
+      <dt className="label-mono">{label}</dt>
+      <dd
+        className="data-mono"
+        style={{
+          fontSize: 14,
+          color: "hsl(var(--fg))",
+        }}
+      >
+        {value}
+      </dd>
     </div>
   );
 }
