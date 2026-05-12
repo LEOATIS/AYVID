@@ -18,6 +18,54 @@ resource "google_service_account_iam_member" "vm_uses_sa" {
   member             = "serviceAccount:${var.service_account_email}"
 }
 
+# ─── Deployer-SA bindings (GitHub Actions → IAP SSH) ───────────────────────
+# These previously lived out-of-band, drifted, and produced the May-12
+# `runner@compute.<id>: Permission denied (publickey)` outage in
+# .github/workflows/deploy-gcp.yml's `Roll execution VM container` job.
+# Pinning them here keeps the deploy path reproducible after any IAM audit
+# or accidental policy revert. The set is minimum-viable for the workflow:
+#
+#   compute.osLogin              ── SSH in via OS Login instead of the
+#                                   propagation-racy project-metadata key
+#                                   path that broke on May 12
+#   iap.tunnelResourceAccessor   ── the `--tunnel-through-iap` flag
+#   iam.serviceAccountUser on    ── required when the deployer SA differs
+#       the *runtime* SA            from the runtime SA (so SSH can "act as"
+#                                   the instance's identity). Today they're
+#                                   the same (GH Actions impersonates
+#                                   ayvid-runtime directly via WIF) and this
+#                                   binding self-applies via `vm_uses_sa`
+#                                   above — the conditional resource below
+#                                   no-ops in that case and only fires if
+#                                   a future split introduces a dedicated
+#                                   deployer SA.
+
+resource "google_project_iam_member" "deployer_os_login" {
+  project = var.project_id
+  role    = "roles/compute.osLogin"
+  member  = "serviceAccount:${var.deployer_service_account_email}"
+}
+
+resource "google_project_iam_member" "deployer_iap_tunnel" {
+  project = var.project_id
+  role    = "roles/iap.tunnelResourceAccessor"
+  member  = "serviceAccount:${var.deployer_service_account_email}"
+}
+
+resource "google_service_account_iam_member" "deployer_acts_as_runtime_sa" {
+  # Skip when deployer == runtime: the existing `vm_uses_sa` resource above
+  # already grants `serviceAccountUser` on the runtime SA to itself. Two
+  # `_iam_member` resources owning the same (role, member) tuple is brittle
+  # — if either is destroyed terraform may revoke the live binding even
+  # though the other still claims it. The conditional keeps this resource
+  # forward-compatible for a future split (dedicated deployer SA) without
+  # creating a redundant binding today.
+  count              = var.deployer_service_account_email == var.service_account_email ? 0 : 1
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${var.service_account_email}"
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${var.deployer_service_account_email}"
+}
+
 resource "google_compute_instance" "execution" {
   name = "ayvid-execution"
   # P1-deploy: switched from n2-standard-4 to e2-standard-4 because
@@ -53,6 +101,15 @@ resource "google_compute_instance" "execution" {
 
   metadata = {
     "google-logging-enabled" = "true"
+    # Force OS Login on THIS instance only (project metadata untouched so
+    # other VMs keep their existing SSH posture). OS Login routes
+    # `gcloud compute ssh` through the IAM-checked OS-Login API instead of
+    # the project-level SSH-key metadata path, which raced propagation on
+    # May 12 and produced 4 consecutive `Permission denied (publickey)`
+    # failures in the `Roll execution VM container` job. With this flag
+    # plus the `roles/compute.osLogin` binding granted to the deployer SA
+    # in this file, gcloud authenticates as `sa_<numericId>` deterministically.
+    "enable-oslogin" = "TRUE"
   }
 
   metadata_startup_script = <<-EOT
