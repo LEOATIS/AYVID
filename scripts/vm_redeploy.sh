@@ -127,11 +127,19 @@ echo "[vm_redeploy] secrets written ok=${SECRET_OK} failed=${SECRET_FAIL}"
 # was empty post-redeploy, so Cloud Run could never see the marker
 # and the smoke test looped 12× on `runner_sha=unknown`.
 # Source-of-truth values match compute.tf exactly.
+#
+# NB: AUTO_EXECUTE is intentionally NOT in this block. It's also defined
+# in `infra/main.tf:secret_ids` as `ayvid-auto-execute`, so the secret-
+# discovery loop above already wrote it. Listing it here too produced a
+# duplicate `AUTO_EXECUTE=` line in /var/run/ayvid.env; docker's
+# `--env-file` last-wins semantics meant the hardcoded `true` overrode
+# the secret value silently — so flipping the secret to `false` in an
+# emergency stop would have had NO effect on the runner. Same reasoning
+# for PAPER_TRADING (also in secret_ids).
 {
   printf 'AYVID_LIVE_GCS_BUCKET=%s\n'      "${PROJECT}-tfstate"
   printf 'AYVID_LIVE_GCS_PREFIX=%s\n'      "live_state"
   printf 'EXECUTION_MODE=%s\n'             "ib_paper"
-  printf 'AUTO_EXECUTE=%s\n'               "true"
   printf 'LIVE_TRADING_CONFIRMED=%s\n'     "false"
   printf 'CONTINUOUS_PIPELINE_ENABLED=%s\n' "true"
   printf 'LLM_ORCHESTRATION_ENABLED=%s\n'  "true"

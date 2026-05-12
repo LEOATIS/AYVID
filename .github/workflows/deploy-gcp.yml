@@ -213,11 +213,28 @@ jobs:
           # human-readable revision-suffix so the smoke test can wait
           # for THIS specific revision rather than the service-level
           # Ready condition (which is True for the old rev).
+          # --update-env-vars: pin every value the runtime needs to read from
+          # env (settings.AUTO_EXECUTE / EXECUTION_MODE / etc.) on EVERY deploy.
+          # Cloud Run's behaviour is that env vars not listed here are inherited
+          # from the previous revision, so additions to `cloudrun.tf`'s literal
+          # `env { }` blocks only land when someone manually runs `terraform
+          # apply` — which historically didn't happen for weeks and produced
+          # the May-12 drift symptom: the live `/api/v1/system/pipeline` reported
+          # `execution_mode=shadow` because EXECUTION_MODE was never set on the
+          # service (cloudrun.tf had it, the live revision didn't).
+          # Re-asserting them here keeps Cloud Run aligned with the runner VM
+          # (compute.tf + vm_redeploy.sh), which always writes the same values
+          # to /var/run/ayvid.env on every redeploy.
+          # Env-vars built as a single comma-joined string so the YAML block
+          # scalar stays well-formed (multi-line backslash continuations
+          # inside `run: |` need consistent indentation, and gcloud's
+          # `--update-env-vars` syntax doesn't combine cleanly with it).
+          ENV_ARGS="BUILD_SHA=${{ github.sha }},BUILD_TIME=${{ needs.build-and-push.outputs.build_time }},EXECUTION_MODE=ib_paper,LIVE_TRADING_CONFIRMED=false,LLM_ORCHESTRATION_ENABLED=true,LLM_SIGNAL_TIMEOUT_SECONDS=45,LLM_MAX_CONCURRENT_SIGNALS=5"
           gcloud run deploy ayvid-backend \
             --region=${{ env.GCP_REGION }} \
             --image=${{ env.REGISTRY }}/ayvid-backend:${{ needs.build-and-push.outputs.image_tag }} \
             --revision-suffix="$REV_SUFFIX" \
-            --update-env-vars="BUILD_SHA=${{ github.sha }},BUILD_TIME=${{ needs.build-and-push.outputs.build_time }}" \
+            --update-env-vars="$ENV_ARGS" \
             --quiet
           echo "Created revision: $REV_NAME"
 
@@ -404,7 +421,7 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
-      - name: Resolve backend URL
+      - name: Resolve backend URL + fetch API key
         id: url
         run: |
           URL=$(gcloud run services describe ayvid-backend \
@@ -412,6 +429,19 @@ jobs:
                   --format='value(status.url)')
           echo "url=$URL" >> $GITHUB_OUTPUT
           echo "Backend URL: $URL"
+          # /api/v1/system/pipeline requires X-API-Key. The previous version
+          # of the next step did `curl -fsS ... || echo "{}"` with no auth,
+          # which 403'd, was swallowed by the `|| echo`, and every assertion
+          # silently parsed the empty JSON's defaults (auto_execute=False
+          # always, execution_mode="unknown" always). Result: the smoke test
+          # passed even when the backend was actively misconfigured. Pull the
+          # API key once here and pass it as a step output (masked) so each
+          # auth'd curl below stays a one-liner.
+          API_KEY=$(gcloud secrets versions access latest \
+                      --secret=ayvid-api-key \
+                      --project=${{ env.GCP_PROJECT }})
+          echo "::add-mask::$API_KEY"
+          echo "api_key=$API_KEY" >> $GITHUB_OUTPUT
 
       - name: Health endpoint
         run: |
@@ -424,16 +454,37 @@ jobs:
             sleep 10
           done
 
-      - name: Pipeline status — auto_execute should be true
+      - name: Pipeline status — assert auto_execute + execution_mode
         run: |
-          STATUS=$(curl -fsS "${{ steps.url.outputs.url }}/api/v1/system/pipeline" || echo "{}")
+          set -e
+          # Authenticate (was missing previously — see step above for context).
+          # `-fsS` plus explicit non-zero on parse failure means a real backend
+          # regression now fails the workflow instead of silently warning.
+          STATUS=$(curl -fsS -H "X-API-Key: ${{ steps.url.outputs.api_key }}" \
+                        "${{ steps.url.outputs.url }}/api/v1/system/pipeline")
           echo "$STATUS" | python3 -m json.tool
-          AUTO=$(echo "$STATUS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('auto_execute', False))")
-          MODE=$(echo "$STATUS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('execution_mode', 'unknown'))")
+          AUTO=$(echo "$STATUS" | python3 -c "import json,sys; print(json.load(sys.stdin)['auto_execute'])")
+          MODE=$(echo "$STATUS" | python3 -c "import json,sys; print(json.load(sys.stdin)['execution_mode'])")
+          LIVE=$(echo "$STATUS" | python3 -c "import json,sys; print(json.load(sys.stdin)['live_confirmed'])")
+          echo "auto_execute=$AUTO execution_mode=$MODE live_confirmed=$LIVE"
+          fail=0
           if [ "$AUTO" != "True" ]; then
-            echo "::warning::auto_execute reported as $AUTO (expected True)"
+            echo "::error::auto_execute=$AUTO (expected True) — Cloud Run env drift"
+            fail=1
           fi
-          echo "execution_mode=$MODE auto_execute=$AUTO"
+          if [ "$MODE" != "ib_paper" ]; then
+            echo "::error::execution_mode=$MODE (expected ib_paper) — Cloud Run env drift"
+            fail=1
+          fi
+          # live_confirmed must be False on the paper environment. If this
+          # is ever True without an explicit workflow change it means
+          # someone hand-flipped the runtime in the Cloud Run console —
+          # serious enough to fail the deploy.
+          if [ "$LIVE" != "False" ]; then
+            echo "::error::live_confirmed=$LIVE (expected False) — live trading was hand-enabled?"
+            fail=1
+          fi
+          exit $fail
 
       # ── SHA-drift tripwires ──────────────────────────────────────────
       # The May 2 incident (deployed instance 3 days behind, test

@@ -182,8 +182,16 @@ resource "google_compute_instance" "execution" {
     # paper VM continuously generates LLM signals AND fills them on a
     # paper IB account. IB_LIVE requires flipping EXECUTION_MODE +
     # LIVE_TRADING_CONFIRMED both, deliberately.
+    #
+    # AUTO_EXECUTE intentionally omitted — it's defined in
+    # `infra/main.tf:secret_ids` as `ayvid-auto-execute` and the secret-
+    # discovery loop above already wrote it to $SECRETS_FILE. A hardcoded
+    # duplicate here produced a second `AUTO_EXECUTE=` line; docker's
+    # `--env-file` last-wins semantics meant the literal `true` overrode
+    # the secret silently, so an emergency `gcloud secrets versions add
+    # ayvid-auto-execute --data-file=<(echo false)` would have NO effect.
+    # Same reasoning for PAPER_TRADING (also in secret_ids).
     printf 'EXECUTION_MODE=%s\n'             "ib_paper"  >> $SECRETS_FILE
-    printf 'AUTO_EXECUTE=%s\n'               "true"      >> $SECRETS_FILE
     printf 'LIVE_TRADING_CONFIRMED=%s\n'     "false"     >> $SECRETS_FILE
     printf 'CONTINUOUS_PIPELINE_ENABLED=%s\n' "true"     >> $SECRETS_FILE
     printf 'LLM_ORCHESTRATION_ENABLED=%s\n'  "true"      >> $SECRETS_FILE
