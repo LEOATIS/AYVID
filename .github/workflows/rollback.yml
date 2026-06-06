@@ -1,132 +1,132 @@
-# name: Rollback
+name: Rollback
 
-# # One-click rollback to a previously-deployed image SHA. Works because
-# # `deploy-gcp.yml` pushes `:<sha-7>` tags alongside `:latest` for both
-# # ayvid-backend and ayvid-execution images. Pick a SHA from a green
-# # build's run, dispatch this workflow, and Cloud Run + VM both revert.
+# One-click rollback to a previously-deployed image SHA. Works because
+# `deploy-gcp.yml` pushes `:<sha-7>` tags alongside `:latest` for both
+# ayvid-backend and ayvid-execution images. Pick a SHA from a green
+# build's run, dispatch this workflow, and Cloud Run + VM both revert.
 
-# on:
-#   workflow_dispatch:
-#     inputs:
-#       target_sha:
-#         description: "7-char git SHA to roll back to (must match an image tag in Artifact Registry)"
-#         required: true
-#         type: string
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "7-char git SHA to roll back to (must match an image tag in Artifact Registry)"
+        required: true
+        type: string
 
-# permissions:
-#   id-token: write
-#   contents: read
+permissions:
+  id-token: write
+  contents: read
 
-# env:
-#   GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
-#   GCP_REGION:  ${{ secrets.GCP_REGION }}
-#   GCP_ZONE:    ${{ secrets.GCP_ZONE }}
-#   REGISTRY:    ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/ayvid
+env:
+  GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+  GCP_REGION:  ${{ secrets.GCP_REGION }}
+  GCP_ZONE:    ${{ secrets.GCP_ZONE }}
+  REGISTRY:    ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/ayvid
 
-# jobs:
-#   rollback-backend:
-#     name: Rollback Cloud Run backend
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
+jobs:
+  rollback-backend:
+    name: Rollback Cloud Run backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-#       - name: Authenticate to Google Cloud
-#         uses: google-github-actions/auth@v2
-#         with:
-#           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-#           service_account: ${{ secrets.GCP_DEPLOYER_SA }}
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOYER_SA }}
 
-#       - uses: google-github-actions/setup-gcloud@v2
+      - uses: google-github-actions/setup-gcloud@v2
 
-#       - name: Verify image exists at target SHA
-#         run: |
-#           gcloud artifacts docker images describe \
-#             "${{ env.REGISTRY }}/ayvid-backend:${{ inputs.target_sha }}" \
-#             --quiet >/dev/null
+      - name: Verify image exists at target SHA
+        run: |
+          gcloud artifacts docker images describe \
+            "${{ env.REGISTRY }}/ayvid-backend:${{ inputs.target_sha }}" \
+            --quiet >/dev/null
 
-#       - name: Re-tag SHA as :latest (so VM picks it up at next pull)
-#         run: |
-#           gcloud artifacts docker tags add \
-#             "${{ env.REGISTRY }}/ayvid-execution:${{ inputs.target_sha }}" \
-#             "${{ env.REGISTRY }}/ayvid-execution:latest" --quiet
-#           gcloud artifacts docker tags add \
-#             "${{ env.REGISTRY }}/ayvid-backend:${{ inputs.target_sha }}" \
-#             "${{ env.REGISTRY }}/ayvid-backend:latest" --quiet
+      - name: Re-tag SHA as :latest (so VM picks it up at next pull)
+        run: |
+          gcloud artifacts docker tags add \
+            "${{ env.REGISTRY }}/ayvid-execution:${{ inputs.target_sha }}" \
+            "${{ env.REGISTRY }}/ayvid-execution:latest" --quiet
+          gcloud artifacts docker tags add \
+            "${{ env.REGISTRY }}/ayvid-backend:${{ inputs.target_sha }}" \
+            "${{ env.REGISTRY }}/ayvid-backend:latest" --quiet
 
-#       - name: Roll Cloud Run to the SHA
-#         run: |
-#           gcloud run services update ayvid-backend \
-#             --region=${{ env.GCP_REGION }} \
-#             --image=${{ env.REGISTRY }}/ayvid-backend:${{ inputs.target_sha }} \
-#             --quiet
+      - name: Roll Cloud Run to the SHA
+        run: |
+          gcloud run services update ayvid-backend \
+            --region=${{ env.GCP_REGION }} \
+            --image=${{ env.REGISTRY }}/ayvid-backend:${{ inputs.target_sha }} \
+            --quiet
 
-#       - name: Wait for revision Ready
-#         run: |
-#           for i in $(seq 1 30); do
-#             ready=$(gcloud run services describe ayvid-backend \
-#               --region=${{ env.GCP_REGION }} \
-#               --format='json' | python3 -c "import json,sys; d=json.load(sys.stdin); print(next((c.get('status','') for c in d.get('status',{}).get('conditions',[]) if c.get('type')=='Ready'), ''))")
-#             [ "$ready" = "True" ] && { echo "Cloud Run rolled back successfully."; exit 0; }
-#             echo "[$i] not ready yet (status=$ready); sleeping..."
-#             sleep 10
-#           done
-#           echo "Cloud Run did not reach Ready within 5 min." >&2
-#           exit 1
+      - name: Wait for revision Ready
+        run: |
+          for i in $(seq 1 30); do
+            ready=$(gcloud run services describe ayvid-backend \
+              --region=${{ env.GCP_REGION }} \
+              --format='json' | python3 -c "import json,sys; d=json.load(sys.stdin); print(next((c.get('status','') for c in d.get('status',{}).get('conditions',[]) if c.get('type')=='Ready'), ''))")
+            [ "$ready" = "True" ] && { echo "Cloud Run rolled back successfully."; exit 0; }
+            echo "[$i] not ready yet (status=$ready); sleeping..."
+            sleep 10
+          done
+          echo "Cloud Run did not reach Ready within 5 min." >&2
+          exit 1
 
-#   rollback-vm:
-#     name: Rollback execution VM
-#     needs: rollback-backend
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
+  rollback-vm:
+    name: Rollback execution VM
+    needs: rollback-backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-#       - name: Authenticate to Google Cloud
-#         uses: google-github-actions/auth@v2
-#         with:
-#           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-#           service_account: ${{ secrets.GCP_DEPLOYER_SA }}
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOYER_SA }}
 
-#       - uses: google-github-actions/setup-gcloud@v2
+      - uses: google-github-actions/setup-gcloud@v2
 
-#       - name: Roll VM container to the SHA
-#         run: |
-#           gcloud compute ssh ayvid-execution \
-#             --tunnel-through-iap \
-#             --zone=${{ env.GCP_ZONE }} \
-#             --command="bash -s ${{ env.GCP_REGION }} ${{ env.GCP_PROJECT }} ${{ inputs.target_sha }}" \
-#             --quiet \
-#             < scripts/vm_redeploy.sh
+      - name: Roll VM container to the SHA
+        run: |
+          gcloud compute ssh ayvid-execution \
+            --tunnel-through-iap \
+            --zone=${{ env.GCP_ZONE }} \
+            --command="bash -s ${{ env.GCP_REGION }} ${{ env.GCP_PROJECT }} ${{ inputs.target_sha }}" \
+            --quiet \
+            < scripts/vm_redeploy.sh
 
-#       - name: Verify container healthy
-#         run: |
-#           gcloud compute ssh ayvid-execution \
-#             --tunnel-through-iap \
-#             --zone=${{ env.GCP_ZONE }} \
-#             --command='
-#               set -e
-#               for i in $(seq 1 30); do
-#                 status=$(sudo docker ps --filter name=ayvid-execution --format "{{.Status}}" | head -n 1)
-#                 echo "[$i] ayvid-execution: $status"
-#                 echo "$status" | grep -qiE "healthy|^Up" && exit 0
-#                 sleep 10
-#               done
-#               echo "Rollback container did not come up healthy." >&2
-#               sudo docker logs --tail 80 ayvid-execution >&2 || true
-#               exit 1
-#             ' \
-#             --quiet
+      - name: Verify container healthy
+        run: |
+          gcloud compute ssh ayvid-execution \
+            --tunnel-through-iap \
+            --zone=${{ env.GCP_ZONE }} \
+            --command='
+              set -e
+              for i in $(seq 1 30); do
+                status=$(sudo docker ps --filter name=ayvid-execution --format "{{.Status}}" | head -n 1)
+                echo "[$i] ayvid-execution: $status"
+                echo "$status" | grep -qiE "healthy|^Up" && exit 0
+                sleep 10
+              done
+              echo "Rollback container did not come up healthy." >&2
+              sudo docker logs --tail 80 ayvid-execution >&2 || true
+              exit 1
+            ' \
+            --quiet
 
-#   notify:
-#     name: Summary
-#     needs: [rollback-backend, rollback-vm]
-#     if: always()
-#     runs-on: ubuntu-latest
-#     steps:
-#       - name: Print outcome
-#         run: |
-#           BACKEND="${{ needs.rollback-backend.result }}"
-#           VM="${{ needs.rollback-vm.result }}"
-#           echo "Rollback to ${{ inputs.target_sha }}: backend=$BACKEND vm=$VM"
-#           if [ "$BACKEND" != "success" ] || [ "$VM" != "success" ]; then
-#             exit 1
-#           fi
+  notify:
+    name: Summary
+    needs: [rollback-backend, rollback-vm]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print outcome
+        run: |
+          BACKEND="${{ needs.rollback-backend.result }}"
+          VM="${{ needs.rollback-vm.result }}"
+          echo "Rollback to ${{ inputs.target_sha }}: backend=$BACKEND vm=$VM"
+          if [ "$BACKEND" != "success" ] || [ "$VM" != "success" ]; then
+            exit 1
+          fi
