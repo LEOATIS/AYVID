@@ -1,616 +1,616 @@
-name: Deploy to GCP
+# name: Deploy to GCP
 
-# Triggers on every push to `main` that touches code the deploy cares
-# about. Workflow_dispatch lets you re-run a deploy manually from the
-# Actions tab without pushing a no-op commit.
-on:
-  push:
-    branches: [main]
-    paths:
-      - "backend/**"
-      - "execution_engine/**"
-      - "graph_intelligence/**"
-      - "data_primitives/**"
-      - "backtesting/**"
-      - "calibration/**"
-      - "shared/**"
-      - "cli/**"
-      - "infra/**"
-      - "scripts/**"
-      - "Dockerfile"
-      - "Dockerfile.execution"
-      - "pyproject.toml"
-      - "data_store/signal_book.json"
-      - ".github/workflows/deploy-gcp.yml"
-  workflow_dispatch:
-  # Belt-and-suspenders: even when nothing has been pushed, refresh the
-  # VM container every 6h so a long quiet period can't leave the runner
-  # drifting behind on an old image / expired IB session.
-  schedule:
-    - cron: "0 */6 * * *"
+# # Triggers on every push to `main` that touches code the deploy cares
+# # about. Workflow_dispatch lets you re-run a deploy manually from the
+# # Actions tab without pushing a no-op commit.
+# on:
+#   push:
+#     branches: [main]
+#     paths:
+#       - "backend/**"
+#       - "execution_engine/**"
+#       - "graph_intelligence/**"
+#       - "data_primitives/**"
+#       - "backtesting/**"
+#       - "calibration/**"
+#       - "shared/**"
+#       - "cli/**"
+#       - "infra/**"
+#       - "scripts/**"
+#       - "Dockerfile"
+#       - "Dockerfile.execution"
+#       - "pyproject.toml"
+#       - "data_store/signal_book.json"
+#       - ".github/workflows/deploy-gcp.yml"
+#   workflow_dispatch:
+#   # Belt-and-suspenders: even when nothing has been pushed, refresh the
+#   # VM container every 6h so a long quiet period can't leave the runner
+#   # drifting behind on an old image / expired IB session.
+#   schedule:
+#     - cron: "0 */6 * * *"
 
-# OIDC token + repo read are the minimum to authenticate against
-# Google's WIF and check out the repo.
-permissions:
-  id-token: write
-  contents: read
+# # OIDC token + repo read are the minimum to authenticate against
+# # Google's WIF and check out the repo.
+# permissions:
+#   id-token: write
+#   contents: read
 
-env:
-  GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
-  GCP_REGION: ${{ secrets.GCP_REGION }}
-  GCP_ZONE: ${{ secrets.GCP_ZONE }}
-  REGISTRY: ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/ayvid
+# env:
+#   GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+#   GCP_REGION: ${{ secrets.GCP_REGION }}
+#   GCP_ZONE: ${{ secrets.GCP_ZONE }}
+#   REGISTRY: ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/ayvid
 
-jobs:
-  build-and-push:
-    name: Build & push images
-    runs-on: ubuntu-latest
-    outputs:
-      image_tag: ${{ steps.meta.outputs.tag }}
-      build_time: ${{ steps.meta.outputs.build_time }}
-      execution_changed: ${{ steps.changes.outputs.execution }}
-    steps:
-      - uses: actions/checkout@v4
+# jobs:
+#   build-and-push:
+#     name: Build & push images
+#     runs-on: ubuntu-latest
+#     outputs:
+#       image_tag: ${{ steps.meta.outputs.tag }}
+#       build_time: ${{ steps.meta.outputs.build_time }}
+#       execution_changed: ${{ steps.changes.outputs.execution }}
+#     steps:
+#       - uses: actions/checkout@v4
 
-      - id: changes
-        name: Detect execution-path changes
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            execution:
-              - "Dockerfile.execution"
-              - "execution_engine/**"
-              - "graph_intelligence/**"
-              - "data_primitives/**"
-              - "backtesting/**"
-              - "calibration/**"
-              - "backend/services/orchestrator.py"
-              - "shared/**"
-              - "pyproject.toml"
-              - "scripts/vm_redeploy.sh"
+#       - id: changes
+#         name: Detect execution-path changes
+#         uses: dorny/paths-filter@v3
+#         with:
+#           filters: |
+#             execution:
+#               - "Dockerfile.execution"
+#               - "execution_engine/**"
+#               - "graph_intelligence/**"
+#               - "data_primitives/**"
+#               - "backtesting/**"
+#               - "calibration/**"
+#               - "backend/services/orchestrator.py"
+#               - "shared/**"
+#               - "pyproject.toml"
+#               - "scripts/vm_redeploy.sh"
 
-      - id: meta
-        run: |
-          echo "tag=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
-          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+#       - id: meta
+#         run: |
+#           echo "tag=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
+#           echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
 
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_DEPLOYER_SA }}
+#       - name: Authenticate to Google Cloud
+#         uses: google-github-actions/auth@v2
+#         with:
+#           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+#           service_account: ${{ secrets.GCP_DEPLOYER_SA }}
 
-      - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
+#       - name: Set up gcloud
+#         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure docker for Artifact Registry
-        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+#       - name: Configure docker for Artifact Registry
+#         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
 
-      # Build + push with an OUTER retry loop. ``docker buildx`` already
-      # retries 5× on its own, but Artifact Registry 502s sometimes
-      # outlast that window (Nov 2025 incident produced 90+s of 502s on
-      # the manifest config PUT). The shell wrapper below re-issues the
-      # whole build with exponential backoff so a transient registry
-      # blip doesn't fail an entire deploy. The buildx builder + GHA
-      # cache survive between attempts, so attempt 2 is always ~90s.
-      - name: Build & push backend image (retry-wrapped)
-        env:
-          IMAGE_BASE: ${{ env.REGISTRY }}/ayvid-backend
-          IMAGE_TAG:  ${{ steps.meta.outputs.tag }}
-          BUILD_TIME: ${{ steps.meta.outputs.build_time }}
-        run: |
-          set -uo pipefail
-          attempt=0
-          max=5
-          delay=10
-          until [ $attempt -ge $max ]; do
-            attempt=$((attempt + 1))
-            echo "::group::Build & push backend (attempt $attempt/$max)"
-            if docker buildx build \
-                --platform linux/amd64 \
-                --file Dockerfile \
-                --tag "$IMAGE_BASE:$IMAGE_TAG" \
-                --tag "$IMAGE_BASE:latest" \
-                --build-arg "BUILD_SHA=${GITHUB_SHA}" \
-                --build-arg "BUILD_TIME=${BUILD_TIME}" \
-                --cache-from type=gha,scope=backend \
-                --cache-to   type=gha,mode=max,scope=backend \
-                --push \
-                . ; then
-              echo "::endgroup::"
-              echo "Build+push succeeded on attempt $attempt"
-              exit 0
-            fi
-            echo "::endgroup::"
-            echo "::warning::Attempt $attempt failed; sleeping ${delay}s before retry"
-            sleep $delay
-            delay=$((delay * 2))
-          done
-          echo "::error::All $max build+push attempts exhausted (likely Artifact Registry 5xx)"
-          exit 1
+#       # Build + push with an OUTER retry loop. ``docker buildx`` already
+#       # retries 5× on its own, but Artifact Registry 502s sometimes
+#       # outlast that window (Nov 2025 incident produced 90+s of 502s on
+#       # the manifest config PUT). The shell wrapper below re-issues the
+#       # whole build with exponential backoff so a transient registry
+#       # blip doesn't fail an entire deploy. The buildx builder + GHA
+#       # cache survive between attempts, so attempt 2 is always ~90s.
+#       - name: Build & push backend image (retry-wrapped)
+#         env:
+#           IMAGE_BASE: ${{ env.REGISTRY }}/ayvid-backend
+#           IMAGE_TAG:  ${{ steps.meta.outputs.tag }}
+#           BUILD_TIME: ${{ steps.meta.outputs.build_time }}
+#         run: |
+#           set -uo pipefail
+#           attempt=0
+#           max=5
+#           delay=10
+#           until [ $attempt -ge $max ]; do
+#             attempt=$((attempt + 1))
+#             echo "::group::Build & push backend (attempt $attempt/$max)"
+#             if docker buildx build \
+#                 --platform linux/amd64 \
+#                 --file Dockerfile \
+#                 --tag "$IMAGE_BASE:$IMAGE_TAG" \
+#                 --tag "$IMAGE_BASE:latest" \
+#                 --build-arg "BUILD_SHA=${GITHUB_SHA}" \
+#                 --build-arg "BUILD_TIME=${BUILD_TIME}" \
+#                 --cache-from type=gha,scope=backend \
+#                 --cache-to   type=gha,mode=max,scope=backend \
+#                 --push \
+#                 . ; then
+#               echo "::endgroup::"
+#               echo "Build+push succeeded on attempt $attempt"
+#               exit 0
+#             fi
+#             echo "::endgroup::"
+#             echo "::warning::Attempt $attempt failed; sleeping ${delay}s before retry"
+#             sleep $delay
+#             delay=$((delay * 2))
+#           done
+#           echo "::error::All $max build+push attempts exhausted (likely Artifact Registry 5xx)"
+#           exit 1
 
-      - name: Build & push execution image (retry-wrapped)
-        env:
-          IMAGE_BASE: ${{ env.REGISTRY }}/ayvid-execution
-          IMAGE_TAG:  ${{ steps.meta.outputs.tag }}
-          BUILD_TIME: ${{ steps.meta.outputs.build_time }}
-        run: |
-          set -uo pipefail
-          attempt=0
-          max=5
-          delay=10
-          until [ $attempt -ge $max ]; do
-            attempt=$((attempt + 1))
-            echo "::group::Build & push execution (attempt $attempt/$max)"
-            if docker buildx build \
-                --platform linux/amd64 \
-                --file Dockerfile.execution \
-                --tag "$IMAGE_BASE:$IMAGE_TAG" \
-                --tag "$IMAGE_BASE:latest" \
-                --build-arg "BUILD_SHA=${GITHUB_SHA}" \
-                --build-arg "BUILD_TIME=${BUILD_TIME}" \
-                --cache-from type=gha,scope=execution \
-                --cache-to   type=gha,mode=max,scope=execution \
-                --push \
-                . ; then
-              echo "::endgroup::"
-              echo "Build+push succeeded on attempt $attempt"
-              exit 0
-            fi
-            echo "::endgroup::"
-            echo "::warning::Attempt $attempt failed; sleeping ${delay}s before retry"
-            sleep $delay
-            delay=$((delay * 2))
-          done
-          echo "::error::All $max build+push attempts exhausted (likely Artifact Registry 5xx)"
-          exit 1
+#       - name: Build & push execution image (retry-wrapped)
+#         env:
+#           IMAGE_BASE: ${{ env.REGISTRY }}/ayvid-execution
+#           IMAGE_TAG:  ${{ steps.meta.outputs.tag }}
+#           BUILD_TIME: ${{ steps.meta.outputs.build_time }}
+#         run: |
+#           set -uo pipefail
+#           attempt=0
+#           max=5
+#           delay=10
+#           until [ $attempt -ge $max ]; do
+#             attempt=$((attempt + 1))
+#             echo "::group::Build & push execution (attempt $attempt/$max)"
+#             if docker buildx build \
+#                 --platform linux/amd64 \
+#                 --file Dockerfile.execution \
+#                 --tag "$IMAGE_BASE:$IMAGE_TAG" \
+#                 --tag "$IMAGE_BASE:latest" \
+#                 --build-arg "BUILD_SHA=${GITHUB_SHA}" \
+#                 --build-arg "BUILD_TIME=${BUILD_TIME}" \
+#                 --cache-from type=gha,scope=execution \
+#                 --cache-to   type=gha,mode=max,scope=execution \
+#                 --push \
+#                 . ; then
+#               echo "::endgroup::"
+#               echo "Build+push succeeded on attempt $attempt"
+#               exit 0
+#             fi
+#             echo "::endgroup::"
+#             echo "::warning::Attempt $attempt failed; sleeping ${delay}s before retry"
+#             sleep $delay
+#             delay=$((delay * 2))
+#           done
+#           echo "::error::All $max build+push attempts exhausted (likely Artifact Registry 5xx)"
+#           exit 1
 
-  deploy-cloud-run:
-    name: Deploy backend (Cloud Run)
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+#   deploy-cloud-run:
+#     name: Deploy backend (Cloud Run)
+#     needs: build-and-push
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
 
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_DEPLOYER_SA }}
+#       - name: Authenticate to Google Cloud
+#         uses: google-github-actions/auth@v2
+#         with:
+#           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+#           service_account: ${{ secrets.GCP_DEPLOYER_SA }}
 
-      - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
+#       - name: Set up gcloud
+#         uses: google-github-actions/setup-gcloud@v2
 
-      # Deterministic deploy: name the new revision after the commit
-      # SHA and verify THIS specific revision is serving 100% traffic
-      # before exiting. The previous version polled
-      # `service.status.conditions[].Ready` which is True even when the
-      # OLD revision is still the one routing traffic — that's how we
-      # got the May 3 "smoke test fails because /system/build returns
-      # nothing" outcome: the deploy step "succeeded", but the new
-      # revision never actually rolled.
-      - name: Deploy new Cloud Run revision (deterministic suffix)
-        id: deploy
-        env:
-          # Revision suffix MUST be unique per workflow run, not per
-          # commit. The 6h cron + manual workflow_dispatch can re-run
-          # the same SHA, and Cloud Run rejects creating a same-named
-          # revision with different config (env vars or image digest):
-          #   ERROR: ALREADY_EXISTS: Revision named 'ayvid-backend-<sha>'
-          #   with different configuration already exists.
-          # (May 12 incident.) Appending the run number to the sha
-          # keeps the revision human-readable (still leads with the
-          # commit) while guaranteeing uniqueness across re-runs.
-          REV_SUFFIX: ${{ needs.build-and-push.outputs.image_tag }}-r${{ github.run_number }}
-        run: |
-          REV_NAME="ayvid-backend-$REV_SUFFIX"
-          echo "rev_name=$REV_NAME" >> $GITHUB_OUTPUT
-          # `gcloud run deploy` (not `services update`): forces a new
-          # revision even if the image digest is unchanged, sets a
-          # human-readable revision-suffix so the smoke test can wait
-          # for THIS specific revision rather than the service-level
-          # Ready condition (which is True for the old rev).
-          # --update-env-vars: pin every value the runtime needs to read from
-          # env (settings.AUTO_EXECUTE / EXECUTION_MODE / etc.) on EVERY deploy.
-          # Cloud Run's behaviour is that env vars not listed here are inherited
-          # from the previous revision, so additions to `cloudrun.tf`'s literal
-          # `env { }` blocks only land when someone manually runs `terraform
-          # apply` — which historically didn't happen for weeks and produced
-          # the May-12 drift symptom: the live `/api/v1/system/pipeline` reported
-          # `execution_mode=shadow` because EXECUTION_MODE was never set on the
-          # service (cloudrun.tf had it, the live revision didn't).
-          # Re-asserting them here keeps Cloud Run aligned with the runner VM
-          # (compute.tf + vm_redeploy.sh), which always writes the same values
-          # to /var/run/ayvid.env on every redeploy.
-          # Env-vars built as a single comma-joined string so the YAML block
-          # scalar stays well-formed (multi-line backslash continuations
-          # inside `run: |` need consistent indentation, and gcloud's
-          # `--update-env-vars` syntax doesn't combine cleanly with it).
-          ENV_ARGS="BUILD_SHA=${{ github.sha }},BUILD_TIME=${{ needs.build-and-push.outputs.build_time }},EXECUTION_MODE=ib_paper,LIVE_TRADING_CONFIRMED=false,LLM_ORCHESTRATION_ENABLED=true,LLM_SIGNAL_TIMEOUT_SECONDS=45,LLM_MAX_CONCURRENT_SIGNALS=5"
-          gcloud run deploy ayvid-backend \
-            --region=${{ env.GCP_REGION }} \
-            --image=${{ env.REGISTRY }}/ayvid-backend:${{ needs.build-and-push.outputs.image_tag }} \
-            --revision-suffix="$REV_SUFFIX" \
-            --update-env-vars="$ENV_ARGS" \
-            --quiet
-          echo "Created revision: $REV_NAME"
+#       # Deterministic deploy: name the new revision after the commit
+#       # SHA and verify THIS specific revision is serving 100% traffic
+#       # before exiting. The previous version polled
+#       # `service.status.conditions[].Ready` which is True even when the
+#       # OLD revision is still the one routing traffic — that's how we
+#       # got the May 3 "smoke test fails because /system/build returns
+#       # nothing" outcome: the deploy step "succeeded", but the new
+#       # revision never actually rolled.
+#       - name: Deploy new Cloud Run revision (deterministic suffix)
+#         id: deploy
+#         env:
+#           # Revision suffix MUST be unique per workflow run, not per
+#           # commit. The 6h cron + manual workflow_dispatch can re-run
+#           # the same SHA, and Cloud Run rejects creating a same-named
+#           # revision with different config (env vars or image digest):
+#           #   ERROR: ALREADY_EXISTS: Revision named 'ayvid-backend-<sha>'
+#           #   with different configuration already exists.
+#           # (May 12 incident.) Appending the run number to the sha
+#           # keeps the revision human-readable (still leads with the
+#           # commit) while guaranteeing uniqueness across re-runs.
+#           REV_SUFFIX: ${{ needs.build-and-push.outputs.image_tag }}-r${{ github.run_number }}
+#         run: |
+#           REV_NAME="ayvid-backend-$REV_SUFFIX"
+#           echo "rev_name=$REV_NAME" >> $GITHUB_OUTPUT
+#           # `gcloud run deploy` (not `services update`): forces a new
+#           # revision even if the image digest is unchanged, sets a
+#           # human-readable revision-suffix so the smoke test can wait
+#           # for THIS specific revision rather than the service-level
+#           # Ready condition (which is True for the old rev).
+#           # --update-env-vars: pin every value the runtime needs to read from
+#           # env (settings.AUTO_EXECUTE / EXECUTION_MODE / etc.) on EVERY deploy.
+#           # Cloud Run's behaviour is that env vars not listed here are inherited
+#           # from the previous revision, so additions to `cloudrun.tf`'s literal
+#           # `env { }` blocks only land when someone manually runs `terraform
+#           # apply` — which historically didn't happen for weeks and produced
+#           # the May-12 drift symptom: the live `/api/v1/system/pipeline` reported
+#           # `execution_mode=shadow` because EXECUTION_MODE was never set on the
+#           # service (cloudrun.tf had it, the live revision didn't).
+#           # Re-asserting them here keeps Cloud Run aligned with the runner VM
+#           # (compute.tf + vm_redeploy.sh), which always writes the same values
+#           # to /var/run/ayvid.env on every redeploy.
+#           # Env-vars built as a single comma-joined string so the YAML block
+#           # scalar stays well-formed (multi-line backslash continuations
+#           # inside `run: |` need consistent indentation, and gcloud's
+#           # `--update-env-vars` syntax doesn't combine cleanly with it).
+#           ENV_ARGS="BUILD_SHA=${{ github.sha }},BUILD_TIME=${{ needs.build-and-push.outputs.build_time }},EXECUTION_MODE=ib_paper,LIVE_TRADING_CONFIRMED=false,LLM_ORCHESTRATION_ENABLED=true,LLM_SIGNAL_TIMEOUT_SECONDS=45,LLM_MAX_CONCURRENT_SIGNALS=5"
+#           gcloud run deploy ayvid-backend \
+#             --region=${{ env.GCP_REGION }} \
+#             --image=${{ env.REGISTRY }}/ayvid-backend:${{ needs.build-and-push.outputs.image_tag }} \
+#             --revision-suffix="$REV_SUFFIX" \
+#             --update-env-vars="$ENV_ARGS" \
+#             --quiet
+#           echo "Created revision: $REV_NAME"
 
-      - name: Wait for the *new* revision to serve 100% traffic
-        run: |
-          REV_NAME="${{ steps.deploy.outputs.rev_name }}"
-          for i in $(seq 1 30); do
-            LATEST_READY=$(gcloud run services describe ayvid-backend \
-              --region=${{ env.GCP_REGION }} \
-              --format='value(status.latestReadyRevisionName)')
-            ACTIVE_REV=$(gcloud run services describe ayvid-backend \
-              --region=${{ env.GCP_REGION }} \
-              --format='value(status.traffic[0].revisionName)')
-            if [ "$LATEST_READY" = "$REV_NAME" ] && [ "$ACTIVE_REV" = "$REV_NAME" ]; then
-              echo "✓ revision $REV_NAME is ready AND serving 100% traffic"
-              gcloud run services describe ayvid-backend --region=${{ env.GCP_REGION }} --format='value(status.url)'
-              exit 0
-            fi
-            echo "[$i] expected=$REV_NAME latest_ready=$LATEST_READY active=$ACTIVE_REV — sleeping..."
-            sleep 10
-          done
-          echo "::error::revision $REV_NAME did not roll to 100% traffic within 5 min" >&2
-          echo "Last known service state:" >&2
-          gcloud run services describe ayvid-backend --region=${{ env.GCP_REGION }} \
-            --format='yaml(status.conditions,status.latestCreatedRevisionName,status.latestReadyRevisionName,status.traffic,status.url)' >&2 || true
-          exit 1
+#       - name: Wait for the *new* revision to serve 100% traffic
+#         run: |
+#           REV_NAME="${{ steps.deploy.outputs.rev_name }}"
+#           for i in $(seq 1 30); do
+#             LATEST_READY=$(gcloud run services describe ayvid-backend \
+#               --region=${{ env.GCP_REGION }} \
+#               --format='value(status.latestReadyRevisionName)')
+#             ACTIVE_REV=$(gcloud run services describe ayvid-backend \
+#               --region=${{ env.GCP_REGION }} \
+#               --format='value(status.traffic[0].revisionName)')
+#             if [ "$LATEST_READY" = "$REV_NAME" ] && [ "$ACTIVE_REV" = "$REV_NAME" ]; then
+#               echo "✓ revision $REV_NAME is ready AND serving 100% traffic"
+#               gcloud run services describe ayvid-backend --region=${{ env.GCP_REGION }} --format='value(status.url)'
+#               exit 0
+#             fi
+#             echo "[$i] expected=$REV_NAME latest_ready=$LATEST_READY active=$ACTIVE_REV — sleeping..."
+#             sleep 10
+#           done
+#           echo "::error::revision $REV_NAME did not roll to 100% traffic within 5 min" >&2
+#           echo "Last known service state:" >&2
+#           gcloud run services describe ayvid-backend --region=${{ env.GCP_REGION }} \
+#             --format='yaml(status.conditions,status.latestCreatedRevisionName,status.latestReadyRevisionName,status.traffic,status.url)' >&2 || true
+#           exit 1
 
-  deploy-vm:
-    name: Roll execution VM container
-    needs: build-and-push
-    # ALWAYS roll on every successful build. The previous gate
-    # (`execution_changed == 'true'`) caused the "VM is 2 days stale"
-    # symptom: when a push only touched frontend / docs / calibration
-    # the VM never refreshed even though we built a new image, and
-    # equity_curve.jsonl stopped accumulating. To bypass for genuinely
-    # backend-only changes, push with a `[skip-vm]` token in the
-    # commit message.
-    if: |
-      !contains(github.event.head_commit.message, '[skip-vm]')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+#   deploy-vm:
+#     name: Roll execution VM container
+#     needs: build-and-push
+#     # ALWAYS roll on every successful build. The previous gate
+#     # (`execution_changed == 'true'`) caused the "VM is 2 days stale"
+#     # symptom: when a push only touched frontend / docs / calibration
+#     # the VM never refreshed even though we built a new image, and
+#     # equity_curve.jsonl stopped accumulating. To bypass for genuinely
+#     # backend-only changes, push with a `[skip-vm]` token in the
+#     # commit message.
+#     if: |
+#       !contains(github.event.head_commit.message, '[skip-vm]')
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
 
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_DEPLOYER_SA }}
+#       - name: Authenticate to Google Cloud
+#         uses: google-github-actions/auth@v2
+#         with:
+#           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+#           service_account: ${{ secrets.GCP_DEPLOYER_SA }}
 
-      - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
+#       - name: Set up gcloud
+#         uses: google-github-actions/setup-gcloud@v2
 
-      # Stream the redeploy script over IAP-tunneled SSH. The VM does
-      # the actual pull + restart using the metadata server token; the
-      # workflow just orchestrates and waits.
-      #
-      # Retry wrapper rationale: every GH Actions run authenticates as
-      # the deployer SA, which has no pre-existing project SSH key.
-      # `gcloud compute ssh` generates a fresh keypair, uploads the
-      # public half to project-level metadata, and waits a short window
-      # for the GCE metadata server to propagate the new key to the
-      # instance — but that propagation is best-effort and frequently
-      # races (`runner@compute.<id>: Permission denied (publickey)`,
-      # May 12 incident). With up to 6 attempts × 25s backoff, the
-      # second-or-third attempt connects cleanly. We bound the retry
-      # so a *genuinely* broken IAM (missing iap.tunnelResourceAccessor
-      # or osLogin) fails the workflow loudly instead of looping.
-      - name: Roll container on ayvid-execution VM
-        run: |
-          set -euo pipefail
-          attempt=0
-          max=6
-          delay=25
-          until [ $attempt -ge $max ]; do
-            attempt=$((attempt + 1))
-            echo "::group::SSH roll attempt $attempt/$max"
-            if gcloud compute ssh ayvid-execution \
-                --tunnel-through-iap \
-                --zone=${{ env.GCP_ZONE }} \
-                --command="bash -s ${{ env.GCP_REGION }} ${{ env.GCP_PROJECT }} ${{ needs.build-and-push.outputs.image_tag }}" \
-                --quiet \
-                < scripts/vm_redeploy.sh ; then
-              echo "::endgroup::"
-              echo "✓ vm_redeploy succeeded on attempt $attempt"
-              exit 0
-            fi
-            echo "::endgroup::"
-            echo "::warning::SSH/redeploy attempt $attempt failed; sleeping ${delay}s before retry (likely SSH-key propagation race)"
-            sleep $delay
-          done
-          echo "::error::vm_redeploy SSH failed after $max attempts — investigate IAP / OS-Login / firewall before re-running"
-          exit 1
+#       # Stream the redeploy script over IAP-tunneled SSH. The VM does
+#       # the actual pull + restart using the metadata server token; the
+#       # workflow just orchestrates and waits.
+#       #
+#       # Retry wrapper rationale: every GH Actions run authenticates as
+#       # the deployer SA, which has no pre-existing project SSH key.
+#       # `gcloud compute ssh` generates a fresh keypair, uploads the
+#       # public half to project-level metadata, and waits a short window
+#       # for the GCE metadata server to propagate the new key to the
+#       # instance — but that propagation is best-effort and frequently
+#       # races (`runner@compute.<id>: Permission denied (publickey)`,
+#       # May 12 incident). With up to 6 attempts × 25s backoff, the
+#       # second-or-third attempt connects cleanly. We bound the retry
+#       # so a *genuinely* broken IAM (missing iap.tunnelResourceAccessor
+#       # or osLogin) fails the workflow loudly instead of looping.
+#       - name: Roll container on ayvid-execution VM
+#         run: |
+#           set -euo pipefail
+#           attempt=0
+#           max=6
+#           delay=25
+#           until [ $attempt -ge $max ]; do
+#             attempt=$((attempt + 1))
+#             echo "::group::SSH roll attempt $attempt/$max"
+#             if gcloud compute ssh ayvid-execution \
+#                 --tunnel-through-iap \
+#                 --zone=${{ env.GCP_ZONE }} \
+#                 --command="bash -s ${{ env.GCP_REGION }} ${{ env.GCP_PROJECT }} ${{ needs.build-and-push.outputs.image_tag }}" \
+#                 --quiet \
+#                 < scripts/vm_redeploy.sh ; then
+#               echo "::endgroup::"
+#               echo "✓ vm_redeploy succeeded on attempt $attempt"
+#               exit 0
+#             fi
+#             echo "::endgroup::"
+#             echo "::warning::SSH/redeploy attempt $attempt failed; sleeping ${delay}s before retry (likely SSH-key propagation race)"
+#             sleep $delay
+#           done
+#           echo "::error::vm_redeploy SSH failed after $max attempts — investigate IAP / OS-Login / firewall before re-running"
+#           exit 1
 
-      - name: Verify container healthy
-        run: |
-          set -euo pipefail
-          attempt=0
-          max=6
-          delay=25
-          until [ $attempt -ge $max ]; do
-            attempt=$((attempt + 1))
-            echo "::group::Container healthcheck attempt $attempt/$max"
-            if gcloud compute ssh ayvid-execution \
-                --tunnel-through-iap \
-                --zone=${{ env.GCP_ZONE }} \
-                --command='
-                  set -e
-                  for i in $(seq 1 30); do
-                    status=$(sudo docker ps --filter name=ayvid-execution --format "{{.Status}}" | head -n 1)
-                    echo "[$i] ayvid-execution status: ${status}"
-                    if echo "$status" | grep -qi "healthy"; then exit 0; fi
-                    if echo "$status" | grep -qi "^Up" && ! echo "$status" | grep -qi "health"; then exit 0; fi
-                    sleep 10
-                  done
-                  echo "Container did not become healthy in time." >&2
-                  sudo docker ps -a --filter name=ayvid-execution --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" >&2 || true
-                  sudo docker logs --tail 80 ayvid-execution >&2 || true
-                  exit 1
-                ' \
-                --quiet ; then
-              echo "::endgroup::"
-              echo "✓ container healthy on attempt $attempt"
-              exit 0
-            fi
-            echo "::endgroup::"
-            echo "::warning::healthcheck SSH attempt $attempt failed; sleeping ${delay}s"
-            sleep $delay
-          done
-          echo "::error::container healthcheck SSH failed after $max attempts"
-          exit 1
+#       - name: Verify container healthy
+#         run: |
+#           set -euo pipefail
+#           attempt=0
+#           max=6
+#           delay=25
+#           until [ $attempt -ge $max ]; do
+#             attempt=$((attempt + 1))
+#             echo "::group::Container healthcheck attempt $attempt/$max"
+#             if gcloud compute ssh ayvid-execution \
+#                 --tunnel-through-iap \
+#                 --zone=${{ env.GCP_ZONE }} \
+#                 --command='
+#                   set -e
+#                   for i in $(seq 1 30); do
+#                     status=$(sudo docker ps --filter name=ayvid-execution --format "{{.Status}}" | head -n 1)
+#                     echo "[$i] ayvid-execution status: ${status}"
+#                     if echo "$status" | grep -qi "healthy"; then exit 0; fi
+#                     if echo "$status" | grep -qi "^Up" && ! echo "$status" | grep -qi "health"; then exit 0; fi
+#                     sleep 10
+#                   done
+#                   echo "Container did not become healthy in time." >&2
+#                   sudo docker ps -a --filter name=ayvid-execution --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" >&2 || true
+#                   sudo docker logs --tail 80 ayvid-execution >&2 || true
+#                   exit 1
+#                 ' \
+#                 --quiet ; then
+#               echo "::endgroup::"
+#               echo "✓ container healthy on attempt $attempt"
+#               exit 0
+#             fi
+#             echo "::endgroup::"
+#             echo "::warning::healthcheck SSH attempt $attempt failed; sleeping ${delay}s"
+#             sleep $delay
+#           done
+#           echo "::error::container healthcheck SSH failed after $max attempts"
+#           exit 1
 
-  # ───────────────────────────────────────────────────────────────────
-  # Sync versioned artefacts (calibration priors, document/, scripts/,
-  # data_store/ seed signals) to the GCS bucket the runner reads from
-  # at startup. Without this, calibration commits can sit in git for
-  # hours before the runner picks them up at next ingest cycle.
-  # ───────────────────────────────────────────────────────────────────
-  sync-artefacts:
-    name: Sync artefacts to GCS
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+#   # ───────────────────────────────────────────────────────────────────
+#   # Sync versioned artefacts (calibration priors, document/, scripts/,
+#   # data_store/ seed signals) to the GCS bucket the runner reads from
+#   # at startup. Without this, calibration commits can sit in git for
+#   # hours before the runner picks them up at next ingest cycle.
+#   # ───────────────────────────────────────────────────────────────────
+#   sync-artefacts:
+#     name: Sync artefacts to GCS
+#     needs: build-and-push
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
 
-      - uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_DEPLOYER_SA }}
+#       - uses: google-github-actions/auth@v2
+#         with:
+#           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+#           service_account: ${{ secrets.GCP_DEPLOYER_SA }}
 
-      - uses: google-github-actions/setup-gcloud@v2
+#       - uses: google-github-actions/setup-gcloud@v2
 
-      - name: Mirror calibration / document / data_store seeds to GCS
-        run: |
-          BUCKET="${{ env.GCP_PROJECT }}-tfstate"
-          PREFIX="live_state"
-          # `-r` recurse, `-x` excludes (skip live/* — that belongs to the
-          # runner; skip __pycache__ and .pyc; skip the giant ohlcv tree
-          # that's hundreds of MB of historical bars).
-          gsutil -m -q rsync -r -x "(^|.*/)\.|.*\.pyc$|.*__pycache__.*" \
-              calibration/ "gs://$BUCKET/$PREFIX/calibration/"
-          gsutil -m -q rsync -r -x "(^|.*/)\.|.*\.pyc$|.*__pycache__.*" \
-              document/  "gs://$BUCKET/$PREFIX/document/"
-          # data_store: only seed entries (signal_book, scenarios, priors).
-          # Exclude live OHLCV / intraday — those belong to the runner.
-          gsutil -m -q rsync -r -x "ohlcv/.*|intraday/.*|.*__pycache__.*" \
-              data_store/ "gs://$BUCKET/$PREFIX/data_store/"
-          echo "Synced calibration/, document/, data_store/ seeds to gs://$BUCKET/$PREFIX/"
+#       - name: Mirror calibration / document / data_store seeds to GCS
+#         run: |
+#           BUCKET="${{ env.GCP_PROJECT }}-tfstate"
+#           PREFIX="live_state"
+#           # `-r` recurse, `-x` excludes (skip live/* — that belongs to the
+#           # runner; skip __pycache__ and .pyc; skip the giant ohlcv tree
+#           # that's hundreds of MB of historical bars).
+#           gsutil -m -q rsync -r -x "(^|.*/)\.|.*\.pyc$|.*__pycache__.*" \
+#               calibration/ "gs://$BUCKET/$PREFIX/calibration/"
+#           gsutil -m -q rsync -r -x "(^|.*/)\.|.*\.pyc$|.*__pycache__.*" \
+#               document/  "gs://$BUCKET/$PREFIX/document/"
+#           # data_store: only seed entries (signal_book, scenarios, priors).
+#           # Exclude live OHLCV / intraday — those belong to the runner.
+#           gsutil -m -q rsync -r -x "ohlcv/.*|intraday/.*|.*__pycache__.*" \
+#               data_store/ "gs://$BUCKET/$PREFIX/data_store/"
+#           echo "Synced calibration/, document/, data_store/ seeds to gs://$BUCKET/$PREFIX/"
 
-  # ───────────────────────────────────────────────────────────────────
-  # Post-deploy smoke test — verify the runner is actually producing
-  # fresh snapshots, not just that the container is "Up".
-  # The "20 snapshots, 2-day-old tick" symptom would have been caught
-  # here before merging.
-  # ───────────────────────────────────────────────────────────────────
-  smoke-test:
-    name: Post-deploy smoke test
-    needs: [deploy-cloud-run, deploy-vm]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_DEPLOYER_SA }}
+#   # ───────────────────────────────────────────────────────────────────
+#   # Post-deploy smoke test — verify the runner is actually producing
+#   # fresh snapshots, not just that the container is "Up".
+#   # The "20 snapshots, 2-day-old tick" symptom would have been caught
+#   # here before merging.
+#   # ───────────────────────────────────────────────────────────────────
+#   smoke-test:
+#     name: Post-deploy smoke test
+#     needs: [deploy-cloud-run, deploy-vm]
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: google-github-actions/auth@v2
+#         with:
+#           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+#           service_account: ${{ secrets.GCP_DEPLOYER_SA }}
 
-      - uses: google-github-actions/setup-gcloud@v2
+#       - uses: google-github-actions/setup-gcloud@v2
 
-      - name: Resolve backend URL + fetch API key
-        id: url
-        run: |
-          URL=$(gcloud run services describe ayvid-backend \
-                  --region=${{ env.GCP_REGION }} \
-                  --format='value(status.url)')
-          echo "url=$URL" >> $GITHUB_OUTPUT
-          echo "Backend URL: $URL"
-          # /api/v1/system/pipeline requires X-API-Key. The previous version
-          # of the next step did `curl -fsS ... || echo "{}"` with no auth,
-          # which 403'd, was swallowed by the `|| echo`, and every assertion
-          # silently parsed the empty JSON's defaults (auto_execute=False
-          # always, execution_mode="unknown" always). Result: the smoke test
-          # passed even when the backend was actively misconfigured. Pull the
-          # API key once here and pass it as a step output (masked) so each
-          # auth'd curl below stays a one-liner.
-          API_KEY=$(gcloud secrets versions access latest \
-                      --secret=ayvid-api-key \
-                      --project=${{ env.GCP_PROJECT }})
-          echo "::add-mask::$API_KEY"
-          echo "api_key=$API_KEY" >> $GITHUB_OUTPUT
+#       - name: Resolve backend URL + fetch API key
+#         id: url
+#         run: |
+#           URL=$(gcloud run services describe ayvid-backend \
+#                   --region=${{ env.GCP_REGION }} \
+#                   --format='value(status.url)')
+#           echo "url=$URL" >> $GITHUB_OUTPUT
+#           echo "Backend URL: $URL"
+#           # /api/v1/system/pipeline requires X-API-Key. The previous version
+#           # of the next step did `curl -fsS ... || echo "{}"` with no auth,
+#           # which 403'd, was swallowed by the `|| echo`, and every assertion
+#           # silently parsed the empty JSON's defaults (auto_execute=False
+#           # always, execution_mode="unknown" always). Result: the smoke test
+#           # passed even when the backend was actively misconfigured. Pull the
+#           # API key once here and pass it as a step output (masked) so each
+#           # auth'd curl below stays a one-liner.
+#           API_KEY=$(gcloud secrets versions access latest \
+#                       --secret=ayvid-api-key \
+#                       --project=${{ env.GCP_PROJECT }})
+#           echo "::add-mask::$API_KEY"
+#           echo "api_key=$API_KEY" >> $GITHUB_OUTPUT
 
-      - name: Health endpoint
-        run: |
-          for i in 1 2 3 4 5; do
-            if curl -fsS "${{ steps.url.outputs.url }}/health" >/dev/null; then
-              echo "health: OK"
-              break
-            fi
-            echo "[$i] /health not ready, waiting..."
-            sleep 10
-          done
+#       - name: Health endpoint
+#         run: |
+#           for i in 1 2 3 4 5; do
+#             if curl -fsS "${{ steps.url.outputs.url }}/health" >/dev/null; then
+#               echo "health: OK"
+#               break
+#             fi
+#             echo "[$i] /health not ready, waiting..."
+#             sleep 10
+#           done
 
-      - name: Pipeline status — assert auto_execute + execution_mode
-        run: |
-          set -e
-          # Authenticate (was missing previously — see step above for context).
-          # `-fsS` plus explicit non-zero on parse failure means a real backend
-          # regression now fails the workflow instead of silently warning.
-          STATUS=$(curl -fsS -H "X-API-Key: ${{ steps.url.outputs.api_key }}" \
-                        "${{ steps.url.outputs.url }}/api/v1/system/pipeline")
-          echo "$STATUS" | python3 -m json.tool
-          AUTO=$(echo "$STATUS" | python3 -c "import json,sys; print(json.load(sys.stdin)['auto_execute'])")
-          MODE=$(echo "$STATUS" | python3 -c "import json,sys; print(json.load(sys.stdin)['execution_mode'])")
-          LIVE=$(echo "$STATUS" | python3 -c "import json,sys; print(json.load(sys.stdin)['live_confirmed'])")
-          echo "auto_execute=$AUTO execution_mode=$MODE live_confirmed=$LIVE"
-          fail=0
-          if [ "$AUTO" != "True" ]; then
-            echo "::error::auto_execute=$AUTO (expected True) — Cloud Run env drift"
-            fail=1
-          fi
-          if [ "$MODE" != "ib_paper" ]; then
-            echo "::error::execution_mode=$MODE (expected ib_paper) — Cloud Run env drift"
-            fail=1
-          fi
-          # live_confirmed must be False on the paper environment. If this
-          # is ever True without an explicit workflow change it means
-          # someone hand-flipped the runtime in the Cloud Run console —
-          # serious enough to fail the deploy.
-          if [ "$LIVE" != "False" ]; then
-            echo "::error::live_confirmed=$LIVE (expected False) — live trading was hand-enabled?"
-            fail=1
-          fi
-          exit $fail
+#       - name: Pipeline status — assert auto_execute + execution_mode
+#         run: |
+#           set -e
+#           # Authenticate (was missing previously — see step above for context).
+#           # `-fsS` plus explicit non-zero on parse failure means a real backend
+#           # regression now fails the workflow instead of silently warning.
+#           STATUS=$(curl -fsS -H "X-API-Key: ${{ steps.url.outputs.api_key }}" \
+#                         "${{ steps.url.outputs.url }}/api/v1/system/pipeline")
+#           echo "$STATUS" | python3 -m json.tool
+#           AUTO=$(echo "$STATUS" | python3 -c "import json,sys; print(json.load(sys.stdin)['auto_execute'])")
+#           MODE=$(echo "$STATUS" | python3 -c "import json,sys; print(json.load(sys.stdin)['execution_mode'])")
+#           LIVE=$(echo "$STATUS" | python3 -c "import json,sys; print(json.load(sys.stdin)['live_confirmed'])")
+#           echo "auto_execute=$AUTO execution_mode=$MODE live_confirmed=$LIVE"
+#           fail=0
+#           if [ "$AUTO" != "True" ]; then
+#             echo "::error::auto_execute=$AUTO (expected True) — Cloud Run env drift"
+#             fail=1
+#           fi
+#           if [ "$MODE" != "ib_paper" ]; then
+#             echo "::error::execution_mode=$MODE (expected ib_paper) — Cloud Run env drift"
+#             fail=1
+#           fi
+#           # live_confirmed must be False on the paper environment. If this
+#           # is ever True without an explicit workflow change it means
+#           # someone hand-flipped the runtime in the Cloud Run console —
+#           # serious enough to fail the deploy.
+#           if [ "$LIVE" != "False" ]; then
+#             echo "::error::live_confirmed=$LIVE (expected False) — live trading was hand-enabled?"
+#             fail=1
+#           fi
+#           exit $fail
 
-      # ── SHA-drift tripwires ──────────────────────────────────────────
-      # The May 2 incident (deployed instance 3 days behind, test
-      # fixture signal still rendered) was invisible until a human
-      # opened the console. These three steps make the same drift
-      # impossible to ship — if either the backend or the runner is
-      # still on the old image when the workflow finishes, the deploy
-      # fails loud. No auto-rollback (manual via rollback.yml) — a
-      # human decides whether to roll back or push a fix-forward.
-      - name: Backend SHA matches commit
-        run: |
-          set -e
-          for attempt in 1 2 3 4 5 6; do
-            # `-w` to capture HTTP status; don't use `-f` so we still
-            # see the body on 404 / 5xx. The previous version's `-fsS
-            # || echo '{}'` swallowed everything into "none" — we
-            # couldn't tell whether the endpoint 404'd (old image),
-            # returned dev (env var missing), or returned a wrong SHA.
-            RAW=$(curl -sS -w "\n___HTTP_STATUS:%{http_code}" \
-                  "${{ steps.url.outputs.url }}/api/v1/system/build" 2>&1 || true)
-            HTTP=$(echo "$RAW" | sed -n 's/^___HTTP_STATUS://p')
-            BODY=$(echo "$RAW" | sed '/^___HTTP_STATUS:/d')
-            API_SHA=$(echo "$BODY" | python3 -c "
-          import json, sys
-          try:
-              print(json.load(sys.stdin).get('build_sha','MISSING_FIELD'))
-          except Exception:
-              print('NON_JSON')
-          " 2>/dev/null || echo "PARSE_ERROR")
-            echo "[$attempt/6] HTTP=$HTTP build_sha=$API_SHA expected=${{ github.sha }}"
-            if [ "$API_SHA" = "${{ github.sha }}" ]; then
-              echo "✓ backend SHA matches commit"
-              exit 0
-            fi
-            # Diagnostic hints
-            if [ "$HTTP" = "404" ] || [ "$API_SHA" = "MISSING_FIELD" ] || [ "$API_SHA" = "NON_JSON" ]; then
-              echo "::warning::endpoint not on new image yet (old revision still serving)"
-            elif [ "$API_SHA" = "dev" ] || [ "$API_SHA" = "unknown" ]; then
-              echo "::warning::new revision is up but BUILD_SHA env var is missing or default"
-            elif [ -n "$API_SHA" ] && [ "$API_SHA" != "MISSING_FIELD" ]; then
-              echo "::warning::serving an UNEXPECTED SHA — different deploy concurrent with this one?"
-            fi
-            sleep 20
-          done
-          echo "::error::Backend SHA never converged to ${{ github.sha }}"
-          echo "::error::Last response body: $BODY"
-          echo "::error::Last HTTP status: $HTTP"
-          echo "::error::Cloud Run revision summary:"
-          gcloud run services describe ayvid-backend --region=${{ env.GCP_REGION }} \
-            --format='yaml(status.latestCreatedRevisionName,status.latestReadyRevisionName,status.traffic)' || true
-          exit 1
+#       # ── SHA-drift tripwires ──────────────────────────────────────────
+#       # The May 2 incident (deployed instance 3 days behind, test
+#       # fixture signal still rendered) was invisible until a human
+#       # opened the console. These three steps make the same drift
+#       # impossible to ship — if either the backend or the runner is
+#       # still on the old image when the workflow finishes, the deploy
+#       # fails loud. No auto-rollback (manual via rollback.yml) — a
+#       # human decides whether to roll back or push a fix-forward.
+#       - name: Backend SHA matches commit
+#         run: |
+#           set -e
+#           for attempt in 1 2 3 4 5 6; do
+#             # `-w` to capture HTTP status; don't use `-f` so we still
+#             # see the body on 404 / 5xx. The previous version's `-fsS
+#             # || echo '{}'` swallowed everything into "none" — we
+#             # couldn't tell whether the endpoint 404'd (old image),
+#             # returned dev (env var missing), or returned a wrong SHA.
+#             RAW=$(curl -sS -w "\n___HTTP_STATUS:%{http_code}" \
+#                   "${{ steps.url.outputs.url }}/api/v1/system/build" 2>&1 || true)
+#             HTTP=$(echo "$RAW" | sed -n 's/^___HTTP_STATUS://p')
+#             BODY=$(echo "$RAW" | sed '/^___HTTP_STATUS:/d')
+#             API_SHA=$(echo "$BODY" | python3 -c "
+#           import json, sys
+#           try:
+#               print(json.load(sys.stdin).get('build_sha','MISSING_FIELD'))
+#           except Exception:
+#               print('NON_JSON')
+#           " 2>/dev/null || echo "PARSE_ERROR")
+#             echo "[$attempt/6] HTTP=$HTTP build_sha=$API_SHA expected=${{ github.sha }}"
+#             if [ "$API_SHA" = "${{ github.sha }}" ]; then
+#               echo "✓ backend SHA matches commit"
+#               exit 0
+#             fi
+#             # Diagnostic hints
+#             if [ "$HTTP" = "404" ] || [ "$API_SHA" = "MISSING_FIELD" ] || [ "$API_SHA" = "NON_JSON" ]; then
+#               echo "::warning::endpoint not on new image yet (old revision still serving)"
+#             elif [ "$API_SHA" = "dev" ] || [ "$API_SHA" = "unknown" ]; then
+#               echo "::warning::new revision is up but BUILD_SHA env var is missing or default"
+#             elif [ -n "$API_SHA" ] && [ "$API_SHA" != "MISSING_FIELD" ]; then
+#               echo "::warning::serving an UNEXPECTED SHA — different deploy concurrent with this one?"
+#             fi
+#             sleep 20
+#           done
+#           echo "::error::Backend SHA never converged to ${{ github.sha }}"
+#           echo "::error::Last response body: $BODY"
+#           echo "::error::Last HTTP status: $HTTP"
+#           echo "::error::Cloud Run revision summary:"
+#           gcloud run services describe ayvid-backend --region=${{ env.GCP_REGION }} \
+#             --format='yaml(status.latestCreatedRevisionName,status.latestReadyRevisionName,status.traffic)' || true
+#           exit 1
 
-      - name: Runner SHA matches commit
-        run: |
-          set -e
-          # The VM cron / `vm_redeploy.sh` may need a few minutes to
-          # pull the new image; allow up to 6 minutes.
-          for attempt in $(seq 1 12); do
-            # Capture HTTP status + body so a "unknown" outcome
-            # distinguishes runner-not-booted from GCS-sync-broken
-            # from wrong-SHA. Without this we'd see opaque
-            # "runner SHA: unknown" all 12 attempts and never know
-            # which of the three failure modes hit.
-            RAW=$(curl -sS -w "\n___HTTP_STATUS:%{http_code}" \
-                   "${{ steps.url.outputs.url }}/api/v1/system/runner-info" 2>&1 || true)
-            HTTP=$(echo "$RAW" | sed -n 's/^___HTTP_STATUS://p')
-            BODY=$(echo "$RAW" | sed '/^___HTTP_STATUS:/d')
-            RESP="$BODY"
-            RUNNER_SHA=$(echo "$RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('build_sha','none'))" 2>/dev/null || echo "PARSE_ERROR")
-            NOTE=$(echo "$RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('note',''))" 2>/dev/null || echo "")
-            if [ "$RUNNER_SHA" = "${{ github.sha }}" ]; then
-              echo "✓ runner SHA matches commit: $RUNNER_SHA"
-              exit 0
-            fi
-            echo "[$attempt/12] HTTP=$HTTP runner_sha=$RUNNER_SHA expected=${{ github.sha }}"
-            if [ -n "$NOTE" ]; then
-              echo "         note: $NOTE"
-            fi
-            # Per-mode hints so "unknown" doesn't sit there opaquely
-            if [ "$RUNNER_SHA" = "unknown" ]; then
-              echo "         → marker not present in local disk OR GCS — VM container hasn't booted with new image yet"
-            elif [ "$RUNNER_SHA" = "error" ]; then
-              echo "         → marker file is corrupt / unparseable"
-            elif [ "$RUNNER_SHA" = "dev" ]; then
-              echo "         → runner running with default BUILD_SHA — Dockerfile ARG not propagating"
-            elif [ "$RUNNER_SHA" != "none" ] && [ "$RUNNER_SHA" != "PARSE_ERROR" ]; then
-              echo "         → runner is on a DIFFERENT SHA than the deploy expects (older / concurrent)"
-            fi
-            sleep 30
-          done
-          echo "::error::Runner SHA never converged to ${{ github.sha }} after 6 min."
-          echo "::error::Last response body: $BODY"
-          echo "::error::Last HTTP status: $HTTP"
-          echo "::error::Last runner_sha: $RUNNER_SHA"
-          echo "::error::Last note: $NOTE"
-          echo "::error::Manual remediation: gcloud compute ssh ayvid-execution --tunnel-through-iap --zone=\${{ env.GCP_ZONE }} --command='bash -s ${{ env.GCP_REGION }} ${{ env.GCP_PROJECT }} ${{ needs.build-and-push.outputs.image_tag }}' < scripts/vm_redeploy.sh"
-          exit 1
+#       - name: Runner SHA matches commit
+#         run: |
+#           set -e
+#           # The VM cron / `vm_redeploy.sh` may need a few minutes to
+#           # pull the new image; allow up to 6 minutes.
+#           for attempt in $(seq 1 12); do
+#             # Capture HTTP status + body so a "unknown" outcome
+#             # distinguishes runner-not-booted from GCS-sync-broken
+#             # from wrong-SHA. Without this we'd see opaque
+#             # "runner SHA: unknown" all 12 attempts and never know
+#             # which of the three failure modes hit.
+#             RAW=$(curl -sS -w "\n___HTTP_STATUS:%{http_code}" \
+#                    "${{ steps.url.outputs.url }}/api/v1/system/runner-info" 2>&1 || true)
+#             HTTP=$(echo "$RAW" | sed -n 's/^___HTTP_STATUS://p')
+#             BODY=$(echo "$RAW" | sed '/^___HTTP_STATUS:/d')
+#             RESP="$BODY"
+#             RUNNER_SHA=$(echo "$RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('build_sha','none'))" 2>/dev/null || echo "PARSE_ERROR")
+#             NOTE=$(echo "$RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('note',''))" 2>/dev/null || echo "")
+#             if [ "$RUNNER_SHA" = "${{ github.sha }}" ]; then
+#               echo "✓ runner SHA matches commit: $RUNNER_SHA"
+#               exit 0
+#             fi
+#             echo "[$attempt/12] HTTP=$HTTP runner_sha=$RUNNER_SHA expected=${{ github.sha }}"
+#             if [ -n "$NOTE" ]; then
+#               echo "         note: $NOTE"
+#             fi
+#             # Per-mode hints so "unknown" doesn't sit there opaquely
+#             if [ "$RUNNER_SHA" = "unknown" ]; then
+#               echo "         → marker not present in local disk OR GCS — VM container hasn't booted with new image yet"
+#             elif [ "$RUNNER_SHA" = "error" ]; then
+#               echo "         → marker file is corrupt / unparseable"
+#             elif [ "$RUNNER_SHA" = "dev" ]; then
+#               echo "         → runner running with default BUILD_SHA — Dockerfile ARG not propagating"
+#             elif [ "$RUNNER_SHA" != "none" ] && [ "$RUNNER_SHA" != "PARSE_ERROR" ]; then
+#               echo "         → runner is on a DIFFERENT SHA than the deploy expects (older / concurrent)"
+#             fi
+#             sleep 30
+#           done
+#           echo "::error::Runner SHA never converged to ${{ github.sha }} after 6 min."
+#           echo "::error::Last response body: $BODY"
+#           echo "::error::Last HTTP status: $HTTP"
+#           echo "::error::Last runner_sha: $RUNNER_SHA"
+#           echo "::error::Last note: $NOTE"
+#           echo "::error::Manual remediation: gcloud compute ssh ayvid-execution --tunnel-through-iap --zone=\${{ env.GCP_ZONE }} --command='bash -s ${{ env.GCP_REGION }} ${{ env.GCP_PROJECT }} ${{ needs.build-and-push.outputs.image_tag }}' < scripts/vm_redeploy.sh"
+#           exit 1
 
-      - name: Verify runner is producing fresh snapshots
-        run: |
-          # Polls the public /system/snapshot-info endpoint (build SHA's
-          # public sibling, see commit 8302e04). /api/v1/live/equity is
-          # API-key-gated and returned 403 to CI, masking real freshness
-          # regressions as auth failures. snapshot-info exposes only the
-          # heartbeat timestamp + line count — no equity / positions / mode.
-          for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
-            RAW=$(curl -sS -w "\n___HTTP_STATUS:%{http_code}" \
-                   "${{ steps.url.outputs.url }}/api/v1/system/snapshot-info" 2>&1 || true)
-            HTTP=$(echo "$RAW" | sed -n 's/^___HTTP_STATUS://p')
-            BODY=$(echo "$RAW" | sed '/^___HTTP_STATUS:/d')
-            LAST=$(echo "$BODY" | python3 -c "import json,sys; print(json.load(sys.stdin).get('last_timestamp') or '')" 2>/dev/null || echo "")
-            NOTE=$(echo "$BODY" | python3 -c "import json,sys; print(json.load(sys.stdin).get('note') or '')" 2>/dev/null || echo "")
-            if [ -n "$LAST" ]; then
-              # GNU date on Ubuntu can parse ISO-8601
-              AGE=$(( $(date +%s) - $(date -d "$LAST" +%s 2>/dev/null || echo 0) ))
-              echo "[$i] HTTP=$HTTP last snapshot ${AGE}s ago ($LAST)"
-              if [ "$AGE" -gt 0 ] && [ "$AGE" -lt 600 ]; then
-                echo "Runner is producing fresh snapshots."
-                exit 0
-              fi
-            else
-              echo "[$i] HTTP=$HTTP no last_timestamp yet${NOTE:+ — $NOTE}"
-            fi
-            sleep 20
-          done
-          echo "::error::Runner did not produce a fresh snapshot within 4 min of deploy."
-          echo "::error::Last HTTP status: $HTTP"
-          echo "::error::Last response body: $BODY"
-          exit 1
+#       - name: Verify runner is producing fresh snapshots
+#         run: |
+#           # Polls the public /system/snapshot-info endpoint (build SHA's
+#           # public sibling, see commit 8302e04). /api/v1/live/equity is
+#           # API-key-gated and returned 403 to CI, masking real freshness
+#           # regressions as auth failures. snapshot-info exposes only the
+#           # heartbeat timestamp + line count — no equity / positions / mode.
+#           for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+#             RAW=$(curl -sS -w "\n___HTTP_STATUS:%{http_code}" \
+#                    "${{ steps.url.outputs.url }}/api/v1/system/snapshot-info" 2>&1 || true)
+#             HTTP=$(echo "$RAW" | sed -n 's/^___HTTP_STATUS://p')
+#             BODY=$(echo "$RAW" | sed '/^___HTTP_STATUS:/d')
+#             LAST=$(echo "$BODY" | python3 -c "import json,sys; print(json.load(sys.stdin).get('last_timestamp') or '')" 2>/dev/null || echo "")
+#             NOTE=$(echo "$BODY" | python3 -c "import json,sys; print(json.load(sys.stdin).get('note') or '')" 2>/dev/null || echo "")
+#             if [ -n "$LAST" ]; then
+#               # GNU date on Ubuntu can parse ISO-8601
+#               AGE=$(( $(date +%s) - $(date -d "$LAST" +%s 2>/dev/null || echo 0) ))
+#               echo "[$i] HTTP=$HTTP last snapshot ${AGE}s ago ($LAST)"
+#               if [ "$AGE" -gt 0 ] && [ "$AGE" -lt 600 ]; then
+#                 echo "Runner is producing fresh snapshots."
+#                 exit 0
+#               fi
+#             else
+#               echo "[$i] HTTP=$HTTP no last_timestamp yet${NOTE:+ — $NOTE}"
+#             fi
+#             sleep 20
+#           done
+#           echo "::error::Runner did not produce a fresh snapshot within 4 min of deploy."
+#           echo "::error::Last HTTP status: $HTTP"
+#           echo "::error::Last response body: $BODY"
+#           exit 1
