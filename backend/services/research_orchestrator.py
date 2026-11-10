@@ -17,7 +17,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from backend.services.research_calc import staleness
-from backend.services.research_resolver import REFUSALS, classify_intent, resolve_query, screen_query
+from backend.services.research_resolver import (
+    REFUSALS,
+    classify_intent,
+    resolve_query,
+    screen_query,
+)
 from backend.services.research_store import Actor, ResearchStore, new_id, utcnow
 from shared.config import settings
 from shared.logger import get_logger
