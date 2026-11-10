@@ -35,6 +35,7 @@ build/
 # Node / Next.js
 node_modules/
 .next/
+.next-dev/
 out/
 npm-debug.log*
 yarn-debug.log*
