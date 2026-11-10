@@ -17,7 +17,8 @@ const FOOTER_LINKS: {
     items: [
       { href: "/about", label: "About" },
       { href: "/approach", label: "Approach" },
-      { href: "/research", label: "Research" },
+      { href: "/research", label: "Research workspace" },
+      { href: "/notes", label: "Research notes" },
       { href: "/contact", label: "Contact" },
     ],
   },
@@ -34,7 +35,7 @@ const FOOTER_LINKS: {
     items: [
       { href: "/contact", label: "LP enquiries" },
       { href: "/contact", label: "Press enquiries" },
-      { href: "/console", label: "Operations console" },
+      { href: "/console", label: "Quant lab (paper only)" },
     ],
   },
 ];
@@ -86,8 +87,8 @@ export function MarketingFooter() {
               className="body-prose"
               style={{ maxWidth: "32ch" }}
             >
-              An AI-native hedge fund. Causal supply-chain inference,
-              agent-driven research, and end-to-end execution.
+              An AI-native financial research workspace. Cited answers,
+              second-order exposure analysis, and monitored theses.
             </p>
           </div>
 
@@ -188,7 +189,7 @@ export function MarketingFooter() {
             className="label-mono"
             style={{ color: "hsl(var(--fg-subtle))" }}
           >
-            YC S26 · AI-Native Hedge Funds
+            Research only · not investment advice
           </p>
         </div>
       </div>

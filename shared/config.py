@@ -35,7 +35,26 @@ class Settings(BaseSettings):
     OPENAI_SENTIMENT_MODEL: str = "gpt-4o-mini"
     ANTHROPIC_API_KEY: str | None = None
     ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
+    # Google Gemini (REST via httpx — no SDK dependency). GOOGLE_API_KEY
+    # is accepted as a fallback name in ``_resolve_gemini_key``.
+    GEMINI_API_KEY: str | None = None
+    GOOGLE_API_KEY: str | None = None
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_PRO_MODEL: str = "gemini-2.5-pro"
+    GEMINI_EMBEDDING_MODEL: str = "text-embedding-004"
+    # "gemini" | "anthropic" | "openai". If the selected provider has no key,
+    # ``shared.llm_client.active_provider`` falls back to whichever key exists,
+    # else "deterministic" (no LLM — research synthesis stays rule-based).
     LLM_PROVIDER: str = "openai"
+
+    # --- Research workspace (SQLite, WAL) ---
+    RESEARCH_DB_PATH: str = "data_store/ayvid_research.db"
+    # A bar / filing older than this many days is flagged STALE.
+    RESEARCH_STALE_DAYS: int = 7
+    # Query SEC EDGAR live during research runs (degrades gracefully offline).
+    RESEARCH_LIVE_EDGAR: bool = True
+    # Let the active LLM re-word the executive synthesis (citation-audited).
+    RESEARCH_LLM_SYNTHESIS: bool = True
 
     # --- OpenBB Data ---
     OPENBB_FMP_API_KEY: str | None = None
@@ -75,6 +94,12 @@ class Settings(BaseSettings):
     NEO4J_USERNAME: str | None = None
     NEO4J_PASSWORD: str | None = None
     NEO4J_DATABASE: str = "neo4j"
+
+    @model_validator(mode="after")
+    def _resolve_gemini_key(self) -> Settings:
+        if not self.GEMINI_API_KEY and self.GOOGLE_API_KEY:
+            self.GEMINI_API_KEY = self.GOOGLE_API_KEY
+        return self
 
     @model_validator(mode="after")
     def _resolve_neo4j_user(self) -> Settings:
@@ -253,11 +278,10 @@ class Settings(BaseSettings):
     API_KEY: str | None = None
     LLM_LIVE_ORCHESTRATOR: bool = False
     # AUTO_EXECUTE flips signal-book consumption from "advisory only" to
-    # "actually fill". Default True so paper / shadow modes trade
-    # automatically; the IB-LIVE path is gated separately via
-    # LIVE_TRADING_CONFIRMED in `_validate_live_routing` above, so flipping
-    # this on for paper/shadow cannot leak real-money orders.
-    AUTO_EXECUTE: bool = True
+    # "actually fill". Default False: AYVID is a research workspace first, so
+    # nothing fills unless the operator opts in via .env. The IB-LIVE path is
+    # additionally gated by LIVE_TRADING_CONFIRMED in `_validate_live_routing`.
+    AUTO_EXECUTE: bool = False
     # Execution venue. Default SHADOW so a fresh checkout never reaches
     # for IB; flip to IB_PAPER (paper account) or IB_LIVE (real money,
     # requires LIVE_TRADING_CONFIRMED=true) explicitly.

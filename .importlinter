@@ -81,3 +81,23 @@ source_modules =
     backtesting
 forbidden_modules =
     cli
+
+; Research workspace isolation: no research module may reach trade execution,
+; directly or transitively. Keeps "research cannot place orders" structural.
+[importlinter:contract:research-isolated-from-execution]
+name = research workspace must not import execution_engine
+type = forbidden
+source_modules =
+    shared.research_types
+    backend.services.research_store
+    backend.services.research_seed
+    backend.services.research_calc
+    backend.services.research_resolver
+    backend.services.research_orchestrator
+    backend.services.research_thesis
+    backend.services.research_screener
+    backend.services.research_fixtures
+    backend.api.v1.endpoints.research_routes
+forbidden_modules =
+    execution_engine
+    backend.api.v1.endpoints.trade_routes

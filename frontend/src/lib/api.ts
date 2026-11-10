@@ -202,6 +202,36 @@ export async function getJSON<T>(
   throw (lastErr ?? new ApiError(0, "api client: unknown fault", null));
 }
 
+/**
+ * Mutating requests share `getJSON`'s deadline + typed-error contract but
+ * default to ONE attempt: a retried POST could create a duplicate thesis.
+ */
+function _sendJSON<T>(
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
+  path: string,
+  body?: unknown,
+  init?: FetchOptions,
+): Promise<T> {
+  const headers = new Headers(init?.headers);
+  if (body !== undefined) headers.set("Content-Type", "application/json");
+  return getJSON<T>(path, {
+    maxAttempts: 1,
+    ...init,
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+export const postJSON = <T>(path: string, body?: unknown, init?: FetchOptions) =>
+  _sendJSON<T>("POST", path, body, init);
+export const putJSON = <T>(path: string, body?: unknown, init?: FetchOptions) =>
+  _sendJSON<T>("PUT", path, body, init);
+export const patchJSON = <T>(path: string, body?: unknown, init?: FetchOptions) =>
+  _sendJSON<T>("PATCH", path, body, init);
+export const deleteJSON = <T>(path: string, init?: FetchOptions) =>
+  _sendJSON<T>("DELETE", path, undefined, init);
+
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
 export interface EquitySnapshot {

@@ -26,7 +26,8 @@ import { Menu, X, ArrowUpRight } from "lucide-react";
 
 const NAV: { href: string; label: string }[] = [
   { href: "/approach", label: "Approach" },
-  { href: "/research", label: "Research" },
+  { href: "/research", label: "Workspace" },
+  { href: "/notes", label: "Notes" },
   { href: "/about", label: "About" },
   { href: "/contact", label: "Contact" },
 ];
@@ -129,7 +130,7 @@ export function MarketingNav() {
                 e.currentTarget.style.borderColor = "hsl(var(--brand-dim))";
               }}
             >
-              Console <ArrowUpRight className="h-3 w-3" />
+              Shock Lab <ArrowUpRight className="h-3 w-3" />
             </Link>
             <button
               type="button"
@@ -187,7 +188,7 @@ export function MarketingNav() {
                     color: "hsl(var(--brand-fg))",
                   }}
                 >
-                  Operations console
+                  Shock Lab (paper only)
                   <ArrowUpRight className="h-4 w-4" />
                 </Link>
               </li>

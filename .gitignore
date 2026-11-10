@@ -91,3 +91,5 @@ live/
 Dumps/
 
 frontend/tsconfig.tsbuildinfo
+# Research workspace SQLite (WAL) — local state, never committed
+data_store/ayvid_research.db*

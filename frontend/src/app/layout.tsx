@@ -24,14 +24,13 @@ const display = Fraunces({
 });
 
 const SITE_DESCRIPTION =
-  "Asymmetric Yield Via Intelligent Decisions. Swarms of LLM agents " +
-  "read every filing, trace supply-chain shocks through a live causal " +
-  "graph, and route real orders to Interactive Brokers — end to end, " +
-  "no humans on the trade path.";
+  "AYVID is an AI-native financial research workspace. It turns market " +
+  "events into evidence-backed research — every claim cited to a filing or " +
+  "a deterministic calculation — and continuously monitors the thesis.";
 
 export const metadata: Metadata = {
   title: {
-    default: "AYVID — An AI-Native Hedge Fund",
+    default: "AYVID — AI-Native Financial Research Workspace",
     template: "%s · AYVID",
   },
   description: SITE_DESCRIPTION,
@@ -44,7 +43,7 @@ export const metadata: Metadata = {
     apple: "/brand/mark-dark.svg",
   },
   openGraph: {
-    title: "AYVID — An AI-Native Hedge Fund",
+    title: "AYVID — AI-Native Financial Research Workspace",
     description: SITE_DESCRIPTION,
     images: [{ url: "/brand/og-image.svg", width: 1200, height: 630 }],
     type: "website",

@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "Research",
+  title: "Research notes",
   description:
     "Selected research notes from AYVID — on causal supply-chain inference, agent-driven debate, and event-conditioned trading.",
 };

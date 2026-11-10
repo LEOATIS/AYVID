@@ -13,13 +13,13 @@ export default function AboutPage() {
         <div className="container-page section-y reveal">
           <p className="eyebrow">About</p>
           <h1 className="font-display display-1 mt-6 max-w-[20ch] text-fg">
-            A fund built the way an AI lab would build one.
+            A research workspace built the way an AI lab would build one.
           </h1>
           <p className="lede mt-7">
-            AYVID is built on the conviction that the next great quantitative
-            firms will not be hedge funds with an AI team. They&rsquo;ll be AI
-            systems that happen to trade. That conviction shapes every choice
-            below.
+            AYVID is built on the conviction that AI research tools must show
+            their work: every claim tied to a filing or a deterministic
+            calculation, every gap disclosed. The trading research below lives
+            on as a paper-only Quant Lab; the product is the research workspace.
           </p>
         </div>
       </section>

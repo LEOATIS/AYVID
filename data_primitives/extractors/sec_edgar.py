@@ -124,8 +124,12 @@ async def fetch_recent_filings(
     for hit in hits[:limit]:
         source = hit.get("_source", {})
         file_num = source.get("file_num", "")
-        accession = source.get("accession_no", "").replace("-", "")
-        form_type = source.get("form_type", "")
+        # EFTS renamed its fields (accession_no→adsh, form_type→form, file_name→_id suffix);
+        # read the current names first and keep the legacy ones as fallback.
+        hit_id = str(hit.get("_id", ""))
+        accession_dashed = source.get("adsh") or source.get("accession_no", "")
+        accession = accession_dashed.replace("-", "")
+        form_type = source.get("form") or source.get("form_type", "")
         filing_date = source.get("file_date", "")
         display_names = source.get("display_names", [])
         company_name = display_names[0] if display_names else ticker
@@ -133,7 +137,7 @@ async def fetch_recent_filings(
         cik = await lookup_cik(ticker) or source.get("entity_id", "")
         cik_stripped = cik.lstrip("0") or "0"
 
-        primary_doc = source.get("file_name", "")
+        primary_doc = source.get("file_name") or (hit_id.split(":", 1)[1] if ":" in hit_id else "")
         url = ""
         if cik_stripped and accession and primary_doc:
             url = (
@@ -142,7 +146,7 @@ async def fetch_recent_filings(
 
         filings.append(
             {
-                "accession": source.get("accession_no", ""),
+                "accession": accession_dashed,
                 "form_type": form_type,
                 "filing_date": filing_date,
                 "company_name": company_name,

@@ -1,6 +1,6 @@
 """Single-source-of-truth LLM dispatch layer.
 
-Every module in the codebase that calls OpenAI or Anthropic must go
+Every module in the codebase that calls Gemini, OpenAI or Anthropic must go
 through this layer. It owns:
 
 1. The per-provider async client singletons (one `AsyncOpenAI`, one
@@ -28,6 +28,9 @@ Design rules:
 from __future__ import annotations
 
 import asyncio
+import time
+from collections import deque
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from shared.config import settings
@@ -46,6 +49,69 @@ DEFAULT_LLM_TIMEOUT_SEC: float = 30.0
 
 _openai_client: Any = None
 _anthropic_client: Any = None
+
+GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
+PROVIDERS: tuple[str, ...] = ("gemini", "anthropic", "openai")
+DETERMINISTIC = "deterministic"
+_TELEMETRY_RING_SIZE = 200
+
+
+class LLMUnavailableError(RuntimeError):
+    """No provider key is configured — callers must use deterministic paths."""
+
+
+@dataclass(frozen=True)
+class LLMCallMeta:
+    """Telemetry for one completion — surfaced in the research Evidence Drawer."""
+
+    provider: str
+    model: str
+    latency_ms: int
+    input_tokens: int | None
+    output_tokens: int | None
+    ok: bool
+    error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+# Recent-call ring buffer for /system status views. Per-run telemetry is
+# returned directly by ``json_call_with_meta`` so concurrent runs never mix.
+_recent_calls: deque[LLMCallMeta] = deque(maxlen=_TELEMETRY_RING_SIZE)
+
+
+def recent_llm_calls() -> list[dict[str, Any]]:
+    return [m.to_dict() for m in _recent_calls]
+
+
+def _provider_key(provider: str) -> str | None:
+    return {
+        "gemini": settings.GEMINI_API_KEY,
+        "anthropic": settings.ANTHROPIC_API_KEY,
+        "openai": settings.OPENAI_API_KEY,
+    }.get(provider)
+
+
+def active_provider() -> str:
+    """Selected provider if its key exists, else the first configured one,
+    else ``"deterministic"`` (no LLM reachable)."""
+    selected = (settings.LLM_PROVIDER or "").strip().lower()
+    if selected in PROVIDERS and _provider_key(selected):
+        return selected
+    for candidate in PROVIDERS:
+        if _provider_key(candidate):
+            return candidate
+    return DETERMINISTIC
+
+
+def active_model(provider: str | None = None) -> str | None:
+    provider = provider or active_provider()
+    return {
+        "gemini": settings.GEMINI_MODEL,
+        "anthropic": settings.ANTHROPIC_MODEL,
+        "openai": settings.OPENAI_MODEL,
+    }.get(provider)
 
 
 # ── Client acquisition ───────────────────────────────────────
@@ -82,6 +148,159 @@ def _use_anthropic() -> bool:
 _JSON_ONLY_SUFFIX = "\n\nYou MUST respond with valid JSON only. No markdown, no explanation."
 
 
+async def _gemini_generate(
+    system: str, user: str, *, model: str, max_tokens: int, temperature: float, json_mode: bool
+) -> tuple[str, int | None, int | None]:
+    import httpx
+
+    config: dict[str, Any] = {"temperature": temperature, "maxOutputTokens": max_tokens}
+    if json_mode:
+        config["responseMimeType"] = "application/json"
+    body = {
+        "systemInstruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": user}]}],
+        "generationConfig": config,
+    }
+    async with httpx.AsyncClient(timeout=None) as client:
+        resp = await client.post(
+            f"{GEMINI_API_BASE}/models/{model}:generateContent",
+            headers={"x-goog-api-key": settings.GEMINI_API_KEY or ""},
+            json=body,
+        )
+    resp.raise_for_status()
+    data = resp.json()
+    parts = (data.get("candidates") or [{}])[0].get("content", {}).get("parts", [])
+    text = "".join(p.get("text", "") for p in parts)
+    usage = data.get("usageMetadata", {})
+    return text, usage.get("promptTokenCount"), usage.get("candidatesTokenCount")
+
+
+async def _dispatch(
+    system: str,
+    user: str,
+    *,
+    max_tokens: int,
+    temperature: float,
+    model: str | None,
+    json_mode: bool,
+) -> tuple[str, int | None, int | None, str, str]:
+    provider = active_provider()
+    if provider == DETERMINISTIC:
+        raise LLMUnavailableError("no LLM provider key configured")
+    chosen = model or active_model(provider) or ""
+
+    if provider == "gemini":
+        text, tin, tout = await _gemini_generate(
+            system, user, model=chosen, max_tokens=max_tokens,
+            temperature=temperature, json_mode=json_mode,
+        )
+        return text or ("{}" if json_mode else ""), tin, tout, provider, chosen
+
+    if provider == "anthropic":
+        client = _get_anthropic_client()
+        response = await client.messages.create(
+            model=chosen,
+            max_tokens=max_tokens,
+            system=system + (_JSON_ONLY_SUFFIX if json_mode else ""),
+            messages=[{"role": "user", "content": user}],
+            temperature=temperature,
+        )
+        text = response.content[0].text if response.content else ("{}" if json_mode else "")
+        usage = getattr(response, "usage", None)
+        return (
+            text,
+            getattr(usage, "input_tokens", None),
+            getattr(usage, "output_tokens", None),
+            provider,
+            chosen,
+        )
+
+    client = _get_openai_client()
+    kwargs: dict[str, Any] = {
+        "model": chosen,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "temperature": temperature,
+    }
+    if json_mode:
+        kwargs["response_format"] = {"type": "json_object"}
+    response = await client.chat.completions.create(**kwargs)
+    text = response.choices[0].message.content or ("{}" if json_mode else "")
+    usage = getattr(response, "usage", None)
+    return (
+        text,
+        getattr(usage, "prompt_tokens", None),
+        getattr(usage, "completion_tokens", None),
+        provider,
+        chosen,
+    )
+
+
+async def _call_with_meta(
+    system: str,
+    user: str,
+    *,
+    max_tokens: int,
+    temperature: float,
+    model: str | None,
+    timeout: float | None,
+    json_mode: bool,
+) -> tuple[str, LLMCallMeta]:
+    deadline = timeout if timeout is not None else DEFAULT_LLM_TIMEOUT_SEC
+    started = time.perf_counter()
+    provider = active_provider()
+    try:
+        text, tin, tout, provider, chosen = await asyncio.wait_for(
+            _dispatch(
+                system, user, max_tokens=max_tokens, temperature=temperature,
+                model=model, json_mode=json_mode,
+            ),
+            timeout=deadline,
+        )
+    except Exception as exc:
+        meta = LLMCallMeta(
+            provider=provider,
+            model=model or active_model(provider) or "",
+            latency_ms=int((time.perf_counter() - started) * 1000),
+            input_tokens=None,
+            output_tokens=None,
+            ok=False,
+            error=type(exc).__name__,
+        )
+        _recent_calls.append(meta)
+        log.warning("llm_call_failed %s", meta.to_dict())
+        raise
+    meta = LLMCallMeta(
+        provider=provider,
+        model=chosen,
+        latency_ms=int((time.perf_counter() - started) * 1000),
+        input_tokens=tin,
+        output_tokens=tout,
+        ok=True,
+    )
+    _recent_calls.append(meta)
+    log.info("llm_call %s", meta.to_dict())
+    return text, meta
+
+
+async def json_call_with_meta(
+    system: str,
+    user: str,
+    *,
+    max_tokens: int = 1500,
+    temperature: float = 0.0,
+    model: str | None = None,
+    timeout: float | None = None,
+) -> tuple[str, LLMCallMeta]:
+    """``json_call`` plus provider / model / latency / token telemetry."""
+    return await _call_with_meta(
+        system, user, max_tokens=max_tokens, temperature=temperature,
+        model=model, timeout=timeout, json_mode=True,
+    )
+
+
 async def json_call(
     system: str,
     user: str,
@@ -91,45 +310,18 @@ async def json_call(
     model: str | None = None,
     timeout: float | None = None,
 ) -> str:
-    """Run a JSON-mode completion against the configured provider.
+    """Run a JSON-mode completion against the active provider.
 
-    Returns the raw JSON string (no post-parsing). Callers that need a
-    dict should wrap with `_parse_llm_json` helpers at their use-site —
-    those are free to raise or fall back on malformed output.
-
-    Every call is wrapped in ``asyncio.wait_for(timeout=...)`` so a
-    stalled provider cannot block the orchestrator; on timeout we
-    raise ``asyncio.TimeoutError`` and let the caller fall back.
+    Returns the raw JSON string (no post-parsing). Every call is bounded by
+    ``asyncio.wait_for`` so a stalled provider cannot block the caller; on
+    timeout we raise ``asyncio.TimeoutError``. Raises ``LLMUnavailableError``
+    when no provider key is configured.
     """
-    deadline = timeout if timeout is not None else DEFAULT_LLM_TIMEOUT_SEC
-    if _use_anthropic():
-        client = _get_anthropic_client()
-        response = await asyncio.wait_for(
-            client.messages.create(
-                model=model or settings.ANTHROPIC_MODEL,
-                max_tokens=max_tokens,
-                system=system + _JSON_ONLY_SUFFIX,
-                messages=[{"role": "user", "content": user}],
-                temperature=temperature,
-            ),
-            timeout=deadline,
-        )
-        return response.content[0].text if response.content else "{}"
-
-    client = _get_openai_client()
-    response = await asyncio.wait_for(
-        client.chat.completions.create(
-            model=model or settings.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            temperature=temperature,
-            response_format={"type": "json_object"},
-        ),
-        timeout=deadline,
+    text, _ = await json_call_with_meta(
+        system, user, max_tokens=max_tokens, temperature=temperature,
+        model=model, timeout=timeout,
     )
-    return response.choices[0].message.content or "{}"
+    return text
 
 
 # ── Free-form chat (non-JSON) ────────────────────────────────
@@ -147,42 +339,32 @@ async def chat(
     """Run a free-form (non-JSON) completion. Used by agents that need
     natural-language rationale (auditor, pattern-agent vision, etc.).
     """
-    deadline = timeout if timeout is not None else DEFAULT_LLM_TIMEOUT_SEC
-    if _use_anthropic():
-        client = _get_anthropic_client()
-        response = await asyncio.wait_for(
-            client.messages.create(
-                model=model or settings.ANTHROPIC_MODEL,
-                max_tokens=max_tokens,
-                system=system,
-                messages=[{"role": "user", "content": user}],
-                temperature=temperature,
-            ),
-            timeout=deadline,
-        )
-        return response.content[0].text if response.content else ""
-
-    client = _get_openai_client()
-    response = await asyncio.wait_for(
-        client.chat.completions.create(
-            model=model or settings.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            temperature=temperature,
-        ),
-        timeout=deadline,
+    text, _ = await _call_with_meta(
+        system, user, max_tokens=max_tokens, temperature=temperature,
+        model=model, timeout=timeout, json_mode=False,
     )
-    return response.choices[0].message.content or ""
+    return text
 
 
 # ── Embeddings ───────────────────────────────────────────────
 
 
 async def embed(text: str, *, model: str | None = None) -> list[float]:
-    """Generate an embedding vector via OpenAI (the provider we always
-    use for embeddings, regardless of `LLM_PROVIDER`)."""
+    """Generate an embedding vector. OpenAI when its key exists (keeps the
+    existing Qdrant collection's dimensionality); Gemini when it is the only
+    configured provider."""
+    if not settings.OPENAI_API_KEY and settings.GEMINI_API_KEY:
+        import httpx
+
+        gem_model = model or settings.GEMINI_EMBEDDING_MODEL
+        async with httpx.AsyncClient(timeout=DEFAULT_LLM_TIMEOUT_SEC) as http:
+            resp = await http.post(
+                f"{GEMINI_API_BASE}/models/{gem_model}:embedContent",
+                headers={"x-goog-api-key": settings.GEMINI_API_KEY},
+                json={"content": {"parts": [{"text": text}]}},
+            )
+        resp.raise_for_status()
+        return list(resp.json()["embedding"]["values"])
     client = _get_openai_client()
     response = await client.embeddings.create(
         model=model or settings.OPENAI_EMBEDDING_MODEL,
@@ -241,6 +423,12 @@ def get_langchain_chat_model(
 
 
 __all__ = [
+    "LLMCallMeta",
+    "LLMUnavailableError",
+    "active_model",
+    "active_provider",
+    "json_call_with_meta",
+    "recent_llm_calls",
     "json_call",
     "chat",
     "embed",

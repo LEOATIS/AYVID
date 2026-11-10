@@ -3,16 +3,16 @@ import Link from "next/link";
 export const metadata = {
   title: "Approach",
   description:
-    "How AYVID trades: six asset classes, three-tier architecture, hard risk discipline, and full cost transparency.",
+    "The Quant Lab behind AYVID's shock research: historical shock backtests, the causal propagation engine, and paper-only execution research.",
 };
 
 export default function ApproachPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Approach"
+        eyebrow="Quant Lab · paper only"
         title="Six asset classes, three tiers, one risk frame."
-        lede="AYVID runs a multi-asset strategy on a three-tier architecture. The system was designed under the constraint that any subsystem can fail and the rest must degrade gracefully — no single agent, model, or data feed gets to take the firm down."
+        lede="This page documents AYVID's Quant Lab — the historical shock-backtesting and paper-trading research engine that powers the causal graph behind the research workspace. It runs with PAPER_TRADING=true and AUTO_EXECUTE=false by default and is isolated from the workspace. It studies a multi-asset strategy on a three-tier architecture. The system was designed under the constraint that any subsystem can fail and the rest must degrade gracefully — no single agent, model, or data feed gets to take the firm down."
       />
 
       <SectionTwoCol
@@ -123,7 +123,7 @@ function FootCta() {
             Selected research notes are public.
           </h3>
         </div>
-        <Link href="/research" className="btn-primary">
+        <Link href="/notes" className="btn-primary">
           Read research →
         </Link>
       </div>
