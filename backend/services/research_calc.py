@@ -120,6 +120,20 @@ def growth_pct(calc_id: str, label: str, current: dict[str, Any], prior: dict[st
     )
 
 
+def difference(calc_id: str, label: str, minuend: dict[str, Any], subtrahend: dict[str, Any]) -> Calc:
+    """``minuend − subtrahend`` for two same-period, same-currency, same-scale observations."""
+    assert_comparable(minuend, subtrahend)
+    result = q2(dec(minuend["value"]) - dec(subtrahend["value"]))
+    return Calc(
+        calc_id=calc_id,
+        label=label,
+        formula=f"{minuend['metric_label']} − {subtrahend['metric_label']}",
+        inputs=(_input(minuend), _input(subtrahend)),
+        result=result,
+        unit=minuend["scale"].lower(),
+    )
+
+
 # ── Market statistics from OHLCV ──────────────────────────────────────
 
 

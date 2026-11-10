@@ -15,7 +15,13 @@ from pathlib import Path
 from typing import Any
 
 from backend.services import research_fixtures as fx
-from backend.services.research_calc import CalculationError, growth_pct, market_stats, ratio_pct
+from backend.services.research_calc import (
+    CalculationError,
+    difference,
+    growth_pct,
+    market_stats,
+    ratio_pct,
+)
 from backend.services.research_store import Actor, ResearchStore, utcnow
 from shared.logger import get_logger
 
@@ -212,15 +218,25 @@ def _seed_fundamentals(store: ResearchStore, mapping: dict[str, str]) -> None:
         })
     store.insert_many("source_documents", sources)
     store.insert_many("financial_observations", obs)
-    _seed_derived(store, sorted({o["instrument_id"] for o in obs}))
+    seed_derived(store, sorted({o["instrument_id"] for o in obs}))
 
 
-def _seed_derived(store: ResearchStore, instrument_ids: list[str]) -> None:
+def seed_derived(store: ResearchStore, instrument_ids: list[str]) -> None:
+    """Deterministic ratios / differences from same-period reported figures."""
     derived = []
     for iid in instrument_ids:
         by_key = {(o["metric_code"], o["fiscal_period"]): o for o in store.observations(iid)}
         periods = sorted({p for (_, p) in by_key})
         for period in periods:
+            ocf, capex = by_key.get(("OPERATING_CASH_FLOW", period)), by_key.get(("CAPEX", period))
+            fcf = None
+            if ocf and capex and ("FREE_CASH_FLOW", period) not in by_key:
+                try:
+                    calc = difference(f"FCF-{period}", fx.METRIC_LABELS["FREE_CASH_FLOW"], ocf, capex)
+                    fcf = _derived_row(iid, "FREE_CASH_FLOW", period, ocf, calc, scale=ocf["scale"])
+                    derived.append(fcf)
+                except CalculationError:
+                    pass
             rev = by_key.get(("REVENUE", period))
             if rev is None:
                 continue
@@ -228,11 +244,15 @@ def _seed_derived(store: ResearchStore, instrument_ids: list[str]) -> None:
                 ("GROSS_PROFIT", "GROSS_MARGIN_PCT"),
                 ("OPERATING_INCOME", "OPERATING_MARGIN_PCT"),
                 ("NET_INCOME", "NET_MARGIN_PCT"),
+                ("FREE_CASH_FLOW", "FCF_MARGIN_PCT"),
             ):
-                num = by_key.get((num_code, period))
+                num = by_key.get((num_code, period)) or (fcf if num_code == "FREE_CASH_FLOW" else None)
                 if num is None or (out_code, period) in by_key:
                     continue
-                calc = ratio_pct(f"{out_code}-{period}", fx.METRIC_LABELS[out_code], num, rev)
+                try:
+                    calc = ratio_pct(f"{out_code}-{period}", fx.METRIC_LABELS[out_code], num, rev)
+                except CalculationError:
+                    continue
                 derived.append(_derived_row(iid, out_code, period, rev, calc))
         fy = [p for p in periods if p.startswith("FY") and ("REVENUE", p) in by_key]
         for prior, current in zip(fy, fy[1:]):
@@ -245,11 +265,13 @@ def _seed_derived(store: ResearchStore, instrument_ids: list[str]) -> None:
     store.insert_many("financial_observations", derived)
 
 
-def _derived_row(iid: str, code: str, period: str, anchor: dict[str, Any], calc: Any) -> dict[str, Any]:
+def _derived_row(
+    iid: str, code: str, period: str, anchor: dict[str, Any], calc: Any, *, scale: str = "PERCENT"
+) -> dict[str, Any]:
     return {
         "observation_id": f"OBS-{iid}-{code}-{period}", "instrument_id": iid, "metric_code": code,
         "metric_label": fx.METRIC_LABELS[code], "value": str(calc.result), "currency": anchor["currency"],
-        "scale": "PERCENT", "fiscal_period": period, "period_start": None,
+        "scale": scale, "fiscal_period": period, "period_start": anchor.get("period_start"),
         "period_end": anchor["period_end"], "published_at": anchor["published_at"],
         "as_of": anchor["as_of"], "provider": anchor["provider"], "source_id": anchor["source_id"],
         "basis": "DETERMINISTIC_CALC", "status": "DERIVED", "formula": calc.formula,

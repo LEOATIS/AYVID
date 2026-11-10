@@ -398,7 +398,6 @@ def test_create_thesis_rejects_unknown_source_and_foreign_session(client: TestCl
 
 def test_research_query_is_rate_limited_per_workspace(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(research_routes._query_limiter, "per_minute", 2)
-    monkeypatch.setattr(research_routes._query_limiter, "_hits", __import__("collections").defaultdict(__import__("collections").deque))
     codes = [client.post("/api/v1/research/query", json={"query": "NVDA margins"}).status_code for _ in range(3)]
     assert codes == [200, 200, 429]
 
@@ -413,3 +412,54 @@ def test_llm_number_audit_rejects_invented_figures() -> None:
     nums = lambda t: set(_re.findall(r"\d+(?:[.,]\d+)*", CITE.sub("", t)))  # noqa: E731
     assert not nums(invented) <= nums(facts)
     assert nums("Revenue was $130.5B in FY2025 [S1].") <= nums(facts)
+
+
+def test_rate_limit_survives_restart_and_is_shared_across_processes(store: ResearchStore) -> None:
+    """A separate OS process using the same DB file sees (and consumes) the same budget."""
+    import os
+    import sys
+
+    assert store.rate_limit_hit("research:ws_x", 3)
+    script = (
+        "import sys; from backend.services.research_store import ResearchStore; "
+        "s = ResearchStore(sys.argv[1]); print(s.rate_limit_hit('research:ws_x', 3), s.rate_limit_hit('research:ws_x', 3))"
+    )
+    out = subprocess.run([sys.executable, "-c", script, str(store.path)], cwd=REPO, capture_output=True,
+                         text=True, timeout=60, env={**os.environ, "PYTHONPATH": str(REPO)})
+    assert out.stdout.split()[-2:] == ["True", "True"], out.stderr[-500:]
+    reopened = ResearchStore(store.path)  # "restart": fresh instance, same file
+    assert reopened.rate_limit_hit("research:ws_x", 3) is False
+    assert reopened.rate_limit_hit("research:ws_other", 3) is True  # buckets are per workspace
+
+
+def test_rate_limit_window_expires(store: ResearchStore, monkeypatch: pytest.MonkeyPatch) -> None:
+    import time as _time
+
+    t0 = _time.time()
+    monkeypatch.setattr("backend.services.research_store.time.time", lambda: t0)
+    assert store.rate_limit_hit("b", 1) and not store.rate_limit_hit("b", 1)
+    monkeypatch.setattr("backend.services.research_store.time.time", lambda: t0 + 61)
+    assert store.rate_limit_hit("b", 1)
+
+
+def test_openapi_documents_typed_responses_and_errors_for_every_research_route(client: TestClient) -> None:
+    spec = client.get("/openapi.json").json()
+    research = {p: ops for p, ops in spec["paths"].items()
+                if p.startswith(("/api/v1/research", "/api/v1/companies", "/api/v1/theses", "/api/v1/screener",
+                                 "/api/v1/watchlists", "/api/v1/notifications", "/api/v1/valuation"))}
+    assert len(research) >= 25
+    for path, ops in research.items():
+        for method, op in ops.items():
+            ok = op["responses"].get("200") or op["responses"].get("201")
+            schema = ok["content"]["application/json"]["schema"]
+            ref = schema.get("$ref") or schema.get("items", {}).get("$ref")
+            assert ref, f"{method.upper()} {path} has an untyped response: {schema}"
+            for code in ("403", "404", "422", "429"):
+                assert code in op["responses"], f"{method.upper()} {path} missing {code}"
+    artifact = spec["components"]["schemas"]["ArtifactOut"]["properties"]
+    assert {"citations", "calculations", "claim_links", "telemetry"} <= set(artifact)
+
+
+def test_exposure_rows_keep_from_key(client: TestClient) -> None:
+    exposures = ask(client, "NVDA supply chain exposure to TSMC")["exposures"]
+    assert exposures and "from" in exposures[0] and "from_" not in exposures[0]

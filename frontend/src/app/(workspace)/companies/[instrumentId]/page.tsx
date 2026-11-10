@@ -2,17 +2,17 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useState } from "react";
+import { useSWRConfig } from "swr";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ApiNotFoundError } from "@/lib/api";
-import { fmtValue, useCompany, usePrices, type CompanyPayload, type DataRow, type EdgeRow } from "@/lib/research";
+import { fmtValue, researchApi, useCompany, usePrices, type CompanyPayload, type DataRow, type EdgeRow } from "@/lib/research";
 import { useEvidence } from "@/components/workspace/EvidenceDrawer";
 import { HealthDot } from "@/components/workspace/WorkspaceShell";
 import { ValuationSandbox } from "@/components/workspace/ValuationSandbox";
 
 type Obs = CompanyPayload["observations"][number];
 
-const FIN_METRICS = ["REVENUE", "GROSS_PROFIT", "GROSS_MARGIN_PCT", "OPERATING_INCOME", "OPERATING_MARGIN_PCT", "NET_INCOME", "NET_MARGIN_PCT", "REVENUE_GROWTH_PCT"];
 const MARKET_METRICS = ["CLOSE_PRICE", "RETURN_90D_PCT", "REALIZED_VOL_ANN", "MAX_DRAWDOWN_PCT", "HURST_EXPONENT"];
 
 function toRow(o: Obs, symbol: string, iid: string, stale: boolean): DataRow {
@@ -42,35 +42,110 @@ function useInspect(symbol: string, iid: string) {
   };
 }
 
+type Statement = "income" | "balance" | "cashflow";
+const STATEMENTS: { key: Statement; label: string; metrics: string[] }[] = [
+  { key: "income", label: "Income statement", metrics: ["REVENUE", "GROSS_PROFIT", "GROSS_MARGIN_PCT", "OPERATING_INCOME", "OPERATING_MARGIN_PCT", "NET_INCOME", "NET_MARGIN_PCT", "EPS_DILUTED", "REVENUE_GROWTH_PCT"] },
+  { key: "balance", label: "Balance sheet", metrics: ["TOTAL_ASSETS", "TOTAL_LIABILITIES", "STOCKHOLDERS_EQUITY", "CASH", "LONG_TERM_DEBT"] },
+  { key: "cashflow", label: "Cash flow", metrics: ["OPERATING_CASH_FLOW", "CAPEX", "FREE_CASH_FLOW", "FCF_MARGIN_PCT"] },
+];
+const MAX_COLUMNS = { annual: 5, quarterly: 6 } as const;
+
+function FundamentalsSource({ data }: { data: CompanyPayload }) {
+  const { mutate } = useSWRConfig();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const f = data.fundamentals;
+  const refresh = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const out = await researchApi.refreshFundamentals(data.instrument.instrument_id);
+      if (out.status === "FAILED") setErr(out.error ?? "SEC EDGAR unavailable");
+      await mutate(`/companies/${encodeURIComponent(data.instrument.instrument_id)}`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Refresh failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const live = f.status === "OK" || f.previous?.status === "OK";
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px]" aria-live="polite">
+      {f.status === "OK" ? (
+        <span className="ws-tag ws-tag-pos">SEC EDGAR XBRL</span>
+      ) : f.status === "FAILED" ? (
+        <span className="ws-tag ws-tag-warn">Degraded — SEC EDGAR unavailable</span>
+      ) : f.status === "UNSUPPORTED" ? (
+        <span className="ws-tag">Not an SEC filer</span>
+      ) : (
+        <span className="ws-tag ws-tag-warn">Curated filing summaries</span>
+      )}
+      <span className="text-muted">
+        {f.status === "OK"
+          ? `${f.filings} filings · latest filed ${f.latest_filing} · fetched ${f.fetched_at?.slice(0, 16).replace("T", " ")} UTC`
+          : f.status === "FAILED"
+            ? `Live pull failed (${f.error}). Showing the last stored figures.`
+            : f.status === "UNSUPPORTED"
+              ? f.reason
+              : "Live SEC data not fetched yet."}
+      </span>
+      {f.status !== "UNSUPPORTED" ? (
+        <button type="button" className="ws-btn ml-auto !py-0.5 text-[12px]" onClick={() => void refresh()} disabled={busy}>
+          {busy ? "Refreshing…" : live ? "Refresh from SEC" : "Fetch from SEC"}
+        </button>
+      ) : null}
+      {err ? <p role="alert" className="w-full text-neg">{err}</p> : null}
+    </div>
+  );
+}
+
 function Financials({ data }: { data: CompanyPayload }) {
   const router = useRouter();
   const params = useSearchParams();
   const period = params.get("period") === "quarterly" ? "quarterly" : "annual";
+  const statement = (STATEMENTS.find((x) => x.key === params.get("statement")) ?? STATEMENTS[0]);
   const inspect = useInspect(data.instrument.symbol, data.instrument.instrument_id);
   const obs = data.observations.filter(
-    (o) => FIN_METRICS.includes(o.metric_code) && (period === "annual" ? o.fiscal_period.startsWith("FY") : o.fiscal_period.startsWith("Q")),
+    (o) => statement.metrics.includes(o.metric_code) && (period === "annual" ? o.fiscal_period.startsWith("FY") : o.fiscal_period.startsWith("Q")),
   );
-  const periods = [...new Set(obs.map((o) => o.fiscal_period))].sort();
-  const setPeriod = (p: string) => router.replace(`?period=${p}`, { scroll: false });
+  // Columns ordered by period end (labels like Q2-FY2026 don't sort chronologically as text).
+  const endOf = new Map<string, string>();
+  obs.forEach((o) => endOf.set(o.fiscal_period, o.period_end > (endOf.get(o.fiscal_period) ?? "") ? o.period_end : endOf.get(o.fiscal_period)!));
+  const periods = [...endOf.keys()].sort((a, b) => (endOf.get(a)! < endOf.get(b)! ? -1 : endOf.get(a)! > endOf.get(b)! ? 1 : a.localeCompare(b))).slice(-MAX_COLUMNS[period]);
+  const go = (next: { period?: string; statement?: string }) => {
+    const q = new URLSearchParams(params.toString());
+    Object.entries(next).forEach(([k, v]) => v && q.set(k, v));
+    router.replace(`?${q.toString()}`, { scroll: false });
+  };
+  const currencies = [...new Set(obs.map((o) => o.currency).filter(Boolean))];
   return (
     <section className="ws-section" aria-labelledby="fin">
-      <div className="flex items-baseline justify-between">
-        <h2 id="fin" className="ws-h2">Financials (income statement)</h2>
-        <div className="ws-seg" role="group" aria-label="Period">
-          <button type="button" aria-pressed={period === "annual"} onClick={() => setPeriod("annual")}>Annual</button>
-          <button type="button" aria-pressed={period === "quarterly"} onClick={() => setPeriod("quarterly")}>Quarterly</button>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="fin" className="ws-h2">Financial statements</h2>
+        <div className="flex flex-wrap gap-2">
+          <div className="ws-seg" role="group" aria-label="Statement">
+            {STATEMENTS.map((st) => (
+              <button key={st.key} type="button" aria-pressed={statement.key === st.key} onClick={() => go({ statement: st.key })}>{st.label}</button>
+            ))}
+          </div>
+          <div className="ws-seg" role="group" aria-label="Period">
+            <button type="button" aria-pressed={period === "annual"} onClick={() => go({ period: "annual" })}>Annual</button>
+            <button type="button" aria-pressed={period === "quarterly"} onClick={() => go({ period: "quarterly" })}>Quarterly</button>
+          </div>
         </div>
       </div>
+      <FundamentalsSource data={data} />
       {!periods.length ? (
         <p className="ws-empty">
-          No {period} filing-derived figures in AYVID&apos;s dataset for this instrument. Balance-sheet and cash-flow statements are not yet ingested.
+          No {period} {statement.label.toLowerCase()} figures for this instrument
+          {data.fundamentals.status === "UNSUPPORTED" ? " — it does not file with the SEC." : "."}
         </p>
       ) : (
         <div className="ws-scroll-x">
           <table className="ws-table">
-            <thead><tr><th>Metric</th>{periods.map((p) => <th key={p} className="text-right">{p}</th>)}</tr></thead>
+            <thead><tr><th>Metric</th>{periods.map((p) => <th key={p} className="text-right">{p.replace("-YTD", " YTD")}</th>)}</tr></thead>
             <tbody>
-              {FIN_METRICS.map((code) => {
+              {statement.metrics.map((code) => {
                 const cells = periods.map((p) => obs.find((o) => o.metric_code === code && o.fiscal_period === p));
                 if (cells.every((c) => !c)) return null;
                 const label = cells.find(Boolean)?.metric_label;
@@ -95,8 +170,10 @@ function Financials({ data }: { data: CompanyPayload }) {
             </tbody>
           </table>
           <p className="mt-2 text-[12px] text-subtle">
-            Reporting currency {obs[0]?.currency}, millions. <sup className="text-brand">c</sup> = deterministic calculation. — = not disclosed or not ingested (never zero).
-            Figures come from curated filing summaries; click a value to inspect its source.
+            Reporting currency {currencies.join(", ") || "n/a"}; amounts in millions, EPS per share. <sup className="text-brand">c</sup> = deterministic calculation.
+            — = not disclosed or not ingested (never zero).
+            {period === "quarterly" && statement.key === "cashflow" ? " 10-Q cash flows are year-to-date, labelled YTD." : ""}
+            {period === "quarterly" ? " Fourth quarters are reported in the annual 10-K/20-F (see Annual)." : ""} Click a value for its filing and accession number.
           </p>
         </div>
       )}

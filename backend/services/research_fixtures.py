@@ -410,4 +410,13 @@ METRIC_LABELS: dict[str, str] = {
     "HURST_EXPONENT": "Hurst exponent",
     "CUSTOMER_CHURN_PCT": "Customer churn",
     "CAPEX": "Capital expenditure",
+    "EPS_DILUTED": "Diluted EPS",
+    "TOTAL_ASSETS": "Total assets",
+    "TOTAL_LIABILITIES": "Total liabilities",
+    "STOCKHOLDERS_EQUITY": "Shareholders' equity",
+    "CASH": "Cash & equivalents",
+    "LONG_TERM_DEBT": "Long-term debt",
+    "OPERATING_CASH_FLOW": "Operating cash flow",
+    "FREE_CASH_FLOW": "Free cash flow",
+    "FCF_MARGIN_PCT": "Free-cash-flow margin",
 }

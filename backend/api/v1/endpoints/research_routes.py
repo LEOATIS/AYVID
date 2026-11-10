@@ -11,8 +11,6 @@ import inspect
 import re
 import sqlite3
 import threading
-import time
-from collections import defaultdict, deque
 from collections.abc import Callable
 from decimal import InvalidOperation
 from functools import wraps
@@ -21,6 +19,30 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
+from backend.api.v1.endpoints.research_schemas import (
+    ERROR_RESPONSES,
+    ArtifactOut,
+    CompanyOut,
+    DcfOut,
+    EdgeDetailOut,
+    EvaluationOut,
+    FundamentalsStatusOut,
+    InstrumentOut,
+    MetaOut,
+    NotificationOut,
+    PricesOut,
+    ResolveOut,
+    RevisionOut,
+    RunChecksOut,
+    ScreenerOut,
+    SessionSummaryOut,
+    SourceDocumentOut,
+    StatusOut,
+    ThesisListItemOut,
+    ThesisOut,
+    WatchlistCreatedOut,
+    WatchlistOut,
+)
 from backend.core.security import verify_api_key
 from backend.services.research_calc import CalculationError, dcf, dcf_sensitivity, staleness
 from backend.services.research_orchestrator import ResearchOrchestrator
@@ -42,6 +64,7 @@ from backend.services.research_thesis import (
     record_event,
     thesis_from_session,
 )
+from backend.services.research_xbrl import ensure_fundamentals, fundamentals_status
 from shared.config import settings
 from shared.research_types import (
     DCFInput,
@@ -58,7 +81,7 @@ from shared.research_types import (
     WatchlistItemIn,
 )
 
-router = APIRouter(dependencies=[Depends(verify_api_key)])
+router = APIRouter(dependencies=[Depends(verify_api_key)], responses=ERROR_RESPONSES)
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
 _store: ResearchStore | None = None
@@ -90,28 +113,25 @@ def get_actor(
 class _WindowLimiter:
     """Per-workspace sliding-window limit for routes that call paid LLMs / SEC.
 
-    shortcut: in-process only — resets on restart and is per-worker; move to
-    Redis (or the gateway) before running more than one API process.
+    Hits live in the research SQLite database, so the limit survives restarts and
+    is shared by every worker process on the host that uses the same DB file.
     """
 
-    def __init__(self, per_minute: int) -> None:
+    def __init__(self, name: str, per_minute: int) -> None:
+        self.name = name
         self.per_minute = per_minute
-        self._hits: dict[str, deque[float]] = defaultdict(deque)
-        self._lock = threading.Lock()
 
-    def check(self, key: str) -> None:
-        now = time.monotonic()
-        with self._lock:
-            hits = self._hits[key]
-            while hits and now - hits[0] > 60:
-                hits.popleft()
-            if len(hits) >= self.per_minute:
-                raise HTTPException(429, f"Rate limit: {self.per_minute} requests/minute per workspace")
-            hits.append(now)
+    def check(self, store: ResearchStore, workspace_id: str) -> None:
+        if not store.rate_limit_hit(f"{self.name}:{workspace_id}", self.per_minute):
+            raise HTTPException(
+                429,
+                f"Rate limit: {self.per_minute} {self.name} requests/minute per workspace",
+                headers={"Retry-After": "60"},
+            )
 
 
-_query_limiter = _WindowLimiter(settings.RESEARCH_QUERY_RATE_PER_MIN)
-_eval_limiter = _WindowLimiter(settings.RESEARCH_QUERY_RATE_PER_MIN * 3)
+_query_limiter = _WindowLimiter("research", settings.RESEARCH_QUERY_RATE_PER_MIN)
+_eval_limiter = _WindowLimiter("evaluate", settings.RESEARCH_QUERY_RATE_PER_MIN * 3)
 MAX_THESES_PER_CHECK = 50
 
 
@@ -164,7 +184,7 @@ Who = Depends(get_actor)
 
 
 # ── meta ──────────────────────────────────────────────────────────────
-@router.get("/research/meta")
+@router.get("/research/meta", response_model=MetaOut)
 @_errors
 def research_meta(store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     from shared import llm_client
@@ -186,13 +206,13 @@ def research_meta(store: ResearchStore = Store, actor: Actor = Who) -> dict[str,
 
 
 # ── research ──────────────────────────────────────────────────────────
-@router.get("/research/resolve")
+@router.get("/research/resolve", response_model=ResolveOut)
 @_errors
 def resolve(q: str = Query(min_length=1, max_length=64), store: ResearchStore = Store) -> dict[str, Any]:
     return resolve_symbol(store, q)
 
 
-@router.post("/research/query")
+@router.post("/research/query", response_model=ArtifactOut)
 @_errors
 async def research_query(
     body: ResearchQuery,
@@ -200,7 +220,7 @@ async def research_query(
     store: ResearchStore = Store,
     actor: Actor = Who,
 ) -> dict[str, Any]:
-    _query_limiter.check(actor.workspace_id)
+    _query_limiter.check(store, actor.workspace_id)
     return await ResearchOrchestrator(store).run(
         actor, body.query,
         simulate_failure=simulate_provider_failure or body.simulate_provider_failure,
@@ -208,13 +228,13 @@ async def research_query(
     )
 
 
-@router.get("/research/sessions")
+@router.get("/research/sessions", response_model=list[SessionSummaryOut])
 @_errors
 def list_sessions(limit: int = Query(20, ge=1, le=100), store: ResearchStore = Store, actor: Actor = Who) -> list[dict[str, Any]]:
     return store.list_sessions(actor, limit)
 
 
-@router.get("/research/sessions/{session_id}")
+@router.get("/research/sessions/{session_id}", response_model=ArtifactOut)
 @_errors
 def get_session(session_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     artifact = store.get_session(actor, session_id)["artifact"]
@@ -223,7 +243,7 @@ def get_session(session_id: str, store: ResearchStore = Store, actor: Actor = Wh
     return artifact
 
 
-@router.get("/research/sources/{source_id}")
+@router.get("/research/sources/{source_id}", response_model=SourceDocumentOut)
 @_errors
 def get_source(source_id: str, store: ResearchStore = Store) -> dict[str, Any]:
     src = store.get_source(source_id)
@@ -232,7 +252,7 @@ def get_source(source_id: str, store: ResearchStore = Store) -> dict[str, Any]:
     return src
 
 
-@router.get("/research/edges/{edge_id}")
+@router.get("/research/edges/{edge_id}", response_model=EdgeDetailOut)
 @_errors
 def get_edge(edge_id: str, store: ResearchStore = Store) -> dict[str, Any]:
     edge = store.get_edge(edge_id)
@@ -241,7 +261,7 @@ def get_edge(edge_id: str, store: ResearchStore = Store) -> dict[str, Any]:
     return {**edge, "source": store.get_source(edge["source_id"]) if edge.get("source_id") else None}
 
 
-@router.post("/research/events")
+@router.post("/research/events", response_model=StatusOut)
 @_errors
 def post_event(body: EventIn, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, str]:
     record_event(store, actor, body.code, body.description)
@@ -249,16 +269,19 @@ def post_event(body: EventIn, store: ResearchStore = Store, actor: Actor = Who) 
 
 
 # ── companies ─────────────────────────────────────────────────────────
-@router.get("/companies")
+@router.get("/companies", response_model=list[InstrumentOut])
 @_errors
 def list_companies(store: ResearchStore = Store) -> list[dict[str, Any]]:
     return [i for i in store.list_instruments() if i["data_tier"] != "REFERENCE_ONLY"]
 
 
-@router.get("/companies/{instrument_id}")
+@router.get("/companies/{instrument_id}", response_model=CompanyOut)
 @_errors
 def company(instrument_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     inst = store.get_instrument(instrument_id)
+    fundamentals = (
+        ensure_fundamentals(store, inst) if settings.RESEARCH_LIVE_EDGAR else fundamentals_status(store, instrument_id)
+    )
     obs = store.observations(instrument_id)
     sym = inst["local_symbol"] or inst["symbol"]
     edges = store.edges_touching([sym])
@@ -274,10 +297,19 @@ def company(instrument_id: str, store: ResearchStore = Store, actor: Actor = Who
             "downstream": [e for e in edges if e["src_symbol"] == sym],
         },
         "theses": [{k: t[k] for k in ("thesis_id", "title", "health", "updated_at")} for t in theses],
+        "fundamentals": fundamentals,
     }
 
 
-@router.get("/companies/{instrument_id}/prices")
+@router.post("/companies/{instrument_id}/refresh-fundamentals", response_model=FundamentalsStatusOut)
+@_errors
+def refresh_fundamentals(instrument_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
+    """Force a re-pull of SEC XBRL company facts (bypasses the TTL cache)."""
+    _eval_limiter.check(store, actor.workspace_id)
+    return ensure_fundamentals(store, store.get_instrument(instrument_id), force=True)
+
+
+@router.get("/companies/{instrument_id}/prices", response_model=PricesOut)
 @_errors
 def company_prices(instrument_id: str, store: ResearchStore = Store) -> dict[str, Any]:
     inst = store.get_instrument(instrument_id)
@@ -295,13 +327,13 @@ def company_prices(instrument_id: str, store: ResearchStore = Store) -> dict[str
 
 
 # ── theses ────────────────────────────────────────────────────────────
-@router.get("/theses")
+@router.get("/theses", response_model=list[ThesisListItemOut])
 @_errors
 def list_theses(store: ResearchStore = Store, actor: Actor = Who) -> list[dict[str, Any]]:
     return store.list_theses(actor)
 
 
-@router.post("/theses", status_code=201)
+@router.post("/theses", status_code=201, response_model=ThesisOut)
 @_errors
 def create_thesis(body: ThesisCreate, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     for iid in {*body.instrument_ids, *(c.instrument_id for c in body.conditions)}:
@@ -316,78 +348,78 @@ def create_thesis(body: ThesisCreate, store: ResearchStore = Store, actor: Actor
     return store.get_thesis(actor, thesis["thesis_id"])
 
 
-@router.post("/theses/from-research", status_code=201)
+@router.post("/theses/from-research", status_code=201, response_model=ThesisOut)
 @_errors
 def thesis_from_research(body: SessionRef, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     return thesis_from_session(store, actor, body.session_id, body.title)
 
 
-@router.get("/theses/{thesis_id}")
+@router.get("/theses/{thesis_id}", response_model=ThesisOut)
 @_errors
 def get_thesis(thesis_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     thesis = store.get_thesis(actor, thesis_id)
     return {**thesis, "health": health_of([c["current_status"] for c in thesis["conditions"]])}
 
 
-@router.patch("/theses/{thesis_id}")
+@router.patch("/theses/{thesis_id}", response_model=ThesisOut)
 @_errors
 def update_thesis(thesis_id: str, body: ThesisUpdate, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     changes = body.model_dump(exclude_none=True, exclude={"change_note"})
     return store.update_thesis(actor, thesis_id, changes, body.change_note)
 
 
-@router.post("/theses/{thesis_id}/evidence")
+@router.post("/theses/{thesis_id}/evidence", response_model=ThesisOut)
 @_errors
 def add_evidence(thesis_id: str, body: ThesisEvidenceIn, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     return store.add_evidence(actor, thesis_id, body.model_dump())
 
 
-@router.delete("/theses/{thesis_id}/evidence/{evidence_id}")
+@router.delete("/theses/{thesis_id}/evidence/{evidence_id}", response_model=ThesisOut)
 @_errors
 def remove_evidence(thesis_id: str, evidence_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     return store.remove_evidence(actor, thesis_id, evidence_id)
 
 
-@router.post("/theses/{thesis_id}/conditions")
+@router.post("/theses/{thesis_id}/conditions", response_model=ThesisOut)
 @_errors
 def add_condition(thesis_id: str, body: ThesisConditionIn, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     store.get_instrument(body.instrument_id)
     return store.add_condition(actor, thesis_id, body.model_dump())
 
 
-@router.delete("/theses/{thesis_id}/conditions/{condition_id}")
+@router.delete("/theses/{thesis_id}/conditions/{condition_id}", response_model=ThesisOut)
 @_errors
 def remove_condition(thesis_id: str, condition_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     return store.remove_condition(actor, thesis_id, condition_id)
 
 
-@router.post("/theses/{thesis_id}/evaluate")
+@router.post("/theses/{thesis_id}/evaluate", response_model=EvaluationOut)
 @_errors
 def evaluate(thesis_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
-    _eval_limiter.check(actor.workspace_id)
+    _eval_limiter.check(store, actor.workspace_id)
     return evaluate_thesis(store, actor, thesis_id)
 
 
-@router.post("/theses/{thesis_id}/revisions")
+@router.post("/theses/{thesis_id}/revisions", response_model=ThesisOut)
 @_errors
 def approve_revision(thesis_id: str, body: RevisionIn, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     return store.update_thesis(actor, thesis_id, {}, body.change_note.strip() or "Approved evaluation")
 
 
-@router.get("/theses/{thesis_id}/revisions/{revision_no}")
+@router.get("/theses/{thesis_id}/revisions/{revision_no}", response_model=RevisionOut)
 @_errors
 def get_revision(thesis_id: str, revision_no: int, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     return store.get_revision(actor, thesis_id, revision_no)
 
 
-@router.post("/theses/{thesis_id}/attach")
+@router.post("/theses/{thesis_id}/attach", response_model=ThesisOut)
 @_errors
 def attach(thesis_id: str, body: SessionRef, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     return attach_session(store, actor, thesis_id, body.session_id)
 
 
 # ── screener ──────────────────────────────────────────────────────────
-@router.post("/screener/query")
+@router.post("/screener/query", response_model=ScreenerOut)
 @_errors
 def screener(body: ScreenerQuery, store: ResearchStore = Store) -> dict[str, Any]:
     plan = parse_plan(body.query) if body.filters is None else {
@@ -396,7 +428,7 @@ def screener(body: ScreenerQuery, store: ResearchStore = Store) -> dict[str, Any
 
 
 # ── watchlists & notifications ───────────────────────────────────────
-@router.get("/watchlists")
+@router.get("/watchlists", response_model=list[WatchlistOut])
 @_errors
 def list_watchlists(store: ResearchStore = Store, actor: Actor = Who) -> list[dict[str, Any]]:
     lists = store.list_watchlists(actor)
@@ -415,31 +447,31 @@ def list_watchlists(store: ResearchStore = Store, actor: Actor = Who) -> list[di
     return lists
 
 
-@router.post("/watchlists", status_code=201)
+@router.post("/watchlists", status_code=201, response_model=WatchlistCreatedOut)
 @_errors
 def create_watchlist(body: WatchlistCreate, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, str]:
     return {"watchlist_id": store.create_watchlist(actor, body.name, body.instrument_ids)}
 
 
-@router.post("/watchlists/{watchlist_id}/items")
+@router.post("/watchlists/{watchlist_id}/items", response_model=StatusOut)
 @_errors
 def add_item(watchlist_id: str, body: WatchlistItemIn, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, str]:
     store.add_watchlist_item(actor, watchlist_id, body.instrument_id)
     return {"status": "added"}
 
 
-@router.delete("/watchlists/{watchlist_id}/items/{instrument_id}")
+@router.delete("/watchlists/{watchlist_id}/items/{instrument_id}", response_model=StatusOut)
 @_errors
 def remove_item(watchlist_id: str, instrument_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, str]:
     store.remove_watchlist_item(actor, watchlist_id, instrument_id)
     return {"status": "removed"}
 
 
-@router.post("/watchlists/run-checks")
+@router.post("/watchlists/run-checks", response_model=RunChecksOut)
 @_errors
 def run_checks(store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     """Manual "Run check now": evaluates every thesis in the workspace."""
-    _eval_limiter.check(actor.workspace_id)
+    _eval_limiter.check(store, actor.workspace_id)
     theses = store.list_theses(actor)[:MAX_THESES_PER_CHECK]
     results = [evaluate_thesis(store, actor, t["thesis_id"]) for t in theses]
     return {"evaluated": len(results), "results": [
@@ -447,14 +479,14 @@ def run_checks(store: ResearchStore = Store, actor: Actor = Who) -> dict[str, An
         for r in results]}
 
 
-@router.get("/notifications")
+@router.get("/notifications", response_model=list[NotificationOut])
 @_errors
 def notifications(store: ResearchStore = Store, actor: Actor = Who) -> list[dict[str, Any]]:
     return store.list_notifications(actor)
 
 
 # ── valuation sandbox ─────────────────────────────────────────────────
-@router.post("/valuation/dcf")
+@router.post("/valuation/dcf", response_model=DcfOut)
 @_errors
 def valuation(body: DCFInput) -> dict[str, Any]:
     params = body.model_dump()

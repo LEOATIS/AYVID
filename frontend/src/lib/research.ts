@@ -303,6 +303,8 @@ export const researchApi = {
   removeWatchItem: (wid: string, iid: string) => deleteJSON(`/watchlists/${wid}/items/${encodeURIComponent(iid)}`),
   createWatchlist: (name: string, instrument_ids: string[]) => postJSON<{ watchlist_id: string }>("/watchlists", { name, instrument_ids }),
   dcf: (body: unknown) => postJSON<DCFResult>("/valuation/dcf", body),
+  refreshFundamentals: (iid: string) =>
+    postJSON<FundamentalsStatus>(`/companies/${encodeURIComponent(iid)}/refresh-fundamentals`, undefined, { timeoutMs: 45_000 }),
 };
 
 export interface ScreenFilter {
@@ -364,6 +366,20 @@ export interface CompanyPayload {
   sources: SourceDoc[];
   exposures: { upstream: EdgeRow[]; downstream: EdgeRow[] };
   theses: { thesis_id: string; title: string; health: Health; updated_at: string }[];
+  fundamentals: FundamentalsStatus;
+}
+
+export interface FundamentalsStatus {
+  status: "OK" | "FAILED" | "UNSUPPORTED" | "NOT_FETCHED";
+  source: string;
+  fetched_at?: string;
+  filings?: number;
+  observations?: number;
+  latest_filing?: string;
+  cached?: boolean;
+  error?: string;
+  reason?: string;
+  previous?: FundamentalsStatus | null;
 }
 
 export interface EdgeRow {
@@ -401,7 +417,7 @@ export const useTheses = () =>
   useSWR<ThesisListItem[]>("/theses", (p: string) => getJSON<ThesisListItem[]>(p), swrOpts);
 export const useCompanies = () => useSWR<Instrument[]>("/companies", (p: string) => getJSON<Instrument[]>(p), swrOpts);
 export const useCompany = (id: string) =>
-  useSWR<CompanyPayload>(`/companies/${encodeURIComponent(id)}`, (p: string) => getJSON<CompanyPayload>(p, { maxAttempts: 1 }), swrOpts);
+  useSWR<CompanyPayload>(`/companies/${encodeURIComponent(id)}`, (p: string) => getJSON<CompanyPayload>(p, { maxAttempts: 1, timeoutMs: 45_000 }), swrOpts);
 export const usePrices = (id: string) =>
   useSWR<{ bars: { t: string; close: number }[]; currency: string; source_id: string; freshness: { is_stale: boolean; as_of: string } }>(
     `/companies/${encodeURIComponent(id)}/prices`,

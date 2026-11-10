@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -143,6 +144,13 @@ MIGRATIONS: list[tuple[int, str]] = [
         CREATE TABLE seed_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         """,
     ),
+    (
+        2,
+        """
+        CREATE TABLE rate_limit_hits (bucket TEXT NOT NULL, ts REAL NOT NULL);
+        CREATE INDEX ix_rate_limit_bucket_ts ON rate_limit_hits(bucket, ts);
+        """,
+    ),
 ]
 
 
@@ -237,6 +245,22 @@ class ResearchStore:
     def one(self, sql: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
         rows = self.query(sql, params)
         return rows[0] if rows else None
+
+    def rate_limit_hit(self, bucket: str, limit: int, window_sec: float = 60.0) -> bool:
+        """Record one hit for ``bucket``; False if it would exceed ``limit`` per window.
+
+        BEGIN IMMEDIATE takes SQLite's write lock before counting, so concurrent
+        workers sharing this database file cannot both slip under the limit.
+        """
+        now = time.time()
+        with self.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("DELETE FROM rate_limit_hits WHERE bucket = ? AND ts <= ?", (bucket, now - window_sec))
+            (count,) = conn.execute("SELECT COUNT(*) FROM rate_limit_hits WHERE bucket = ?", (bucket,)).fetchone()
+            if count >= limit:
+                return False
+            conn.execute("INSERT INTO rate_limit_hits VALUES (?, ?)", (bucket, now))
+            return True
 
     def seed_value(self, key: str) -> str | None:
         row = self.one("SELECT value FROM seed_state WHERE key = ?", (key,))

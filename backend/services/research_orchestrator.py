@@ -32,6 +32,7 @@ log = get_logger("research.orchestrator")
 FILING_STALE_DAYS = 200
 MAX_EXPOSURE_DEPTH = 3
 EDGAR_TIMEOUT_SEC = 6.0
+XBRL_TIMEOUT_SEC = 25.0
 LLM_SYNTHESIS_TIMEOUT_SEC = 20.0
 CITE = re.compile(r"\[((?:S|CALC)-?\d+)\]")
 
@@ -270,15 +271,34 @@ class ResearchOrchestrator:
         out: dict[str, dict[str, Any]] = {}
         edgar_down = simulate_failure in ("edgar", "all")
         for inst in instruments:
-            sources = self.store.sources_for(inst["instrument_id"])
-            if inst["data_tier"] == "LIVE_EDGAR_AND_LOCAL_OHLCV" and settings_live_edgar():
+            sec_filer = inst["country"] == "US" and inst["data_tier"] != "REFERENCE_ONLY"
+            if sec_filer and settings_live_edgar():
                 if edgar_down:
                     run.degraded.append({"provider": "SEC_EDGAR", "instrument": inst["symbol"],
                                          "error": "simulated outage"})
                 else:
-                    sources = await self._live_edgar(run, inst) + sources
+                    await self._refresh_xbrl(run, inst)
+            sources = self.store.sources_for(inst["instrument_id"])
+            if inst["data_tier"] == "LIVE_EDGAR_AND_LOCAL_OHLCV" and settings_live_edgar() and not edgar_down:
+                sources = await self._live_edgar(run, inst) + sources
             out[inst["instrument_id"]] = {"sources": sources}
         return out
+
+    async def _refresh_xbrl(self, run: Run, inst: dict[str, Any]) -> None:
+        """Pull structured 10-K/10-Q/20-F facts (cached by TTL) before metrics are read."""
+        from backend.services.research_xbrl import ensure_fundamentals
+
+        try:
+            status = await asyncio.wait_for(
+                asyncio.to_thread(ensure_fundamentals, self.store, inst), timeout=XBRL_TIMEOUT_SEC
+            )
+        except TimeoutError:
+            status = {"status": "FAILED", "error": "timeout"}
+        if status["status"] == "FAILED":
+            run.degraded.append({"provider": "SEC_EDGAR", "instrument": inst["symbol"],
+                                 "error": f"XBRL {status.get('error', 'unavailable')}"[:120]})
+        elif status["status"] == "OK":
+            run.live_docs += 1 if not status.get("cached") else 0
 
     async def _live_edgar(self, run: Run, inst: dict[str, Any]) -> list[dict[str, Any]]:
         from data_primitives.extractors.sec_edgar import fetch_recent_filings
@@ -326,7 +346,8 @@ class ResearchOrchestrator:
                 latest[o["metric_code"]] = o  # ordered by period_end → last wins
             m: dict[str, Any] = {"latest": latest, "refs": {}}
             for code in ("REVENUE", "GROSS_MARGIN_PCT", "OPERATING_MARGIN_PCT", "NET_MARGIN_PCT",
-                         "REVENUE_GROWTH_PCT", "CLOSE_PRICE", "RETURN_90D_PCT", "REALIZED_VOL_ANN",
+                         "REVENUE_GROWTH_PCT", "FREE_CASH_FLOW", "FCF_MARGIN_PCT", "TOTAL_ASSETS", "CASH",
+                         "LONG_TERM_DEBT", "CLOSE_PRICE", "RETURN_90D_PCT", "REALIZED_VOL_ANN",
                          "MAX_DRAWDOWN_PCT", "HURST_EXPONENT"):
                 o = latest.get(code)
                 if o is None:
@@ -343,7 +364,7 @@ class ResearchOrchestrator:
                         "observation_id": o["observation_id"], "source_label": s_label,
                         "instrument_id": iid, "as_of": o["as_of"],
                     })
-                fresh = staleness(o["as_of"], FILING_STALE_DAYS if o["provider"] == "FIXTURE_FILING" else stale_days)
+                fresh = staleness(o["as_of"], stale_days if o["provider"] == "LOCAL_OHLCV" else FILING_STALE_DAYS)
                 m["refs"][code] = ref
                 table.append({
                     "instrument_id": iid, "symbol": inst["symbol"], "metric_code": code,
