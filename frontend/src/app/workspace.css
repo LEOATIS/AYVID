@@ -34,6 +34,10 @@
 .ws-drawer.is-open { width: 400px; border-left-color: hsl(var(--border)); }
 .ws-drawer-body { height: calc(100vh - 92px); overflow-y: auto; overscroll-behavior: contain; padding: var(--s-4); width: 400px; }
 
+/* Author `display` rules would otherwise override the [hidden] attribute and
+   leave a closed sheet in the tab order. */
+.ws-rail-sheet[hidden] { display: none !important; }
+
 .ws-skip { position: absolute; left: -9999px; }
 .ws-skip:focus { left: 16px; top: 16px; z-index: 100; background: hsl(var(--fg)); color: hsl(var(--bg)); padding: 8px 12px; }
 

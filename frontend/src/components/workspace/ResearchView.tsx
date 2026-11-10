@@ -96,18 +96,23 @@ export function ResearchView({ initial }: { initial?: Artifact | null }) {
   const [art, setArt] = useState<Artifact | null>(initial ?? null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<{ message: string; requestId: string | null } | null>(null);
-  const autoRan = useRef(false);
+  const autoRanFor = useRef<string | null>(null);
+  const inFlight = useRef(false);
 
   const run = useCallback(
     async (q: string, simulate?: string | null, instrumentIds?: string[]) => {
-      if (q.trim().length < 3) return;
+      // Ref, not state: a held Enter key fires before React re-renders `running`.
+      if (q.trim().length < 3 || inFlight.current) return;
+      inFlight.current = true;
       setRunning(true);
       setError(null);
       setArt(null);
       try {
         const result = await researchApi.query(q.trim(), { simulate, instrumentIds });
         setArt(result);
-        await mutate("/research/sessions?limit=12");
+        // Prime the session page's cache so navigating there doesn't flash a reload.
+        await mutate(["session", result.session_id], result, { revalidate: false });
+        void mutate("/research/sessions?limit=12");
         router.replace(`/research/${result.session_id}`, { scroll: false });
       } catch (e) {
         setError({
@@ -115,6 +120,7 @@ export function ResearchView({ initial }: { initial?: Artifact | null }) {
           requestId: e instanceof ApiError ? e.requestId : null,
         });
       } finally {
+        inFlight.current = false;
         setRunning(false);
       }
     },
@@ -122,10 +128,12 @@ export function ResearchView({ initial }: { initial?: Artifact | null }) {
   );
 
   useEffect(() => {
-    if (autoRan.current || initial || params.get("run") !== "1") return;
+    const key = params.toString();
+    if (initial || params.get("run") !== "1" || autoRanFor.current === key) return;
     const q = params.get("q");
     if (!q) return;
-    autoRan.current = true;
+    autoRanFor.current = key;
+    setQuery(q);
     const iid = params.get("iid");
     void run(q, params.get("simulate"), iid ? [iid] : undefined);
   }, [params, initial, run]);
@@ -168,7 +176,7 @@ export function ResearchView({ initial }: { initial?: Artifact | null }) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               void run(query);
             }

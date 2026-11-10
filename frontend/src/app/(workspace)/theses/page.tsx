@@ -72,6 +72,8 @@ function ThesesBody() {
   useEffect(() => {
     if (params.get("demo") !== "missing-data" || demoRan.current) return;
     demoRan.current = true;
+    // Drop the param first so a reload can't create a second demo thesis.
+    window.history.replaceState(null, "", "/theses");
     researchApi
       .createThesis(MISSING_DATA_DEMO)
       .then(async (t) => {

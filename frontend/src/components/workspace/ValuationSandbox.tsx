@@ -41,13 +41,17 @@ export function ValuationSandbox({ baseRevenue, baseLabel, currency, observedMar
 
   useEffect(() => {
     if (!baseRevenue) return;
+    let live = true; // drop responses from superseded slider positions
     const t = setTimeout(() => {
       researchApi
         .dcf({ base_revenue: baseRevenue, ...p, years: 5 })
-        .then((r) => { setOut(r); setErr(null); })
-        .catch((e: unknown) => setErr(e instanceof Error ? e.message : "Valuation failed"));
+        .then((r) => { if (live) { setOut(r); setErr(null); } })
+        .catch((e: unknown) => live && setErr(e instanceof Error ? e.message : "Valuation failed"));
     }, 250);
-    return () => clearTimeout(t);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
   }, [baseRevenue, p]);
 
   if (!baseRevenue) {

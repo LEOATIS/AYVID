@@ -285,8 +285,11 @@ class ResearchStore:
         )
 
     def latest_observation(self, instrument_id: str, metric_code: str) -> dict[str, Any] | None:
-        rows = self.observations(instrument_id, metric_code)
-        return rows[-1] if rows else None
+        return self.one(
+            "SELECT * FROM financial_observations WHERE instrument_id = ? AND metric_code = ? "
+            "ORDER BY period_end DESC LIMIT 1",
+            (instrument_id, metric_code),
+        )
 
     def edges_touching(self, symbols: list[str]) -> list[dict[str, Any]]:
         if not symbols:
@@ -408,17 +411,18 @@ class ResearchStore:
         rows = self.query(
             "SELECT * FROM theses WHERE workspace_id = ? ORDER BY updated_at DESC", (actor.workspace_id,)
         )
-        out = []
-        for row in rows:
-            statuses = [
-                c["current_status"]
-                for c in self.query(
-                    "SELECT current_status FROM thesis_conditions WHERE thesis_id = ?",
-                    (row["thesis_id"],),
-                )
-            ]
-            out.append({**row, "condition_statuses": statuses, "health": health_of(statuses)})
-        return out
+        statuses: dict[str, list[str]] = {}
+        for c in self.query(
+            "SELECT c.thesis_id, c.current_status FROM thesis_conditions c "
+            "JOIN theses t ON t.thesis_id = c.thesis_id WHERE t.workspace_id = ? ORDER BY c.rowid",
+            (actor.workspace_id,),
+        ):
+            statuses.setdefault(c["thesis_id"], []).append(c["current_status"])
+        return [
+            {**row, "condition_statuses": statuses.get(row["thesis_id"], []),
+             "health": health_of(statuses.get(row["thesis_id"], []))}
+            for row in rows
+        ]
 
     def create_thesis(self, actor: Actor, data: dict[str, Any]) -> dict[str, Any]:
         now = utcnow()
@@ -569,6 +573,8 @@ class ResearchStore:
         return row
 
     def create_watchlist(self, actor: Actor, name: str, instrument_ids: list[str]) -> str:
+        for iid in instrument_ids:  # validate first so a bad id never leaves an empty orphan list
+            self.get_instrument(iid)
         wid = new_id("wl")
         self.insert(
             "watchlists",

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from decimal import ROUND_HALF_UP, Decimal, getcontext
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation, getcontext
 from typing import Any
 
 import numpy as np
@@ -159,6 +159,13 @@ def staleness(as_of: str | None, threshold_days: int, today: date | None = None)
 
 def dcf(params: dict[str, Any]) -> dict[str, Any]:
     """Simple FCFF DCF with Gordon terminal value. All inputs labelled ASSUMED."""
+    try:
+        return _dcf(params)
+    except (InvalidOperation, OverflowError) as exc:
+        raise CalculationError("inputs out of computable range") from exc
+
+
+def _dcf(params: dict[str, Any]) -> dict[str, Any]:
     revenue = dec(params["base_revenue"])
     g = dec(params["revenue_growth_pct"]) / PCT
     margin = dec(params["operating_margin_pct"]) / PCT

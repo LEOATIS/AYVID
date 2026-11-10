@@ -10,7 +10,14 @@ from decimal import Decimal
 from typing import Any
 
 from backend.services.research_calc import dec, staleness
-from backend.services.research_store import Actor, NotFoundError, ResearchStore, health_of, utcnow
+from backend.services.research_store import (
+    Actor,
+    NotFoundError,
+    ResearchStore,
+    health_of,
+    new_id,
+    utcnow,
+)
 from shared.config import settings
 
 EVENT_KIND = "EVENT"
@@ -55,6 +62,8 @@ def evaluate_condition(store: ResearchStore, actor: Actor, cond: dict[str, Any])
     out = {**base, "observed_value": str(value), "stale": fresh["is_stale"], "source_id": latest["source_id"],
            "observation_id": latest["observation_id"], "as_of": latest["as_of"]}
 
+    if cond["threshold_value"] is None:
+        return {**out, "status": "UNKNOWN_MISSING_DATA", "explanation": "Condition has no threshold."}
     if cond["operator"] == "DROP_PCT":
         if len(obs_all) < 2:
             return {**out, "status": "UNKNOWN_MISSING_DATA",
@@ -68,8 +77,6 @@ def evaluate_condition(store: ResearchStore, actor: Actor, cond: dict[str, Any])
                 "explanation": f"{latest['fiscal_period']} vs {obs_all[-2]['fiscal_period']}: change "
                                f"{-drop:.2f}% (threshold −{cond['threshold_value']}%).{stale_note}"}
 
-    if cond["threshold_value"] is None:
-        return {**out, "status": "UNKNOWN_MISSING_DATA", "explanation": "Condition has no threshold."}
     threshold = dec(cond["threshold_value"])
     hit = value < threshold if cond["operator"] == "<" else value > threshold
     return {**out, "status": "TRIGGERED" if hit else "NOT_TRIGGERED",
@@ -175,7 +182,7 @@ def attach_session(store: ResearchStore, actor: Actor, thesis_id: str, session_i
             stance = "CONTRADICTING" if any(label in b["refs"] for b in art.get("bear", [])) else "SUPPORTING"
             conn.execute(
                 "INSERT INTO thesis_evidence VALUES (?,?,?,?,?,?)",
-                (f"ev_{session_id}_{label}", thesis_id, c["source_id"], stance, f"From research: {art.get('title')}", utcnow()),
+                (new_id("ev"), thesis_id, c["source_id"], stance, f"From research: {art.get('title')}", utcnow()),
             )
     sessions = list(dict.fromkeys([*thesis["linked_session_ids"], session_id]))
     return store.update_thesis(actor, thesis_id, {"linked_session_ids": sessions}, f"Attached research {session_id}")

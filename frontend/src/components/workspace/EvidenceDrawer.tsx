@@ -69,7 +69,7 @@ function Field({ k, v, mono }: { k: string; v: ReactNode; mono?: boolean }) {
 }
 
 function Empty({ text }: { text: string }) {
-  return <p className="ws-empty">{text}</p>;
+  return <p className="ws-empty" role="status">{text}</p>;
 }
 
 function accessLabel(doc: SourceDoc): { text: string; tone: string } {
@@ -106,7 +106,7 @@ function SourceTab({ state }: { state: DrawerState }) {
 
   if (error) return <Empty text={`Source unavailable — ${error}`} />;
   if (!id) return <Empty text="Select a citation [S#] to inspect its source." />;
-  if (!doc) return <p className="ws-empty">Loading…</p>;
+  if (!doc) return <p className="ws-empty" role="status">Loading…</p>;
   const access = accessLabel(doc);
   return (
     <div>
@@ -261,45 +261,60 @@ function TelemetryPanel({ t }: { t: Telemetry }) {
 
 export function EvidenceDrawer() {
   const { state, open, close, telemetry } = useEvidence();
-  const ref = useRef<HTMLElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const isOpen = state !== null;
 
+  // Focus moves in only on the closed→open transition (not on every tab switch)
+  // and returns to whatever opened the drawer when it closes.
   useEffect(() => {
-    if (!state) return;
+    if (!isOpen) return;
+    returnFocus.current = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
     window.addEventListener("keydown", onKey);
-    ref.current?.focus();
-    return () => window.removeEventListener("keydown", onKey);
-  }, [state, close]);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      returnFocus.current?.focus?.();
+    };
+  }, [isOpen, close]);
+
+  const selectTab = (key: DrawerTab) => state && open({ ...state, tab: key });
+  const onTabKey = (e: React.KeyboardEvent, index: number) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    e.preventDefault();
+    const next = TABS[(index + (e.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length];
+    selectTab(next.key);
+    document.getElementById(`ev-tab-${next.key}`)?.focus();
+  };
 
   return (
-    <aside
-      ref={ref}
-      tabIndex={-1}
-      aria-label="Evidence inspector"
-      className={clsx("ws-drawer", state && "is-open")}
-      aria-hidden={!state}
-    >
+    <aside aria-label="Evidence inspector" className={clsx("ws-drawer", isOpen && "is-open")} inert={!isOpen}>
       <div className="flex items-center justify-between border-b border-app px-4 py-3">
         <p className="label-mono">Evidence{state?.label ? ` · ${state.label}` : ""}</p>
-        <button type="button" className="ws-icon-btn" aria-label="Close evidence inspector" onClick={close}>
+        <button ref={closeRef} type="button" className="ws-icon-btn" aria-label="Close evidence inspector" onClick={close}>
           <X className="h-4 w-4" aria-hidden />
         </button>
       </div>
       <div role="tablist" aria-label="Inspector views" className="ws-tabs">
-        {TABS.map((t) => (
+        {TABS.map((t, i) => (
           <button
             key={t.key}
+            id={`ev-tab-${t.key}`}
             role="tab"
             type="button"
             aria-selected={state?.tab === t.key}
+            aria-controls="ev-panel"
+            tabIndex={state?.tab === t.key ? 0 : -1}
             className="ws-tab"
-            onClick={() => state && open({ ...state, tab: t.key })}
+            onClick={() => selectTab(t.key)}
+            onKeyDown={(e) => onTabKey(e, i)}
           >
             {t.label}
           </button>
         ))}
       </div>
-      <div role="tabpanel" className="ws-drawer-body" aria-live="polite">
+      <div id="ev-panel" role="tabpanel" aria-labelledby={state ? `ev-tab-${state.tab}` : undefined} className="ws-drawer-body">
         {state?.tab === "source" && <SourceTab state={state} />}
         {state?.tab === "calc" && <CalcTab calc={state.calc} />}
         {state?.tab === "provenance" && <ProvenanceTab row={state.row} />}

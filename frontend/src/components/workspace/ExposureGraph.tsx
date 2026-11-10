@@ -33,7 +33,7 @@ export function ExposureGraph({ rows, origins, onSelect }: Props) {
 
   return (
     <div className="ws-scroll-x">
-      <svg width={width} height={height} role="img" aria-label="Supply-chain propagation graph" className="block">
+      <svg width={width} height={height} role="group" aria-label="Supply-chain propagation graph — the table view lists the same edges" className="block">
         {headers.slice(0, Math.max(...cols.keys(), 1) + 1).map((h, i) => (
           <text key={h} x={60 + i * COL_W} y={12} textAnchor="middle" className="graph-chip-text-subtle" fontSize={10} letterSpacing="0.08em">
             {h.toUpperCase()}

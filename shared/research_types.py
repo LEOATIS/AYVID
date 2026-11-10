@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 DataTier = Literal["LIVE_EDGAR_AND_LOCAL_OHLCV", "LOCAL_OHLCV_ONLY", "FIXTURE", "REFERENCE_ONLY"]
 Provider = Literal["SEC_EDGAR", "LOCAL_OHLCV", "SUPPLY_CHAIN_GRAPH", "USER_UPLOAD", "FIXTURE_FILING"]
@@ -63,6 +63,12 @@ class ThesisConditionIn(BaseModel):
             raise ValueError("threshold must be finite")
         return v
 
+    @model_validator(mode="after")
+    def _threshold_required(self) -> ThesisConditionIn:
+        if self.operator != "EVENT_OCCURS" and self.threshold_value is None:
+            raise ValueError(f"operator {self.operator} requires threshold_value")
+        return self
+
 
 class ThesisEvidenceIn(BaseModel):
     source_id: str = Field(min_length=1, max_length=128)
@@ -115,8 +121,13 @@ class ScreenerQuery(BaseModel):
     filters: list[ScreenerFilter] | None = Field(default=None, max_length=20)
 
 
+MAX_MONEY = 1e15  # millions — far above any listed company; keeps Decimal math in range
+
+
 class DCFInput(BaseModel):
-    base_revenue: float = Field(gt=0)
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    base_revenue: float = Field(gt=0, le=MAX_MONEY)
     revenue_growth_pct: float = Field(ge=-50, le=100)
     operating_margin_pct: float = Field(ge=-50, le=90)
     tax_rate_pct: float = Field(default=15, ge=0, le=60)
@@ -124,5 +135,22 @@ class DCFInput(BaseModel):
     discount_rate_pct: float = Field(ge=3, le=25)
     terminal_growth_pct: float = Field(default=3, ge=-2, le=6)
     years: int = Field(default=5, ge=1, le=15)
-    shares_outstanding: float | None = Field(default=None, gt=0)
-    net_cash: float = 0.0
+    shares_outstanding: float | None = Field(default=None, gt=0, le=MAX_MONEY)
+    net_cash: float = Field(default=0.0, ge=-MAX_MONEY, le=MAX_MONEY)
+
+
+ID_PATTERN = r"^[A-Za-z0-9_\-]{1,64}$"
+
+
+class SessionRef(BaseModel):
+    session_id: str = Field(pattern=ID_PATTERN)
+    title: str | None = Field(default=None, max_length=200)
+
+
+class RevisionIn(BaseModel):
+    change_note: str = Field(default="Approved evaluation", max_length=500)
+
+
+class EventIn(BaseModel):
+    code: str = Field(pattern=r"^[A-Z0-9_:.\-]{3,80}$")
+    description: str = Field(default="", max_length=500)

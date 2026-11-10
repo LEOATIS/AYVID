@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import clsx from "clsx";
 import { BookMarked, Building2, FlaskConical, ListChecks, Menu, Plus, Search, SlidersHorizontal, X } from "lucide-react";
@@ -119,11 +119,20 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
   const [railOpen, setRailOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+  const sheetClose = useRef<HTMLButtonElement>(null);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const sheetWasOpen = useRef(false);
+
+  useEffect(() => {
+    if (railOpen) sheetClose.current?.focus();
+    else if (sheetWasOpen.current) menuButton.current?.focus();
+    sheetWasOpen.current = railOpen;
+  }, [railOpen]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      const typing = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+      const typing = target?.closest("input, textarea, select, [contenteditable='true']") != null;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
       } else if (e.key === "/" && !typing) {
@@ -143,21 +152,21 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
     <EvidenceProvider>
       <div className="console-shell ws-root">
         <a href="#ws-main" className="ws-skip">Skip to content</a>
-        <aside className="ws-rail" aria-label="Workspace navigation">
+        <aside className="ws-rail" aria-label="Workspace navigation" inert={railOpen}>
           <Rail />
         </aside>
         {railOpen ? (
           <div className="ws-sheet-backdrop" onClick={() => setRailOpen(false)} aria-hidden />
         ) : null}
         <div role="dialog" aria-modal="true" aria-label="Navigation" className={clsx("ws-rail-sheet", railOpen && "is-open")} hidden={!railOpen}>
-          <button type="button" className="ws-icon-btn absolute right-3 top-3" aria-label="Close navigation" onClick={() => setRailOpen(false)}>
+          <button ref={sheetClose} type="button" className="ws-icon-btn absolute right-3 top-3" aria-label="Close navigation" onClick={() => setRailOpen(false)}>
             <X className="h-4 w-4" aria-hidden />
           </button>
           <Rail onNavigate={() => setRailOpen(false)} />
         </div>
-        <div className="ws-center">
+        <div className="ws-center" inert={railOpen}>
           <header className="ws-mobilebar">
-            <button type="button" className="ws-icon-btn" aria-label="Open navigation" onClick={() => setRailOpen(true)}>
+            <button ref={menuButton} type="button" className="ws-icon-btn" aria-label="Open navigation" aria-expanded={railOpen} onClick={() => setRailOpen(true)}>
               <Menu className="h-5 w-5" aria-hidden />
             </button>
             <Link href="/" className="font-display text-[18px] font-semibold text-fg">AYVID<span className="text-brand">.</span></Link>

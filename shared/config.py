@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     RESEARCH_LIVE_EDGAR: bool = True
     # Let the active LLM re-word the executive synthesis (citation-audited).
     RESEARCH_LLM_SYNTHESIS: bool = True
+    # Per-workspace cap on research runs (each may call SEC EDGAR + a paid LLM).
+    RESEARCH_QUERY_RATE_PER_MIN: int = 20
 
     # --- OpenBB Data ---
     OPENBB_FMP_API_KEY: str | None = None

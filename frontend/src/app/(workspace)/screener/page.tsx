@@ -78,7 +78,7 @@ function ScreenerBody() {
           ) : null}
           <ul className="space-y-2">
             {filters.map((f, i) => (
-              <li key={i} className="grid grid-cols-[1.2fr_0.7fr_1.6fr_auto] gap-2">
+              <li key={i} className="grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1.2fr_0.7fr_1.6fr_auto]">
                 <select aria-label="Field" className="ws-input" value={f.field} onChange={(e) => update(i, { field: e.target.value })}>
                   {FIELDS.map((x) => <option key={x}>{x}</option>)}
                 </select>

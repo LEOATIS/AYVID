@@ -171,6 +171,7 @@ function Conditions({ thesis }: { thesis: Thesis }) {
 function EvidenceColumn({ title, rows, thesis, tone }: { title: string; rows: EvidenceLink[]; thesis: Thesis; tone: string }) {
   const { open } = useEvidence();
   const { busy, run } = useThesisMutation(thesis.thesis_id);
+  const [confirming, setConfirming] = useState<string | null>(null);
   return (
     <div>
       <h3 className={clsx("mb-2 text-[13px] font-semibold", tone)}>{title} ({rows.length})</h3>
@@ -185,10 +186,20 @@ function EvidenceColumn({ title, rows, thesis, tone }: { title: string; rows: Ev
                 {e.source_title ?? e.source_id}
               </button>
               {e.note ? <p className="mt-0.5 text-[12px] text-muted">{e.note}</p> : null}
-              <button type="button" className="mt-0.5 text-[11px] text-subtle hover:text-neg" disabled={busy}
-                      onClick={() => void run(() => researchApi.removeEvidence(thesis.thesis_id, e.evidence_id))}>
-                Unlink
-              </button>
+              {confirming === e.evidence_id ? (
+                <span className="mt-1 flex gap-2">
+                  <button type="button" className="ws-btn !py-0.5 text-[12px] text-neg" disabled={busy}
+                          onClick={() => void run(() => researchApi.removeEvidence(thesis.thesis_id, e.evidence_id)).then(() => setConfirming(null))}>
+                    Confirm unlink
+                  </button>
+                  <button type="button" className="ws-btn !py-0.5 text-[12px]" onClick={() => setConfirming(null)}>Cancel</button>
+                </span>
+              ) : (
+                <button type="button" className="mt-1 py-1 text-[12px] text-subtle hover:text-neg" disabled={busy}
+                        aria-label={`Unlink ${e.source_title ?? e.source_id}`} onClick={() => setConfirming(e.evidence_id)}>
+                  Unlink
+                </button>
+              )}
             </li>
           ))}
         </ul>

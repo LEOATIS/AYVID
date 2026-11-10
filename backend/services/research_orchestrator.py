@@ -582,7 +582,8 @@ class ResearchOrchestrator:
             return {**base, "note": f"LLM call failed ({type(exc).__name__}) — deterministic synthesis used."}
         cited = set(CITE.findall(synthesis))
         known = set(run.citations) | set(run.calcs)
-        numbers_ok = all(n in " ".join(facts) for n in re.findall(r"\d+(?:\.\d+)?", synthesis))
+        fact_numbers = set(re.findall(r"\d+(?:[.,]\d+)*", " ".join(facts)))
+        numbers_ok = set(re.findall(r"\d+(?:[.,]\d+)*", CITE.sub("", synthesis))) <= fact_numbers
         if synthesis and cited and cited <= known and numbers_ok:
             sections["summary"]["llm_rewrite"] = synthesis
             return {**meta.to_dict(), "llm_used": True}

@@ -359,3 +359,57 @@ def test_import_linter_research_isolation_contract() -> None:
         cwd=REPO, capture_output=True, text=True, timeout=300, env={**os.environ, "PYTHONPATH": str(REPO)},
     )
     assert proc.returncode == 0 and "1 kept, 0 broken" in proc.stdout, proc.stdout[-2000:]
+
+
+# ── regressions from the ecc review pass ──────────────────────────────
+def test_attaching_one_session_to_two_theses_does_not_500(client: TestClient) -> None:
+    sid = ask(client, "NVDA gross margin")["session_id"]
+    ids = [client.post("/api/v1/theses", json={"title": f"Thesis {i}", "instrument_ids": [NVDA]}).json()["thesis_id"]
+           for i in range(2)]
+    for tid in ids:
+        assert client.post(f"/api/v1/theses/{tid}/attach", json={"session_id": sid}).status_code == 200
+
+
+def test_threshold_required_for_comparison_operators(client: TestClient) -> None:
+    body = {"title": "No threshold", "instrument_ids": [NVDA], "conditions": [
+        {"metric_code": "GROSS_MARGIN_PCT", "instrument_id": NVDA, "operator": "DROP_PCT", "description": "x"}]}
+    assert client.post("/api/v1/theses", json=body).status_code == 422
+
+
+@pytest.mark.parametrize("revenue", [1e30, "Infinity"])
+def test_dcf_rejects_out_of_range_inputs(client: TestClient, revenue: object) -> None:
+    body = {"base_revenue": revenue, "revenue_growth_pct": 10, "operating_margin_pct": 30, "discount_rate_pct": 10}
+    assert client.post("/api/v1/valuation/dcf", json=body).status_code == 422
+
+
+def test_watchlist_with_bad_instrument_leaves_no_orphan(client: TestClient) -> None:
+    before = len(client.get("/api/v1/watchlists").json())
+    r = client.post("/api/v1/watchlists", json={"name": "bad", "instrument_ids": [NVDA, "US:NYSE:NOPE"]})
+    assert r.status_code == 404 and len(client.get("/api/v1/watchlists").json()) == before
+
+
+def test_create_thesis_rejects_unknown_source_and_foreign_session(client: TestClient) -> None:
+    bad_src = {"title": "x" * 5, "instrument_ids": [NVDA], "evidence": [{"source_id": "SRC-NOPE", "stance": "SUPPORTING"}]}
+    assert client.post("/api/v1/theses", json=bad_src).status_code == 404
+    other = {"X-Workspace-ID": "ws_partner_fund", "X-User-ID": "user_partner"}
+    sid = client.post("/api/v1/research/query", json={"query": "NVDA margins"}, headers=other).json()["session_id"]
+    assert client.post("/api/v1/theses", json={"title": "steal", "instrument_ids": [NVDA], "session_id": sid}).status_code == 403
+
+
+def test_research_query_is_rate_limited_per_workspace(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(research_routes._query_limiter, "per_minute", 2)
+    monkeypatch.setattr(research_routes._query_limiter, "_hits", __import__("collections").defaultdict(__import__("collections").deque))
+    codes = [client.post("/api/v1/research/query", json={"query": "NVDA margins"}).status_code for _ in range(3)]
+    assert codes == [200, 200, 429]
+
+
+def test_llm_number_audit_rejects_invented_figures() -> None:
+    import re as _re
+
+    from backend.services.research_orchestrator import CITE
+
+    facts = "Revenue was $130.5B in FY2025 [S1]."
+    invented = "Revenue rose to $1305B [S1]."
+    nums = lambda t: set(_re.findall(r"\d+(?:[.,]\d+)*", CITE.sub("", t)))  # noqa: E731
+    assert not nums(invented) <= nums(facts)
+    assert nums("Revenue was $130.5B in FY2025 [S1].") <= nums(facts)

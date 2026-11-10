@@ -171,6 +171,9 @@ async def _gemini_generate(
     data = resp.json()
     parts = (data.get("candidates") or [{}])[0].get("content", {}).get("parts", [])
     text = "".join(p.get("text", "") for p in parts)
+    if not text.strip():
+        reason = (data.get("candidates") or [{}])[0].get("finishReason") or data.get("promptFeedback")
+        raise RuntimeError(f"Gemini returned no text (reason: {reason})")
     usage = data.get("usageMetadata", {})
     return text, usage.get("promptTokenCount"), usage.get("candidatesTokenCount")
 

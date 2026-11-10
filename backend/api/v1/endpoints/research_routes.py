@@ -7,9 +7,14 @@ the execution engine. Workspace scoping comes from ``X-Workspace-ID`` /
 
 from __future__ import annotations
 
+import inspect
 import re
+import sqlite3
 import threading
+import time
+from collections import defaultdict, deque
 from collections.abc import Callable
+from decimal import InvalidOperation
 from functools import wraps
 from pathlib import Path
 from typing import Any
@@ -40,8 +45,11 @@ from backend.services.research_thesis import (
 from shared.config import settings
 from shared.research_types import (
     DCFInput,
+    EventIn,
     ResearchQuery,
+    RevisionIn,
     ScreenerQuery,
+    SessionRef,
     ThesisConditionIn,
     ThesisCreate,
     ThesisEvidenceIn,
@@ -79,19 +87,74 @@ def get_actor(
     return Actor(workspace_id=ws, user_id=user)
 
 
+class _WindowLimiter:
+    """Per-workspace sliding-window limit for routes that call paid LLMs / SEC.
+
+    shortcut: in-process only — resets on restart and is per-worker; move to
+    Redis (or the gateway) before running more than one API process.
+    """
+
+    def __init__(self, per_minute: int) -> None:
+        self.per_minute = per_minute
+        self._hits: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = threading.Lock()
+
+    def check(self, key: str) -> None:
+        now = time.monotonic()
+        with self._lock:
+            hits = self._hits[key]
+            while hits and now - hits[0] > 60:
+                hits.popleft()
+            if len(hits) >= self.per_minute:
+                raise HTTPException(429, f"Rate limit: {self.per_minute} requests/minute per workspace")
+            hits.append(now)
+
+
+_query_limiter = _WindowLimiter(settings.RESEARCH_QUERY_RATE_PER_MIN)
+_eval_limiter = _WindowLimiter(settings.RESEARCH_QUERY_RATE_PER_MIN * 3)
+MAX_THESES_PER_CHECK = 50
+
+
+def _map_error(exc: Exception) -> HTTPException | None:
+    if isinstance(exc, ForbiddenError):
+        return HTTPException(403, str(exc))
+    if isinstance(exc, (NotFoundError, FileNotFoundError)):
+        return HTTPException(404, str(exc) if isinstance(exc, NotFoundError) else "resource file not found")
+    if isinstance(exc, sqlite3.IntegrityError):
+        return HTTPException(409, "conflicts with an existing record")
+    if isinstance(exc, (CalculationError, InvalidOperation, ValueError)):
+        return HTTPException(422, str(exc) or "invalid value")
+    return None
+
+
 def _errors(fn: Callable[..., Any]) -> Callable[..., Any]:
-    """Map domain errors to HTTP status codes."""
+    """Map domain errors to HTTP status codes.
+
+    Sync handlers stay sync so FastAPI runs their blocking SQLite work in its
+    threadpool instead of on the event loop.
+    """
+    if inspect.iscoroutinefunction(fn):
+        @wraps(fn)
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return await fn(*args, **kwargs)
+            except Exception as exc:
+                mapped = _map_error(exc)
+                if mapped is None:
+                    raise
+                raise mapped from exc
+
+        return async_wrapper
 
     @wraps(fn)
-    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
-            return await fn(*args, **kwargs)
-        except ForbiddenError as exc:
-            raise HTTPException(403, str(exc)) from exc
-        except NotFoundError as exc:
-            raise HTTPException(404, str(exc)) from exc
-        except CalculationError as exc:
-            raise HTTPException(422, str(exc)) from exc
+            return fn(*args, **kwargs)
+        except Exception as exc:
+            mapped = _map_error(exc)
+            if mapped is None:
+                raise
+            raise mapped from exc
 
     return wrapper
 
@@ -103,7 +166,7 @@ Who = Depends(get_actor)
 # ── meta ──────────────────────────────────────────────────────────────
 @router.get("/research/meta")
 @_errors
-async def research_meta(store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
+def research_meta(store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     from shared import llm_client
 
     provider = llm_client.active_provider()
@@ -125,7 +188,7 @@ async def research_meta(store: ResearchStore = Store, actor: Actor = Who) -> dic
 # ── research ──────────────────────────────────────────────────────────
 @router.get("/research/resolve")
 @_errors
-async def resolve(q: str = Query(min_length=1, max_length=64), store: ResearchStore = Store) -> dict[str, Any]:
+def resolve(q: str = Query(min_length=1, max_length=64), store: ResearchStore = Store) -> dict[str, Any]:
     return resolve_symbol(store, q)
 
 
@@ -137,6 +200,7 @@ async def research_query(
     store: ResearchStore = Store,
     actor: Actor = Who,
 ) -> dict[str, Any]:
+    _query_limiter.check(actor.workspace_id)
     return await ResearchOrchestrator(store).run(
         actor, body.query,
         simulate_failure=simulate_provider_failure or body.simulate_provider_failure,
@@ -146,19 +210,22 @@ async def research_query(
 
 @router.get("/research/sessions")
 @_errors
-async def list_sessions(limit: int = Query(20, ge=1, le=100), store: ResearchStore = Store, actor: Actor = Who) -> list[dict[str, Any]]:
+def list_sessions(limit: int = Query(20, ge=1, le=100), store: ResearchStore = Store, actor: Actor = Who) -> list[dict[str, Any]]:
     return store.list_sessions(actor, limit)
 
 
 @router.get("/research/sessions/{session_id}")
 @_errors
-async def get_session(session_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
-    return store.get_session(actor, session_id)["artifact"]
+def get_session(session_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
+    artifact = store.get_session(actor, session_id)["artifact"]
+    if artifact is None:
+        raise NotFoundError("research session has no saved answer")
+    return artifact
 
 
 @router.get("/research/sources/{source_id}")
 @_errors
-async def get_source(source_id: str, store: ResearchStore = Store) -> dict[str, Any]:
+def get_source(source_id: str, store: ResearchStore = Store) -> dict[str, Any]:
     src = store.get_source(source_id)
     if src is None:
         raise NotFoundError("source not found")
@@ -167,7 +234,7 @@ async def get_source(source_id: str, store: ResearchStore = Store) -> dict[str, 
 
 @router.get("/research/edges/{edge_id}")
 @_errors
-async def get_edge(edge_id: str, store: ResearchStore = Store) -> dict[str, Any]:
+def get_edge(edge_id: str, store: ResearchStore = Store) -> dict[str, Any]:
     edge = store.get_edge(edge_id)
     if edge is None:
         raise NotFoundError("edge not found")
@@ -176,24 +243,21 @@ async def get_edge(edge_id: str, store: ResearchStore = Store) -> dict[str, Any]
 
 @router.post("/research/events")
 @_errors
-async def post_event(body: dict[str, str], store: ResearchStore = Store, actor: Actor = Who) -> dict[str, str]:
-    code = str(body.get("code", "")).strip()
-    if not re.match(r"^[A-Z0-9_:.\-]{3,80}$", code):
-        raise HTTPException(422, "code must be 3-80 chars of A-Z0-9_:.-")
-    record_event(store, actor, code, str(body.get("description", ""))[:500])
-    return {"status": "recorded", "code": code}
+def post_event(body: EventIn, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, str]:
+    record_event(store, actor, body.code, body.description)
+    return {"status": "recorded", "code": body.code}
 
 
 # ── companies ─────────────────────────────────────────────────────────
 @router.get("/companies")
 @_errors
-async def list_companies(store: ResearchStore = Store) -> list[dict[str, Any]]:
+def list_companies(store: ResearchStore = Store) -> list[dict[str, Any]]:
     return [i for i in store.list_instruments() if i["data_tier"] != "REFERENCE_ONLY"]
 
 
 @router.get("/companies/{instrument_id}")
 @_errors
-async def company(instrument_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
+def company(instrument_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     inst = store.get_instrument(instrument_id)
     obs = store.observations(instrument_id)
     sym = inst["local_symbol"] or inst["symbol"]
@@ -215,7 +279,7 @@ async def company(instrument_id: str, store: ResearchStore = Store, actor: Actor
 
 @router.get("/companies/{instrument_id}/prices")
 @_errors
-async def company_prices(instrument_id: str, store: ResearchStore = Store) -> dict[str, Any]:
+def company_prices(instrument_id: str, store: ResearchStore = Store) -> dict[str, Any]:
     inst = store.get_instrument(instrument_id)
     if not inst["local_symbol"]:
         raise NotFoundError("no local price series for this listing")
@@ -233,15 +297,20 @@ async def company_prices(instrument_id: str, store: ResearchStore = Store) -> di
 # ── theses ────────────────────────────────────────────────────────────
 @router.get("/theses")
 @_errors
-async def list_theses(store: ResearchStore = Store, actor: Actor = Who) -> list[dict[str, Any]]:
+def list_theses(store: ResearchStore = Store, actor: Actor = Who) -> list[dict[str, Any]]:
     return store.list_theses(actor)
 
 
 @router.post("/theses", status_code=201)
 @_errors
-async def create_thesis(body: ThesisCreate, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
-    for iid in body.instrument_ids:
+def create_thesis(body: ThesisCreate, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
+    for iid in {*body.instrument_ids, *(c.instrument_id for c in body.conditions)}:
         store.get_instrument(iid)
+    for ev in body.evidence:
+        if store.get_source(ev.source_id) is None:
+            raise NotFoundError(f"source {ev.source_id} not found")
+    if body.session_id:
+        store.get_session(actor, body.session_id)
     thesis = store.create_thesis(actor, body.model_dump())
     evaluate_thesis(store, actor, thesis["thesis_id"])
     return store.get_thesis(actor, thesis["thesis_id"])
@@ -249,85 +318,78 @@ async def create_thesis(body: ThesisCreate, store: ResearchStore = Store, actor:
 
 @router.post("/theses/from-research", status_code=201)
 @_errors
-async def thesis_from_research(body: dict[str, str], store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
-    session_id = str(body.get("session_id", ""))
-    if not _ID_RE.match(session_id):
-        raise HTTPException(422, "session_id required")
-    title = body.get("title")
-    return thesis_from_session(store, actor, session_id, title[:200] if title else None)
+def thesis_from_research(body: SessionRef, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
+    return thesis_from_session(store, actor, body.session_id, body.title)
 
 
 @router.get("/theses/{thesis_id}")
 @_errors
-async def get_thesis(thesis_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
+def get_thesis(thesis_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     thesis = store.get_thesis(actor, thesis_id)
     return {**thesis, "health": health_of([c["current_status"] for c in thesis["conditions"]])}
 
 
 @router.patch("/theses/{thesis_id}")
 @_errors
-async def update_thesis(thesis_id: str, body: ThesisUpdate, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
+def update_thesis(thesis_id: str, body: ThesisUpdate, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     changes = body.model_dump(exclude_none=True, exclude={"change_note"})
     return store.update_thesis(actor, thesis_id, changes, body.change_note)
 
 
 @router.post("/theses/{thesis_id}/evidence")
 @_errors
-async def add_evidence(thesis_id: str, body: ThesisEvidenceIn, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
+def add_evidence(thesis_id: str, body: ThesisEvidenceIn, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     return store.add_evidence(actor, thesis_id, body.model_dump())
 
 
 @router.delete("/theses/{thesis_id}/evidence/{evidence_id}")
 @_errors
-async def remove_evidence(thesis_id: str, evidence_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
+def remove_evidence(thesis_id: str, evidence_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     return store.remove_evidence(actor, thesis_id, evidence_id)
 
 
 @router.post("/theses/{thesis_id}/conditions")
 @_errors
-async def add_condition(thesis_id: str, body: ThesisConditionIn, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
+def add_condition(thesis_id: str, body: ThesisConditionIn, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     store.get_instrument(body.instrument_id)
     return store.add_condition(actor, thesis_id, body.model_dump())
 
 
 @router.delete("/theses/{thesis_id}/conditions/{condition_id}")
 @_errors
-async def remove_condition(thesis_id: str, condition_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
+def remove_condition(thesis_id: str, condition_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     return store.remove_condition(actor, thesis_id, condition_id)
 
 
 @router.post("/theses/{thesis_id}/evaluate")
 @_errors
-async def evaluate(thesis_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
+def evaluate(thesis_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
+    _eval_limiter.check(actor.workspace_id)
     return evaluate_thesis(store, actor, thesis_id)
 
 
 @router.post("/theses/{thesis_id}/revisions")
 @_errors
-async def approve_revision(thesis_id: str, body: dict[str, str], store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
-    note = str(body.get("change_note", "")).strip()[:500] or "Approved evaluation"
-    return store.update_thesis(actor, thesis_id, {}, note)
+def approve_revision(thesis_id: str, body: RevisionIn, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
+    return store.update_thesis(actor, thesis_id, {}, body.change_note.strip() or "Approved evaluation")
 
 
 @router.get("/theses/{thesis_id}/revisions/{revision_no}")
 @_errors
-async def get_revision(thesis_id: str, revision_no: int, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
+def get_revision(thesis_id: str, revision_no: int, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     return store.get_revision(actor, thesis_id, revision_no)
 
 
 @router.post("/theses/{thesis_id}/attach")
 @_errors
-async def attach(thesis_id: str, body: dict[str, str], store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
-    session_id = str(body.get("session_id", ""))
-    if not _ID_RE.match(session_id):
-        raise HTTPException(422, "session_id required")
-    return attach_session(store, actor, thesis_id, session_id)
+def attach(thesis_id: str, body: SessionRef, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
+    return attach_session(store, actor, thesis_id, body.session_id)
 
 
 # ── screener ──────────────────────────────────────────────────────────
 @router.post("/screener/query")
 @_errors
-async def screener(body: ScreenerQuery, store: ResearchStore = Store) -> dict[str, Any]:
+def screener(body: ScreenerQuery, store: ResearchStore = Store) -> dict[str, Any]:
     plan = parse_plan(body.query) if body.filters is None else {
         "query": body.query, "filters": [f.model_dump() for f in body.filters], "unparsed": []}
     return {"plan": plan, **run_screen(store, plan["filters"])}
@@ -336,8 +398,9 @@ async def screener(body: ScreenerQuery, store: ResearchStore = Store) -> dict[st
 # ── watchlists & notifications ───────────────────────────────────────
 @router.get("/watchlists")
 @_errors
-async def list_watchlists(store: ResearchStore = Store, actor: Actor = Who) -> list[dict[str, Any]]:
+def list_watchlists(store: ResearchStore = Store, actor: Actor = Who) -> list[dict[str, Any]]:
     lists = store.list_watchlists(actor)
+    theses = store.list_theses(actor)
     for wl in lists:
         for item in wl["items"]:
             item["freshness"] = staleness(item.get("last_bar"), settings.RESEARCH_STALE_DAYS)
@@ -347,36 +410,38 @@ async def list_watchlists(store: ResearchStore = Store, actor: Actor = Who) -> l
             }
             item["theses"] = [
                 {"thesis_id": t["thesis_id"], "title": t["title"], "health": t["health"]}
-                for t in store.list_theses(actor) if item["instrument_id"] in t["instrument_ids"]
+                for t in theses if item["instrument_id"] in t["instrument_ids"]
             ]
     return lists
 
 
 @router.post("/watchlists", status_code=201)
 @_errors
-async def create_watchlist(body: WatchlistCreate, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, str]:
+def create_watchlist(body: WatchlistCreate, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, str]:
     return {"watchlist_id": store.create_watchlist(actor, body.name, body.instrument_ids)}
 
 
 @router.post("/watchlists/{watchlist_id}/items")
 @_errors
-async def add_item(watchlist_id: str, body: WatchlistItemIn, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, str]:
+def add_item(watchlist_id: str, body: WatchlistItemIn, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, str]:
     store.add_watchlist_item(actor, watchlist_id, body.instrument_id)
     return {"status": "added"}
 
 
 @router.delete("/watchlists/{watchlist_id}/items/{instrument_id}")
 @_errors
-async def remove_item(watchlist_id: str, instrument_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, str]:
+def remove_item(watchlist_id: str, instrument_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, str]:
     store.remove_watchlist_item(actor, watchlist_id, instrument_id)
     return {"status": "removed"}
 
 
 @router.post("/watchlists/run-checks")
 @_errors
-async def run_checks(store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
+def run_checks(store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     """Manual "Run check now": evaluates every thesis in the workspace."""
-    results = [evaluate_thesis(store, actor, t["thesis_id"]) for t in store.list_theses(actor)]
+    _eval_limiter.check(actor.workspace_id)
+    theses = store.list_theses(actor)[:MAX_THESES_PER_CHECK]
+    results = [evaluate_thesis(store, actor, t["thesis_id"]) for t in theses]
     return {"evaluated": len(results), "results": [
         {"thesis_id": r["thesis_id"], "health": r["health"], "counts": r["counts"], "changed": len(r["changed"])}
         for r in results]}
@@ -384,14 +449,14 @@ async def run_checks(store: ResearchStore = Store, actor: Actor = Who) -> dict[s
 
 @router.get("/notifications")
 @_errors
-async def notifications(store: ResearchStore = Store, actor: Actor = Who) -> list[dict[str, Any]]:
+def notifications(store: ResearchStore = Store, actor: Actor = Who) -> list[dict[str, Any]]:
     return store.list_notifications(actor)
 
 
 # ── valuation sandbox ─────────────────────────────────────────────────
 @router.post("/valuation/dcf")
 @_errors
-async def valuation(body: DCFInput) -> dict[str, Any]:
+def valuation(body: DCFInput) -> dict[str, Any]:
     params = body.model_dump()
     rate, growth = params["discount_rate_pct"], params["revenue_growth_pct"]
     rates = [round(rate + d, 2) for d in (-2, -1, 0, 1, 2)]
