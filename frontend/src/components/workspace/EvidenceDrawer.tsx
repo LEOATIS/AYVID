@@ -25,6 +25,8 @@ interface DrawerState {
   calc?: Calculation | null;
   row?: DataRow | null;
   edge?: Exposure | EdgeRow | null;
+  /** false = open without moving keyboard focus (used for automatic opens). */
+  focus?: boolean;
 }
 
 interface EvidenceCtx {
@@ -264,13 +266,16 @@ export function EvidenceDrawer() {
   const closeRef = useRef<HTMLButtonElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const isOpen = state !== null;
+  const wantsFocus = useRef(true);
+  wantsFocus.current = state?.focus !== false;
 
   // Focus moves in only on the closed→open transition (not on every tab switch)
   // and returns to whatever opened the drawer when it closes.
   useEffect(() => {
     if (!isOpen) return;
-    returnFocus.current = document.activeElement as HTMLElement | null;
-    closeRef.current?.focus();
+    const moveFocus = wantsFocus.current;
+    returnFocus.current = moveFocus ? (document.activeElement as HTMLElement | null) : null;
+    if (moveFocus) closeRef.current?.focus();
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
     window.addEventListener("keydown", onKey);
     return () => {

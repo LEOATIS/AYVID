@@ -112,23 +112,8 @@ export function MarketingNav() {
 
           <div className="ml-auto flex items-center gap-2 md:ml-0">
             <Link
-              href="/console"
-              className="hidden items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-semibold uppercase tracking-[0.14em] transition-colors sm:inline-flex"
-              style={{
-                color: "hsl(var(--brand))",
-                border: "1px solid hsl(var(--brand-dim))",
-                background: "transparent",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "hsl(var(--brand))";
-                e.currentTarget.style.color = "hsl(var(--brand-fg))";
-                e.currentTarget.style.borderColor = "hsl(var(--brand))";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
-                e.currentTarget.style.color = "hsl(var(--brand))";
-                e.currentTarget.style.borderColor = "hsl(var(--brand-dim))";
-              }}
+              href="/console/live-shock?demo=1"
+              className="hidden items-center gap-1.5 rounded-full border border-[hsl(var(--brand-dim))] bg-transparent px-3.5 py-1.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--brand))] transition-colors hover:border-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))] hover:text-[hsl(var(--brand-fg))] focus-visible:bg-[hsl(var(--brand))] focus-visible:text-[hsl(var(--brand-fg))] sm:inline-flex"
             >
               Shock Lab <ArrowUpRight className="h-3 w-3" />
             </Link>
@@ -181,7 +166,7 @@ export function MarketingNav() {
               })}
               <li>
                 <Link
-                  href="/console"
+                  href="/console/live-shock?demo=1"
                   className="mt-3 flex items-center justify-between rounded-full px-4 py-3 text-[14px] font-semibold"
                   style={{
                     background: "hsl(var(--brand))",

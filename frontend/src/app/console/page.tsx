@@ -217,7 +217,7 @@ export default function Dashboard() {
         >
           <div>
             <p className="label-mono" style={{ color: "hsl(var(--fg-subtle))" }}>
-              Fund performance
+              Paper portfolio performance
             </p>
             <p
               className="body-prose"

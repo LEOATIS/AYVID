@@ -16,7 +16,7 @@ const NAV = [
   { href: "/theses", label: "Theses", icon: BookMarked },
   { href: "/screener", label: "Screener", icon: SlidersHorizontal },
   { href: "/watchlists", label: "Watchlists", icon: ListChecks },
-  { href: "/console/live-shock", label: "Shock Lab", icon: FlaskConical },
+  { href: "/console/live-shock?demo=1", label: "Shock Lab", icon: FlaskConical },
 ];
 
 export const FOCUS_QUERY_EVENT = "ayvid:focus-query";

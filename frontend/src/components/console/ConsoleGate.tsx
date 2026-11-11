@@ -1,148 +1,81 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowRight, Lock } from "lucide-react";
+import { ArrowRight, FlaskConical } from "lucide-react";
 
 const STORAGE_KEY = "ayvid-console-unlocked";
-const REQUIRED_PASSPHRASE =
-  process.env.NEXT_PUBLIC_CONSOLE_PASSPHRASE || "ayvid";
 
 /**
- * Wraps the operations console in a soft access gate.
- * This is symbolic, not a security boundary — the heavy lifting still
- * lives behind the FastAPI service. The gate exists so the public site
- * can advertise an "internal access only" surface without exposing
- * P&L, positions, and signals on first paint.
+ * Interstitial in front of the Quant Lab (historical shock backtests, paper only).
+ * Not a security boundary — the API enforces access. It exists so visitors know
+ * they are leaving the research workspace for a backtest lab, and `?demo=1`
+ * (used by every in-app link) skips it.
  */
 export function ConsoleGate({ children }: { children: ReactNode }) {
   const [unlocked, setUnlocked] = useState<boolean | null>(null);
-  const [value, setValue] = useState("");
-  const [error, setError] = useState<string | null>(null);
+
+  const enter = () => {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, "1");
+    } catch {
+      // storage blocked (private mode) — still let them in for this view
+    }
+    setUnlocked(true);
+  };
 
   useEffect(() => {
+    let ok = false;
     try {
-      const ok = sessionStorage.getItem(STORAGE_KEY) === "1";
-      setUnlocked(ok);
+      ok = sessionStorage.getItem(STORAGE_KEY) === "1";
     } catch {
-      setUnlocked(false);
+      ok = false;
     }
+    if (!ok && new URLSearchParams(window.location.search).get("demo") === "1") {
+      enter();
+      return;
+    }
+    setUnlocked(ok);
   }, []);
 
   if (unlocked === null) {
-    return <div className="grid min-h-[60vh] place-items-center text-[12px] text-subtle">…</div>;
+    return <div className="grid min-h-[60vh] place-items-center text-[12px] text-subtle">Loading…</div>;
   }
   if (unlocked) return <>{children}</>;
 
-  const onSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (value.trim().toLowerCase() === REQUIRED_PASSPHRASE.toLowerCase()) {
-      sessionStorage.setItem(STORAGE_KEY, "1");
-      setUnlocked(true);
-      setError(null);
-    } else {
-      setError("That passphrase isn't recognised. Contact the desk.");
-    }
-  };
-
   return (
-    <div className="relative min-h-[100dvh] overflow-hidden bg-app">
-      {/* faint grid */}
-      <div className="pointer-events-none absolute inset-0 marketing-grid opacity-30" aria-hidden />
-
+    <div className="relative flex min-h-[100dvh] flex-col bg-app">
       <header className="container-page flex h-16 items-center justify-between">
-        {/* Wordmark only — the stacked lockup lives in the main hero
-            area below.  Keeping the header restrained sets the
-            "private bank reading room" register that the brief
-            wants for the gate. */}
-        <Link
-          href="/"
-          aria-label="AYVID home"
-          className="flex items-center"
-        >
-          <img
-            src="/brand/wordmark-horizontal-dark.svg"
-            alt="AYVID"
-            style={{ height: 24, width: "auto", display: "block" }}
-          />
+        <Link href="/" aria-label="AYVID home" className="flex items-center">
+          <img src="/brand/wordmark-horizontal-dark.svg" alt="AYVID" width={96} height={24} style={{ height: 24, width: "auto" }} />
         </Link>
-        <Link
-          href="/"
-          className="text-[11px] uppercase tracking-[0.18em] text-subtle hover:text-fg"
-        >
-          ← Back to ayvid.ai
+        <Link href="/research" className="text-[11px] uppercase tracking-[0.18em] text-subtle hover:text-fg">
+          ← Research workspace
         </Link>
       </header>
 
-      <main className="container-page mt-[6vh] grid grid-cols-1 gap-12 pb-24 md:mt-[12vh] md:grid-cols-12">
-        <section className="md:col-span-7 reveal">
-          {/* Stacked wordmark — mark + AYVID + tagline, centred over
-              the gate's headline column.  The brief asks for it to
-              sit "centred" but the gate is a two-column layout, so
-              left-align inside the wider 7-col section preserves the
-              hierarchy: brand mark establishes presence, then the
-              "Restricted area" eyebrow drives the message. */}
-          <img
-            src="/brand/wordmark-stacked-dark.svg"
-            alt="AYVID"
-            style={{
-              width: 180,
-              height: "auto",
-              display: "block",
-              marginBottom: 40,
-            }}
-          />
-          <div className="eyebrow inline-flex items-center gap-2 text-[10px]">
-            <Lock className="h-3 w-3" /> Restricted area
-          </div>
-          <h1 className="font-display display-1 mt-4 text-fg">
-            Operations console.
-            <br />
-            <span className="text-muted">Internal access only.</span>
-          </h1>
-          <p className="lede mt-6">
-            Beyond this page lies the live trading surface — fund performance, open positions,
-            the active signal book, the shock catalog, and the demo replay. We don&rsquo;t
-            publish that to the open internet, the same way Renaissance, Jane Street, and
-            Citadel don&rsquo;t.
-          </p>
-          <p className="prose-body mt-4 max-w-prose">
-            If you&rsquo;re from YC, an LP, or otherwise expected, you&rsquo;ve already
-            been given the passphrase. Otherwise, the public materials at{" "}
-            <Link href="/" className="link-arrow">ayvid.ai</Link> describe everything we
-            disclose externally.
-          </p>
-        </section>
-
-        <section className="md:col-span-5">
-          <div className="surface bg-panel p-8">
-            <div className="eyebrow text-[10px]">Sign in</div>
-            <h2 className="font-display display-3 mt-2 text-fg">Enter passphrase</h2>
-            <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-3">
-              <input
-                type="password"
-                autoFocus
-                autoComplete="current-password"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                placeholder="••••••••"
-                className="w-full border border-strong bg-app px-4 py-3 font-mono text-[14px] text-fg outline-none transition focus:border-[hsl(var(--fg))]"
-              />
-              {error && (
-                <p className="text-[12px] text-neg">{error}</p>
-              )}
-              <button type="submit" className="btn-primary w-full justify-center">
-                Continue <ArrowRight className="h-3.5 w-3.5" />
-              </button>
-              <p className="mt-1 text-[11px] text-subtle">
-                Session-scoped unlock. Closing the tab logs you back out.
-              </p>
-            </form>
-          </div>
-        </section>
+      <main className="container-page mt-[8vh] max-w-[720px] pb-24">
+        <div className="eyebrow inline-flex items-center gap-2 text-[10px]">
+          <FlaskConical className="h-3 w-3" aria-hidden /> Quant Lab · paper only
+        </div>
+        <h1 className="font-display display-2 mt-4 text-fg" style={{ textWrap: "balance" }}>
+          Historical shock backtests behind the research workspace.
+        </h1>
+        <p className="lede mt-6">
+          The lab replays named historical shocks (2018–2025) through the supply-chain graph to check that the
+          exposures the workspace surfaces behave as expected. Results are simulated with modeled costs. Nothing here
+          places orders: paper trading is enforced and the research workspace has no path to execution.
+        </p>
+        <div className="mt-8 flex flex-wrap items-center gap-3">
+          <button type="button" onClick={enter} className="btn-primary" autoFocus>
+            Enter Shock Lab <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+          </button>
+          <Link href="/research" className="btn-ghost">Back to research</Link>
+        </div>
+        <p className="mt-3 text-[11px] text-subtle">Hypothetical, backtested results. Not investment advice.</p>
       </main>
 
       <footer className="container-page mt-auto py-8 text-[11px] text-subtle">
-        © {new Date().getFullYear()} AYVID · For informational purposes only · Not an offer
+        © {new Date().getFullYear()} AYVID · Research only · Not an offer or recommendation
       </footer>
     </div>
   );

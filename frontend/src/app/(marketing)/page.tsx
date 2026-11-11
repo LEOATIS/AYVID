@@ -121,7 +121,7 @@ export default function HomePage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href="/research" className="btn-primary !rounded-full !px-5 !py-3">Open the workspace <ArrowRight className="h-3.5 w-3.5" aria-hidden /></Link>
-            <Link href="/console/live-shock" className="btn-ghost !rounded-full !px-5 !py-3">Shock Lab (paper only)</Link>
+            <Link href="/console/live-shock?demo=1" className="btn-ghost !rounded-full !px-5 !py-3">Shock Lab (paper only)</Link>
             <Link href="/notes" className="btn-ghost !rounded-full !px-5 !py-3">Research notes</Link>
           </div>
         </div>

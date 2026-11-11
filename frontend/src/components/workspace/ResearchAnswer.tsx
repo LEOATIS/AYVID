@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import clsx from "clsx";
 import { useSWRConfig } from "swr";
@@ -82,7 +82,6 @@ function Section({ id, title, children, aside }: { id: string; title: string; ch
 function DataTable({ rows, art }: { rows: DataRow[]; art: Artifact }) {
   const { open } = useEvidence();
   const [view, setView] = useState<"table" | "chart">("table");
-  const marginRows = rows.filter((r) => r.scale === "PERCENT");
   const inspect = (r: DataRow) => {
     if (r.ref?.startsWith("CALC")) open({ tab: "calc", label: r.ref, calc: art.calculations[r.ref], row: r });
     else open({ tab: "provenance", label: r.metric_label, row: r, sourceId: art.citations[r.source_label ?? ""]?.source_id });
@@ -121,7 +120,7 @@ function DataTable({ rows, art }: { rows: DataRow[]; art: Artifact }) {
           </table>
         </div>
       ) : (
-        <PercentBars rows={marginRows} onSelect={inspect} />
+        <SeriesBars rows={rows} onSelect={inspect} />
       )}
       <p className="mt-2 text-[12px] text-subtle">
         Values are in each company&apos;s reporting currency and stated scale — never converted or mixed. Click any row for its audit trail.
@@ -130,26 +129,46 @@ function DataTable({ rows, art }: { rows: DataRow[]; art: Artifact }) {
   );
 }
 
-function PercentBars({ rows, onSelect }: { rows: DataRow[]; onSelect: (r: DataRow) => void }) {
-  if (!rows.length) return <p className="ws-empty">No percentage metrics to chart.</p>;
+function BarGroup({ title, rows, onSelect }: { title: string; rows: DataRow[]; onSelect: (r: DataRow) => void }) {
   const max = Math.max(...rows.map((r) => Math.abs(Number(r.value))), 1);
   return (
-    <ul className="space-y-1.5" aria-label="Percentage metrics chart">
-      {rows.map((r) => {
-        const v = Number(r.value);
-        return (
-          <li key={r.observation_id}>
-            <button type="button" onClick={() => onSelect(r)} className="grid w-full grid-cols-[150px_1fr_64px] items-center gap-3 text-left text-[12px]">
-              <span className="truncate text-muted">{r.symbol} · {r.metric_label}</span>
-              <span className="relative h-2.5 rounded-sm bg-sunken">
-                <span className="absolute inset-y-0 left-0 rounded-sm" style={{ width: `${(Math.abs(v) / max) * 100}%`, background: v < 0 ? "hsl(var(--neg))" : "hsl(var(--brand))" }} />
-              </span>
-              <span className="num text-right">{r.display}</span>
-            </button>
-          </li>
-        );
-      })}
-    </ul>
+    <div>
+      <p className="label-mono mb-1.5">{title}</p>
+      <ul className="space-y-1.5">
+        {rows.map((r) => {
+          const v = Number(r.value);
+          return (
+            <li key={r.observation_id}>
+              <button type="button" onClick={() => onSelect(r)} title={`${r.metric_label} ${r.fiscal_period} · ${r.basis} · as of ${r.as_of}`}
+                      className="grid w-full grid-cols-[minmax(0,170px)_1fr_76px] items-center gap-3 text-left text-[12px] hover:text-fg">
+                <span className="min-w-0 truncate text-muted">{r.symbol} · {r.metric_label} <span className="num text-subtle">{r.fiscal_period}</span></span>
+                <span className="relative h-2.5 rounded-sm bg-sunken" aria-hidden>
+                  <span className="absolute inset-y-0 left-0 rounded-sm"
+                        style={{ width: `${(Math.abs(v) / max) * 100}%`, background: v < 0 ? "hsl(var(--neg))" : "hsl(var(--brand))" }} />
+                </span>
+                <span className="num text-right">{r.display}{r.ref ? <sup className="ml-0.5 text-subtle">{r.ref}</sup> : null}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/** Bars per unit: money is grouped by currency (never mixed on one scale), then percentages. */
+function SeriesBars({ rows, onSelect }: { rows: DataRow[]; onSelect: (r: DataRow) => void }) {
+  const money = rows.filter((r) => r.scale === "MILLIONS");
+  const percent = rows.filter((r) => r.scale === "PERCENT");
+  const currencies = [...new Set(money.map((r) => r.currency ?? "—"))];
+  if (!money.length && !percent.length) return <p className="ws-empty">No reported amounts or percentages to chart.</p>;
+  return (
+    <div className="space-y-5" aria-label="Financial metrics chart">
+      {currencies.map((ccy) => (
+        <BarGroup key={ccy} title={`Amounts · ${ccy} · millions`} rows={money.filter((r) => (r.currency ?? "—") === ccy)} onSelect={onSelect} />
+      ))}
+      {percent.length ? <BarGroup title="Margins, growth & returns · %" rows={percent} onSelect={onSelect} /> : null}
+    </div>
   );
 }
 
@@ -259,15 +278,54 @@ export function Banners({ art }: { art: Artifact }) {
   );
 }
 
+const WIDE_SCREEN_PX = 1280;
+
+/** States what actually ran — never claims an LLM that did not answer. */
+function VerificationLine({ art }: { art: Artifact }) {
+  const t = art.telemetry;
+  const engine = t.llm_used
+    ? `${t.provider} · ${t.model} (wording only)`
+    : t.provider && t.provider !== "deterministic"
+      ? `Deterministic synthesis (${t.provider} unavailable)`
+      : "Deterministic synthesis";
+  const items: [string, string][] = [
+    ["Engine", engine],
+    ["Numbers", "SEC XBRL + deterministic Python"],
+    ["Citations verified", String(art.audit.verified)],
+    ["Calculations", String(Object.keys(art.calculations).length)],
+    ["Uncited claims removed", String(art.audit.dropped)],
+  ];
+  return (
+    <dl className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-y border-app py-2 text-[12px]" aria-label="Verification summary">
+      {items.map(([k, v]) => (
+        <div key={k} className="flex gap-1.5">
+          <dt className="text-subtle">{k}</dt>
+          <dd className="num text-fg">{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 export function ResearchAnswer({ art }: { art: Artifact }) {
-  const { setTelemetry, close } = useEvidence();
+  const { setTelemetry, close, open } = useEvidence();
+  const autoOpened = useRef<string | null>(null);
   useEffect(() => {
     setTelemetry(art.telemetry);
+    // Wide screens show the evidence beside the answer straight away — once per answer and
+    // without moving focus, so a reader who closes it keeps it closed.
+    if (art.status === "COMPLETE" && autoOpened.current !== art.session_id && window.innerWidth >= WIDE_SCREEN_PX) {
+      autoOpened.current = art.session_id;
+      const first = art.summary?.claims.flatMap((c) => c.refs)[0];
+      if (first?.startsWith("CALC")) open({ tab: "calc", label: first, calc: art.calculations[first] ?? null, focus: false });
+      else if (first) open({ tab: "source", label: first, source: art.citations[first] ?? null, sourceId: art.citations[first]?.source_id, focus: false });
+    }
     return () => {
+      autoOpened.current = null; // this cleanup closes the drawer, so a remount may auto-open again
       setTelemetry(null);
       close();
     };
-  }, [art, setTelemetry, close]);
+  }, [art, setTelemetry, close, open]);
 
   if (art.status === "REFUSED" && art.refusal) {
     return (
@@ -315,6 +373,7 @@ export function ResearchAnswer({ art }: { art: Artifact }) {
           ))}
         </div>
         <h1 className="ws-h1 mt-3">{art.title}</h1>
+        <VerificationLine art={art} />
       </header>
       <Banners art={art} />
 
