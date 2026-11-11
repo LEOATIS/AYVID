@@ -1665,5 +1665,7 @@
 /* Theme-aware wordmark (components/ui/Wordmark.tsx). */
 .wordmark-on-light { display: block; }
 .wordmark-on-dark { display: none; }
-html.dark .wordmark-on-light { display: none; }
-html.dark .wordmark-on-dark { display: block; }
+html.dark .wordmark-on-light,
+[data-theme="dark"] .wordmark-on-light { display: none; }
+html.dark .wordmark-on-dark,
+[data-theme="dark"] .wordmark-on-dark { display: block; }

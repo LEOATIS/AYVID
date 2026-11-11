@@ -129,7 +129,14 @@ function DataTable({ rows, art }: { rows: DataRow[]; art: Artifact }) {
   );
 }
 
-function BarGroup({ title, rows, onSelect }: { title: string; rows: DataRow[]; onSelect: (r: DataRow) => void }) {
+interface BarGroupProps {
+  title: string;
+  rows: DataRow[];
+  onSelect: (r: DataRow) => void;
+  showMetric: boolean;
+}
+
+function BarGroup({ title, rows, onSelect, showMetric }: BarGroupProps) {
   const max = Math.max(...rows.map((r) => Math.abs(Number(r.value))), 1);
   return (
     <div>
@@ -140,13 +147,13 @@ function BarGroup({ title, rows, onSelect }: { title: string; rows: DataRow[]; o
           return (
             <li key={r.observation_id}>
               <button type="button" onClick={() => onSelect(r)} title={`${r.metric_label} ${r.fiscal_period} · ${r.basis} · as of ${r.as_of}`}
-                      className="grid w-full grid-cols-[minmax(0,170px)_1fr_76px] items-center gap-3 text-left text-[12px] hover:text-fg">
-                <span className="min-w-0 truncate text-muted">{r.symbol} · {r.metric_label} <span className="num text-subtle">{r.fiscal_period}</span></span>
+                      className="grid w-full grid-cols-[minmax(0,220px)_minmax(0,1fr)_112px] items-center gap-3 text-left text-[12px] hover:text-fg">
+                <span className="min-w-0 truncate text-muted">{r.symbol}{showMetric ? ` · ${r.metric_label}` : ""} <span className="num text-subtle">{r.fiscal_period}</span></span>
                 <span className="relative h-2.5 rounded-sm bg-sunken" aria-hidden>
                   <span className="absolute inset-y-0 left-0 rounded-sm"
                         style={{ width: `${(Math.abs(v) / max) * 100}%`, background: v < 0 ? "hsl(var(--neg))" : "hsl(var(--brand))" }} />
                 </span>
-                <span className="num text-right">{r.display}{r.ref ? <sup className="ml-0.5 text-subtle">{r.ref}</sup> : null}</span>
+                <span className="num whitespace-nowrap text-right">{r.display}{r.ref ? <sup className="ml-0.5 text-subtle">{r.ref}</sup> : null}</span>
               </button>
             </li>
           );
@@ -156,18 +163,45 @@ function BarGroup({ title, rows, onSelect }: { title: string; rows: DataRow[]; o
   );
 }
 
-/** Bars per unit: money is grouped by currency (never mixed on one scale), then percentages. */
+interface MoneyGroup {
+  title: string;
+  rows: DataRow[];
+  showMetric: boolean;
+}
+
+/**
+ * Never mix currencies on one scale. A metric with 2+ points (periods or companies)
+ * gets its own scale so the comparison is real; one-off metrics share a per-currency
+ * "Amounts" scale, because a lone bar on its own scale is always full width.
+ */
+function moneyGroups(money: DataRow[]): MoneyGroup[] {
+  const byMetric = new Map<string, DataRow[]>();
+  for (const r of money) {
+    const key = `${r.metric_label} · ${r.currency ?? "—"}`;
+    byMetric.set(key, [...(byMetric.get(key) ?? []), r]);
+  }
+  const multi = [...byMetric].filter(([, rows]) => rows.length > 1).map(([title, rows]) => ({ title, rows, showMetric: false }));
+  const singles = [...byMetric.values()].filter((rows) => rows.length === 1).flat();
+  const currencies = [...new Set(singles.map((r) => r.currency ?? "—"))];
+  const pooled = currencies.map((ccy) => ({
+    title: `Amounts · ${ccy}`,
+    rows: singles.filter((r) => (r.currency ?? "—") === ccy),
+    showMetric: true,
+  }));
+  return [...multi, ...pooled];
+}
+
+/** Bars per unit: money by metric (or pooled per currency), then percentages. */
 function SeriesBars({ rows, onSelect }: { rows: DataRow[]; onSelect: (r: DataRow) => void }) {
   const money = rows.filter((r) => r.scale === "MILLIONS");
   const percent = rows.filter((r) => r.scale === "PERCENT");
-  const currencies = [...new Set(money.map((r) => r.currency ?? "—"))];
   if (!money.length && !percent.length) return <p className="ws-empty">No reported amounts or percentages to chart.</p>;
   return (
     <div className="space-y-5" aria-label="Financial metrics chart">
-      {currencies.map((ccy) => (
-        <BarGroup key={ccy} title={`Amounts · ${ccy} · millions`} rows={money.filter((r) => (r.currency ?? "—") === ccy)} onSelect={onSelect} />
+      {moneyGroups(money).map((g) => (
+        <BarGroup key={g.title} title={g.title} rows={g.rows} onSelect={onSelect} showMetric={g.showMetric} />
       ))}
-      {percent.length ? <BarGroup title="Margins, growth & returns · %" rows={percent} onSelect={onSelect} /> : null}
+      {percent.length ? <BarGroup title="Margins, growth & returns · %" rows={percent} onSelect={onSelect} showMetric /> : null}
     </div>
   );
 }

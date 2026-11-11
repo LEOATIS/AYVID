@@ -4,7 +4,6 @@ import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { useEffect, useState } from "react";
 import { Menu, X, ArrowUpRight } from "lucide-react";
-import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { Wordmark } from "@/components/ui/Wordmark";
 
 /**
@@ -104,7 +103,6 @@ export function MarketingNav() {
           </nav>
 
           <div className="ml-auto flex items-center gap-2 md:ml-0">
-            <ThemeToggle />
             <Link
               href="/console/live-shock?demo=1"
               className="hidden items-center gap-1.5 rounded-full border border-[hsl(var(--brand-dim))] bg-transparent px-3.5 py-1.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--brand))] transition-colors hover:border-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))] hover:text-[hsl(var(--brand-fg))] focus-visible:bg-[hsl(var(--brand))] focus-visible:text-[hsl(var(--brand-fg))] sm:inline-flex"
