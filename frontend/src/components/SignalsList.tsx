@@ -37,8 +37,8 @@ export function SignalsList({ signals }: { signals: Signal[] }) {
             >
               {s.instrument.replace("_", " ")}
             </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span className="num text-sm font-semibold text-fg">
                   {s.ticker}
                 </span>
@@ -56,7 +56,7 @@ export function SignalsList({ signals }: { signals: Signal[] }) {
               </div>
               <p className="mt-1 text-[12px] text-muted">{s.rationale}</p>
             </div>
-            <div className="text-right text-[11px] text-muted">
+            <div className="shrink-0 text-right text-[11px] text-muted">
               <div>
                 conv{" "}
                 <span className="num text-fg">

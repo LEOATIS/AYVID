@@ -6,7 +6,7 @@ import { Suspense, useMemo, useState } from "react";
 import { useSWRConfig } from "swr";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ApiNotFoundError } from "@/lib/api";
-import { fmtValue, researchApi, useCompany, usePrices, type CompanyPayload, type DataRow, type EdgeRow } from "@/lib/research";
+import { TIER_LABEL, fmtValue, researchApi, useCompany, usePrices, type CompanyPayload, type DataRow, type EdgeRow } from "@/lib/research";
 import { useEvidence } from "@/components/workspace/EvidenceDrawer";
 import { HealthDot } from "@/components/workspace/WorkspaceShell";
 import { ValuationSandbox } from "@/components/workspace/ValuationSandbox";
@@ -245,7 +245,7 @@ function CompanyBody({ iid }: { iid: string }) {
       <h1 className="ws-h1 mt-2">{inst.name}</h1>
       <div className="mt-2 flex flex-wrap gap-2">
         <span className="ws-tag">{inst.industry ?? "Unclassified"}</span>
-        <span className="ws-tag ws-tag-brand">{inst.data_tier.replace(/_/g, " ")}</span>
+        <span className="ws-tag ws-tag-brand">{TIER_LABEL[inst.data_tier] ?? inst.data_tier}</span>
         {inst.cik ? <span className="ws-tag">CIK {inst.cik}</span> : null}
         <Link className="ws-tag hover:text-fg"
               href={`/research?q=${encodeURIComponent(`${inst.symbol} key risks, margins and invalidation conditions`)}&iid=${encodeURIComponent(iid)}&run=1`}>
@@ -254,7 +254,7 @@ function CompanyBody({ iid }: { iid: string }) {
       </div>
       {data.freshness.is_stale ? (
         <p className="ws-banner ws-banner-warn mt-4">
-          STALE DATA (As of {data.freshness.as_of}) — the local price series ended {data.freshness.age_days} days ago. Do not use for live market-cap or valuation ratios.
+          STALE DATA (As of {data.freshness.as_of}) — the price feed returned nothing newer; last bar is {data.freshness.age_days} days old. Do not use for live market-cap or valuation ratios.
         </p>
       ) : null}
 
@@ -289,7 +289,7 @@ function CompanyBody({ iid }: { iid: string }) {
         </div>
         {prices.data && priceSource ? (
           <button type="button" className="mt-1 text-[11px] text-subtle hover:text-fg" onClick={() => open({ tab: "source", label: "Price series", sourceId: priceSource })}>
-            Source: local OHLCV · {prices.data.bars.length} daily bars · as of {prices.data.freshness.as_of} ↗
+            Source: Yahoo Finance daily close (unadjusted) · {prices.data.bars.length} bars · as of {prices.data.freshness.as_of} ↗
           </button>
         ) : null}
       </section>

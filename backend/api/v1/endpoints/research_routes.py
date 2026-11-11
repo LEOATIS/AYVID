@@ -46,6 +46,7 @@ from backend.api.v1.endpoints.research_schemas import (
 from backend.core.security import verify_api_key
 from backend.services.research_calc import CalculationError, dcf, dcf_sensitivity, staleness
 from backend.services.research_orchestrator import ResearchOrchestrator
+from backend.services.research_prices import merged_bars, refresh_prices, start_background_refresh
 from backend.services.research_resolver import resolve_symbol
 from backend.services.research_screener import parse_plan, run_screen
 from backend.services.research_seed import OHLCV_DIR, REPO_ROOT, read_bars, seed_research_db
@@ -96,6 +97,8 @@ def get_store() -> ResearchStore:
             store = ResearchStore(path if path.is_absolute() else REPO_ROOT / path)
             seed_research_db(store)
             _store = store
+            if settings.RESEARCH_LIVE_PRICES:
+                start_background_refresh(lambda: store)
     return _store
 
 
@@ -199,7 +202,10 @@ def research_meta(store: ResearchStore = Store, actor: Actor = Who) -> dict[str,
                 "configured": [p for p in llm_client.PROVIDERS if llm_client._provider_key(p)]},
         "data": {"instruments": n, "latest_bar": last, "stale": staleness(last, settings.RESEARCH_STALE_DAYS),
                  "live_edgar_enabled": settings.RESEARCH_LIVE_EDGAR,
-                 "mode_label": "Verified Local + SEC EDGAR" if settings.RESEARCH_LIVE_EDGAR else "Local verified data"},
+                 "live_prices_enabled": settings.RESEARCH_LIVE_PRICES,
+                 "mode_label": " + ".join(
+                     ["SEC EDGAR" if settings.RESEARCH_LIVE_EDGAR else "Local filings",
+                      "live prices" if settings.RESEARCH_LIVE_PRICES else "local price snapshot"])},
         "safety": {"PAPER_TRADING": settings.PAPER_TRADING, "AUTO_EXECUTE": settings.AUTO_EXECUTE,
                    "LIVE_TRADING_CONFIRMED": settings.LIVE_TRADING_CONFIRMED, "research_can_trade": False},
     }
@@ -279,6 +285,9 @@ def list_companies(store: ResearchStore = Store) -> list[dict[str, Any]]:
 @_errors
 def company(instrument_id: str, store: ResearchStore = Store, actor: Actor = Who) -> dict[str, Any]:
     inst = store.get_instrument(instrument_id)
+    if settings.RESEARCH_LIVE_PRICES:
+        refresh_prices(store, [inst])
+        inst = store.get_instrument(instrument_id)
     fundamentals = (
         ensure_fundamentals(store, inst) if settings.RESEARCH_LIVE_EDGAR else fundamentals_status(store, instrument_id)
     )
@@ -315,7 +324,12 @@ def company_prices(instrument_id: str, store: ResearchStore = Store) -> dict[str
     inst = store.get_instrument(instrument_id)
     if not inst["local_symbol"]:
         raise NotFoundError("no local price series for this listing")
-    bars, cleaning = read_bars(OHLCV_DIR / f"{inst['local_symbol']}.jsonl")
+    if settings.RESEARCH_LIVE_PRICES:
+        refresh_prices(store, [inst])
+        inst = store.get_instrument(instrument_id)
+    bars = merged_bars(store, inst)
+    local_file = OHLCV_DIR / f"{inst['local_symbol']}.jsonl"
+    cleaning = read_bars(local_file)[1] if local_file.exists() else {}
     return {
         "instrument_id": instrument_id,
         "currency": inst["currency"],

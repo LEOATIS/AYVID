@@ -94,7 +94,7 @@ export default function LiveShockPage() {
             tape update from live API endpoints — no fixtures.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center gap-2 sm:w-auto">
           <ScenarioPicker
             scenarios={scenarios}
             selectedId={selected?.id}
@@ -184,7 +184,7 @@ export default function LiveShockPage() {
             )}
           </div>
 
-          <div className="grid gap-5 lg:grid-cols-2">
+          <div className="grid gap-5 lg:grid-cols-2 [&>*]:min-w-0">
             <div
               className={`transition-opacity duration-500 ${stage >= 3 ? "opacity-100" : "opacity-30"}`}
             >
@@ -308,14 +308,14 @@ function ScenarioPicker({
   const current = scenarios.find((s) => s.id === selectedId);
 
   if (loading) {
-    return <div className="skeleton h-9 w-72" />;
+    return <div className="skeleton h-9 w-full sm:w-72" />;
   }
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0 flex-1 sm:flex-none">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex w-72 items-center justify-between gap-2 rounded-lg border border-app bg-panel px-3 py-1.5 text-[12px] font-medium text-fg transition-colors hover:bg-[hsl(var(--bg-sunken))]"
+        className="inline-flex w-full items-center justify-between gap-2 rounded-lg sm:w-72 border border-app bg-panel px-3 py-1.5 text-[12px] font-medium text-fg transition-colors hover:bg-[hsl(var(--bg-sunken))]"
       >
         <span className="truncate">
           {current ? current.name : "Select shock…"}

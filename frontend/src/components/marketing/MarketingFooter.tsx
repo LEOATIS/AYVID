@@ -1,3 +1,4 @@
+import { Wordmark } from "@/components/ui/Wordmark";
 import Link from "next/link";
 
 /**
@@ -62,26 +63,12 @@ export function MarketingFooter() {
           className="footer-grid"
         >
           <div>
-            {/* Footer logomark — Golden-Gnomon mark + AYVID + tagline,
-                slightly dimmed (opacity 0.86) per the colophon-of-a-
-                printed-report aesthetic.  Always dark-variant since
-                marketing is pinned to the dark register. */}
             <Link
               href="/"
               aria-label="AYVID home"
-              style={{ display: "inline-block", textDecoration: "none" }}
+              style={{ display: "inline-block", textDecoration: "none", opacity: 0.86, marginBottom: 16 }}
             >
-              <img
-                src="/brand/wordmark-horizontal-dark.svg"
-                alt="AYVID"
-                style={{
-                  height: 28,
-                  width: "auto",
-                  opacity: 0.86,
-                  display: "block",
-                  marginBottom: 16,
-                }}
-              />
+              <Wordmark height={28} />
             </Link>
             <p
               className="body-prose"

@@ -39,6 +39,10 @@ class Actor:
     user_id: str = DEFAULT_USER
 
 
+# Providers of daily price bars (frozen snapshot, then live top-up).
+MARKET_PROVIDERS: tuple[str, ...] = ("LOCAL_OHLCV", "YAHOO_FINANCE_DAILY")
+
+
 def utcnow() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat()
 
@@ -149,6 +153,14 @@ MIGRATIONS: list[tuple[int, str]] = [
         """
         CREATE TABLE rate_limit_hits (bucket TEXT NOT NULL, ts REAL NOT NULL);
         CREATE INDEX ix_rate_limit_bucket_ts ON rate_limit_hits(bucket, ts);
+        """,
+    ),
+    (
+        3,
+        """
+        CREATE TABLE price_bars (instrument_id TEXT NOT NULL, day TEXT NOT NULL, close REAL NOT NULL,
+            volume REAL, PRIMARY KEY (instrument_id, day));
+        CREATE TABLE price_refresh (instrument_id TEXT PRIMARY KEY, checked_at REAL NOT NULL);
         """,
     ),
 ]

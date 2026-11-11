@@ -268,7 +268,7 @@ def ingest_instrument(store: ResearchStore, inst: dict[str, Any], payload: dict[
         # XBRL supersedes the curated stand-ins and any ratios derived from them.
         conn.execute("DELETE FROM financial_observations WHERE instrument_id = ? AND provider = 'FIXTURE_FILING'", (iid,))
         conn.execute(
-            "DELETE FROM financial_observations WHERE instrument_id = ? AND status = 'DERIVED' AND provider != 'LOCAL_OHLCV'",
+            "DELETE FROM financial_observations WHERE instrument_id = ? AND status = 'DERIVED' AND provider NOT IN ('LOCAL_OHLCV', 'YAHOO_FINANCE_DAILY')",
             (iid,),
         )
     store.insert_many("source_documents", sources)

@@ -1661,3 +1661,9 @@
 @keyframes pipeline-flow  { 0% { left: -48px; } 100% { left: 100%; } }
 .pipeline-sweep { animation: pipeline-sweep 4.2s linear infinite; }
 .pipeline-flow  { animation: pipeline-flow  1.2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+
+/* Theme-aware wordmark (components/ui/Wordmark.tsx). */
+.wordmark-on-light { display: block; }
+.wordmark-on-dark { display: none; }
+html.dark .wordmark-on-light { display: none; }
+html.dark .wordmark-on-dark { display: block; }

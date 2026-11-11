@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
+import { Wordmark } from "@/components/ui/Wordmark";
 import Link from "next/link";
 import { ArrowRight, FlaskConical } from "lucide-react";
 
@@ -46,7 +47,7 @@ export function ConsoleGate({ children }: { children: ReactNode }) {
     <div className="relative flex min-h-[100dvh] flex-col bg-app">
       <header className="container-page flex h-16 items-center justify-between">
         <Link href="/" aria-label="AYVID home" className="flex items-center">
-          <img src="/brand/wordmark-horizontal-dark.svg" alt="AYVID" width={96} height={24} style={{ height: 24, width: "auto" }} />
+          <Wordmark height={24} />
         </Link>
         <Link href="/research" className="text-[11px] uppercase tracking-[0.18em] text-subtle hover:text-fg">
           ← Research workspace

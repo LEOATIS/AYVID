@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     RESEARCH_LLM_SYNTHESIS: bool = True
     # Re-fetch SEC XBRL company facts at most this often per instrument.
     RESEARCH_XBRL_TTL_HOURS: int = 24
+    # Top up daily prices from Yahoo Finance (unadjusted close) every 15 min.
+    RESEARCH_LIVE_PRICES: bool = True
     # Per-workspace cap on research runs (each may call SEC EDGAR + a paid LLM).
     RESEARCH_QUERY_RATE_PER_MIN: int = 20
 

@@ -102,7 +102,7 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
               </span>
             </p>
             {meta.data?.data.stale.is_stale ? (
-              <p className="mt-1 text-warn">Local bars end {meta.data.data.latest_bar}</p>
+              <p className="mt-1 text-warn">Prices end {meta.data.data.latest_bar}</p>
             ) : null}
           </>
         )}

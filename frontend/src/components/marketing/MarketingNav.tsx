@@ -4,11 +4,8 @@ import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { useEffect, useState } from "react";
 import { Menu, X, ArrowUpRight } from "lucide-react";
-// ThemeToggle deliberately NOT imported.  Marketing pages render in a
-// fixed warm-graphite dark register so the brand impression is always
-// deliberate (Citadel / Two Sigma / Renaissance pattern).  The toggle
-// still lives in the console nav where operators have legitimate
-// light-mode preferences.
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { Wordmark } from "@/components/ui/Wordmark";
 
 /**
  * AYVID MarketingNav — Polo-style floating pill on warm graphite + gold.
@@ -82,11 +79,7 @@ export function MarketingNav() {
             className="flex items-center"
             style={{ padding: "4px 4px", textDecoration: "none" }}
           >
-            <img
-              src="/brand/wordmark-horizontal-dark.svg"
-              alt="AYVID — Asymmetric Yield Via Intelligent Decisions"
-              style={{ height: 32, width: "auto", display: "block" }}
-            />
+            <Wordmark height={32} alt="AYVID — Asymmetric Yield Via Intelligent Decisions" />
           </Link>
 
           {/* Center desktop nav — pushed right */}
@@ -111,6 +104,7 @@ export function MarketingNav() {
           </nav>
 
           <div className="ml-auto flex items-center gap-2 md:ml-0">
+            <ThemeToggle />
             <Link
               href="/console/live-shock?demo=1"
               className="hidden items-center gap-1.5 rounded-full border border-[hsl(var(--brand-dim))] bg-transparent px-3.5 py-1.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--brand))] transition-colors hover:border-[hsl(var(--brand))] hover:bg-[hsl(var(--brand))] hover:text-[hsl(var(--brand-fg))] focus-visible:bg-[hsl(var(--brand))] focus-visible:text-[hsl(var(--brand-fg))] sm:inline-flex"

@@ -52,6 +52,7 @@ def client(store: ResearchStore, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     monkeypatch.setattr(settings, "RESEARCH_LIVE_EDGAR", False)
     monkeypatch.setattr(settings, "RESEARCH_LLM_SYNTHESIS", False)
+    monkeypatch.setattr(settings, "RESEARCH_LIVE_PRICES", False)
     app.dependency_overrides[research_routes.get_store] = lambda: store
     yield TestClient(app)
     app.dependency_overrides.clear()

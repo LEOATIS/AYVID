@@ -149,13 +149,16 @@ _JSON_ONLY_SUFFIX = "\n\nYou MUST respond with valid JSON only. No markdown, no 
 
 
 async def _gemini_generate(
-    system: str, user: str, *, model: str, max_tokens: int, temperature: float, json_mode: bool
+    system: str, user: str, *, model: str, max_tokens: int, temperature: float, json_mode: bool,
+    schema: dict[str, Any] | None = None,
 ) -> tuple[str, int | None, int | None]:
     import httpx
 
     config: dict[str, Any] = {"temperature": temperature, "maxOutputTokens": max_tokens}
     if json_mode:
         config["responseMimeType"] = "application/json"
+        if schema:  # Gemini controlled generation: the reply must match this OpenAPI schema
+            config["responseSchema"] = schema
     body = {
         "systemInstruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": user}]}],
@@ -186,6 +189,7 @@ async def _dispatch(
     temperature: float,
     model: str | None,
     json_mode: bool,
+    schema: dict[str, Any] | None = None,
 ) -> tuple[str, int | None, int | None, str, str]:
     provider = active_provider()
     if provider == DETERMINISTIC:
@@ -195,7 +199,7 @@ async def _dispatch(
     if provider == "gemini":
         text, tin, tout = await _gemini_generate(
             system, user, model=chosen, max_tokens=max_tokens,
-            temperature=temperature, json_mode=json_mode,
+            temperature=temperature, json_mode=json_mode, schema=schema,
         )
         return text or ("{}" if json_mode else ""), tin, tout, provider, chosen
 
@@ -250,6 +254,7 @@ async def _call_with_meta(
     model: str | None,
     timeout: float | None,
     json_mode: bool,
+    schema: dict[str, Any] | None = None,
 ) -> tuple[str, LLMCallMeta]:
     deadline = timeout if timeout is not None else DEFAULT_LLM_TIMEOUT_SEC
     started = time.perf_counter()
@@ -258,7 +263,7 @@ async def _call_with_meta(
         text, tin, tout, provider, chosen = await asyncio.wait_for(
             _dispatch(
                 system, user, max_tokens=max_tokens, temperature=temperature,
-                model=model, json_mode=json_mode,
+                model=model, json_mode=json_mode, schema=schema,
             ),
             timeout=deadline,
         )
@@ -296,11 +301,15 @@ async def json_call_with_meta(
     temperature: float = 0.0,
     model: str | None = None,
     timeout: float | None = None,
+    schema: dict[str, Any] | None = None,
 ) -> tuple[str, LLMCallMeta]:
-    """``json_call`` plus provider / model / latency / token telemetry."""
+    """``json_call`` plus provider / model / latency / token telemetry.
+
+    ``schema`` is enforced server-side by Gemini (``responseSchema``); other
+    providers get JSON mode only, so callers must still validate the reply."""
     return await _call_with_meta(
         system, user, max_tokens=max_tokens, temperature=temperature,
-        model=model, timeout=timeout, json_mode=True,
+        model=model, timeout=timeout, json_mode=True, schema=schema,
     )
 
 

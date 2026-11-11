@@ -22,7 +22,7 @@ export const SAMPLE_QUERIES = [
 
 const PIPELINE = [
   "Resolving instrument & period",
-  "Retrieving SEC filings & local OHLCV",
+  "Retrieving SEC filings & live prices",
   "Computing deterministic metrics & causal paths",
   "Synthesizing cited analysis & auditing claims",
 ];
@@ -34,7 +34,7 @@ function researchHref(q: string, extra = ""): string {
 export const SCENARIOS: { label: string; hint: string; href: string }[] = [
   { label: "Core loop", hint: "NVDA × TSMC, cited answer → save thesis", href: researchHref(CORE_QUERY) },
   { label: "Missing data", hint: "Churn condition → UNKNOWN, never 0", href: "/theses?demo=missing-data" },
-  { label: "Stale data", hint: "Local bars older than threshold", href: researchHref("INFY.NS volatility regime and 90-day momentum") },
+  { label: "Stale data", hint: "Shows how stale data is labelled", href: researchHref("INFY.NS volatility regime and 90-day momentum") },
   { label: "Provider failure", hint: "SEC EDGAR outage → degraded mode", href: researchHref(CORE_QUERY, "&simulate=edgar") },
   { label: "Unsafe request", hint: "Trade execution → boundary refusal", href: researchHref("Execute a live market buy of 500 NVDA options right now") },
   { label: "Permission boundary", hint: "Another workspace's thesis → 403", href: "/theses/th_private_partner" },

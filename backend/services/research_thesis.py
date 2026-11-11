@@ -11,6 +11,7 @@ from typing import Any
 
 from backend.services.research_calc import dec, staleness
 from backend.services.research_store import (
+    MARKET_PROVIDERS,
     Actor,
     NotFoundError,
     ResearchStore,
@@ -55,7 +56,7 @@ def evaluate_condition(store: ResearchStore, actor: Actor, cond: dict[str, Any])
                 "explanation": f"No {cond['metric_code']} observation exists for {cond['instrument_id']} in AYVID's "
                                "sources (not disclosed or not ingested). Cannot evaluate — treated as UNKNOWN, never 0."}
     latest = obs_all[-1]
-    threshold_days = settings.RESEARCH_STALE_DAYS if latest["provider"] == "LOCAL_OHLCV" else 200
+    threshold_days = settings.RESEARCH_STALE_DAYS if latest["provider"] in MARKET_PROVIDERS else 200
     fresh = staleness(latest["as_of"], threshold_days)
     value = dec(latest["value"])
     stale_note = f" Data is STALE (as of {fresh['as_of']})." if fresh["is_stale"] else ""

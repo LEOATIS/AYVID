@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useCompanies } from "@/lib/research";
+import { TIER_LABEL, useCompanies } from "@/lib/research";
 
 export default function CompaniesPage() {
   const { data, error, isLoading } = useCompanies();
@@ -19,7 +19,7 @@ export default function CompaniesPage() {
       <p className="label-mono">Companies</p>
       <h1 className="ws-h1 mt-2">Instrument universe</h1>
       <p className="mt-2 text-[14px] text-muted">
-        Every instrument with a local price series. Data tier says what AYVID can verify for it.
+        Every listed instrument, priced daily from Yahoo Finance. Data tier says what AYVID can verify for it.
       </p>
       <label htmlFor="co-filter" className="sr-only">Filter companies</label>
       <input id="co-filter" name="filter" autoComplete="off" className="ws-input mt-4 max-w-sm" placeholder="Filter by ticker, name or industry…"
@@ -39,7 +39,7 @@ export default function CompaniesPage() {
                   <td>{i.name}</td>
                   <td className="text-muted">{i.industry ?? "—"}</td>
                   <td className="num">{i.currency}</td>
-                  <td><span className="ws-tag">{i.data_tier.replace(/_/g, " ")}</span></td>
+                  <td><span className="ws-tag">{TIER_LABEL[i.data_tier] ?? i.data_tier}</span></td>
                   <td className="num text-muted">{i.last_bar}</td>
                 </tr>
               ))}

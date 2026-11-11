@@ -418,6 +418,14 @@ export const useTheses = () =>
 export const useCompanies = () => useSWR<Instrument[]>("/companies", (p: string) => getJSON<Instrument[]>(p), swrOpts);
 export const useCompany = (id: string) =>
   useSWR<CompanyPayload>(`/companies/${encodeURIComponent(id)}`, (p: string) => getJSON<CompanyPayload>(p, { maxAttempts: 1, timeoutMs: 45_000 }), swrOpts);
+/** Human label for an instrument's data tier (the codes are internal). */
+export const TIER_LABEL: Record<string, string> = {
+  LIVE_EDGAR_AND_LOCAL_OHLCV: "SEC EDGAR + live prices",
+  LOCAL_OHLCV_ONLY: "Live prices only",
+  FIXTURE: "Curated fixture",
+  REFERENCE_ONLY: "Reference only",
+};
+
 export const usePrices = (id: string) =>
   useSWR<{ bars: { t: string; close: number }[]; currency: string; source_id: string; freshness: { is_stale: boolean; as_of: string } }>(
     `/companies/${encodeURIComponent(id)}/prices`,

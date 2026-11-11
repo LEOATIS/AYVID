@@ -1,4 +1,5 @@
 "use client";
+import { Wordmark } from "@/components/ui/Wordmark";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
@@ -65,11 +66,7 @@ export function ConsoleNav() {
             style={{ gap: 14 }}
             aria-label="AYVID Operations Console"
           >
-            <img
-              src="/brand/wordmark-horizontal-dark.svg"
-              alt="AYVID"
-              style={{ height: 26, width: "auto", display: "block" }}
-            />
+            <Wordmark height={26} />
             <span
               aria-hidden
               style={{

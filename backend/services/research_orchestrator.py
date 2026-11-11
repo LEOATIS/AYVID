@@ -23,7 +23,7 @@ from backend.services.research_resolver import (
     resolve_query,
     screen_query,
 )
-from backend.services.research_store import Actor, ResearchStore, new_id, utcnow
+from backend.services.research_store import MARKET_PROVIDERS, Actor, ResearchStore, new_id, utcnow
 from shared.config import settings
 from shared.logger import get_logger
 
@@ -38,7 +38,7 @@ CITE = re.compile(r"\[((?:S|CALC)-?\d+)\]")
 
 STEPS = [
     ("resolve", "Resolving instrument & period"),
-    ("retrieve", "Retrieving SEC filings & local OHLCV"),
+    ("retrieve", "Retrieving SEC filings & live prices"),
     ("compute", "Computing deterministic metrics & causal paths"),
     ("synthesise", "Synthesizing cited analysis & auditing claims"),
 ]
@@ -101,6 +101,13 @@ def _fmt(value: str | float | None, scale: str, currency: str | None = None) -> 
         prefix = {"USD": "$", "EUR": "€", "TWD": "NT$", "INR": "₹"}.get(currency or "", "")
         return f"{prefix}{v / 1000:,.1f}B" if abs(v) >= 1000 else f"{prefix}{v:,.0f}M"
     return f"{v:,.2f} {currency or ''}".strip()
+
+
+SYNTHESIS_SCHEMA: dict[str, Any] = {
+    "type": "OBJECT",
+    "properties": {"synthesis": {"type": "STRING"}},
+    "required": ["synthesis"],
+}
 
 
 class ResearchOrchestrator:
@@ -364,7 +371,7 @@ class ResearchOrchestrator:
                         "observation_id": o["observation_id"], "source_label": s_label,
                         "instrument_id": iid, "as_of": o["as_of"],
                     })
-                fresh = staleness(o["as_of"], stale_days if o["provider"] == "LOCAL_OHLCV" else FILING_STALE_DAYS)
+                fresh = staleness(o["as_of"], stale_days if o["provider"] in MARKET_PROVIDERS else FILING_STALE_DAYS)
                 m["refs"][code] = ref
                 table.append({
                     "instrument_id": iid, "symbol": inst["symbol"], "metric_code": code,
@@ -595,7 +602,8 @@ class ResearchOrchestrator:
         )
         try:
             text, meta = await llm_client.json_call_with_meta(
-                system, json.dumps({"facts": facts}), max_tokens=600, timeout=LLM_SYNTHESIS_TIMEOUT_SEC
+                system, json.dumps({"facts": facts}), max_tokens=600, timeout=LLM_SYNTHESIS_TIMEOUT_SEC,
+                schema=SYNTHESIS_SCHEMA,
             )
             synthesis = str(json.loads(text).get("synthesis", "")).strip()
         except Exception as exc:
