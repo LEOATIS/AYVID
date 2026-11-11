@@ -1,28 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none"
-     role="img" aria-label="AYVID">
-  <!-- AYVID monogram — heavy Fraunces "A" + the gold full-stop.
-       The period IS the brand: it reads as "the decision has been made."
-       Single accent (#C9A84C); the rest is ink on paper.
-       Self-importing the variable font so the SVG renders the right
-       glyph in any context (inline, <img>, OG-bot, favicon-renderer). -->
-  <defs>
-    <style type="text/css">
-      @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@144,900&amp;display=block");
-      .ay-mark {
-        font-family: "Fraunces", Georgia, "Times New Roman", serif;
-        font-weight: 900;
-        font-variation-settings: "opsz" 144, "SOFT" 30;
-        letter-spacing: -0.045em;
-        font-style: normal;
-      }
-    </style>
-  </defs>
-  <text x="60" y="92"
-        class="ay-mark"
-        font-size="108"
-        fill="#F0E9DD"
-        text-anchor="middle">A</text>
-  <!-- Gold full-stop — the only #C9A84C anywhere in the system.
-       Positioned at the baseline-right of the A. -->
-  <circle cx="92" cy="88" r="8" fill="#C9A84C"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="ayvid-mark-dark-title">
+  <title id="ayvid-mark-dark-title">AYVID</title>
+  <path fill="#F0E9DD" d="M13.0 33.0 L34.5 33.0 L25.8 64.5 L54.0 64.5 L49.2 82.0 L13.0 82.0 Z"/>
+  <path fill="#C9A84C" d="M48.8 12.0 L84.0 12.0 L84.0 64.5 L63.2 64.5 L71.9 33.0 L43.7 33.0 Z"/>
 </svg>

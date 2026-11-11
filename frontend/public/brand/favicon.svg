@@ -1,14 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <!-- Favicon — the "A." monogram at 32px.  Favicon contexts (browser
-       tab renderers, OS bookmark indexes) often skip @import in SVG,
-       so we set font-family to a stack with Georgia as the immediate
-       fallback.  Georgia renders a serviceable heavy A; not as
-       beautiful as Fraunces but unmistakably the same letter. -->
-  <text x="14" y="25"
-        font-family="Fraunces, Georgia, 'Times New Roman', serif"
-        font-weight="900"
-        font-size="30"
-        fill="#F0E9DD"
-        text-anchor="middle">A</text>
-  <circle cx="25" cy="24" r="2.4" fill="#C9A84C"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-labelledby="ayvid-favicon-title">
+  <title id="ayvid-favicon-title">AYVID — Simplified Favicon</title>
+  <path fill="#16130F" d="M3.33 11.33 L11.0 11.33 L8.17 21.33 L17.5 21.33 L15.73 28.0 L3.33 28.0 Z"/>
+  <path fill="#C9A84C" d="M16.27 3.33 L28.67 3.33 L28.67 21.33 L21.33 21.33 L24.17 11.33 L14.83 11.33 Z"/>
 </svg>

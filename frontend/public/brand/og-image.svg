@@ -1,56 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" fill="none">
-  <defs>
-    <style type="text/css">
-      @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@144,900&amp;family=JetBrains+Mono:wght@500&amp;display=block");
-      .ay-word {
-        font-family: "Fraunces", Georgia, "Times New Roman", serif;
-        font-weight: 900;
-        font-variation-settings: "opsz" 144, "SOFT" 30;
-        letter-spacing: -0.045em;
-      }
-      .ay-tag {
-        font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-        font-weight: 500;
-      }
-    </style>
-  </defs>
-
-  <!-- Warm graphite background — matches the brand palette. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="ayvid-og-title">
+  <title id="ayvid-og-title">AYVID — Asymmetric Yield Via Intelligent Decisions</title>
   <rect width="1200" height="630" fill="#0F0D0A"/>
-
-  <!-- Top eyebrow — small caps mono, dim, left-aligned. -->
-  <text x="96" y="148"
-        class="ay-tag"
-        font-size="18"
-        letter-spacing="5"
-        fill="#C9A84C"
-        fill-opacity="0.80">AYVID</text>
-
-  <!-- The wordmark — huge, considered, the only thing on the page. -->
-  <text x="96" y="346"
-        class="ay-word"
-        font-size="220"
-        fill="#F0E9DD">AYVID</text>
-  <!-- Gold full-stop — the brand's only ornament. -->
-  <circle cx="744" cy="328" r="22" fill="#C9A84C"/>
-
-  <!-- Gold hairline rule — currency watermark, single permitted line. -->
-  <line x1="96" y1="406" x2="640" y2="406"
-        stroke="#C9A84C" stroke-opacity="0.42" stroke-width="1"/>
-
-  <!-- Tagline as editorial small-caps band, narrow tracking. -->
-  <text x="96" y="450"
-        class="ay-tag"
-        font-size="18"
-        letter-spacing="5"
-        fill="#F0E9DD"
-        fill-opacity="0.62">ASYMMETRIC YIELD VIA INTELLIGENT DECISIONS</text>
-
-  <!-- Sub-label.  Two tonal weights of the same mono. -->
-  <text x="96" y="498"
-        class="ay-tag"
-        font-size="16"
-        letter-spacing="3.6"
-        fill="#F0E9DD"
-        fill-opacity="0.36">AN AI-NATIVE HEDGE FUND</text>
+  <path fill="#F0E9DD" fill-rule="evenodd" d="M127.2 254.2 L178.8 254.2 L157.92 329.8 L225.6 329.8 L214.08 371.8 L127.2 371.8 Z M355.0 366.6 L404.2 213.0 L440.2 213.0 L489.4 366.6 L459.16 366.6 L448.6 331.8 L395.8 331.8 L385.24 366.6 Z M422.2 242.28 L403.0 307.08 L441.4 307.08 Z M494.2 213.0 L525.88 213.0 L559.0 274.2 L592.12 213.0 L623.8 213.0 L573.4 300.6 L573.4 366.6 L544.6 366.6 L544.6 300.6 Z M640.6 213.0 L671.32 213.0 L705.4 331.8 L739.48 213.0 L770.2 213.0 L723.4 366.6 L687.4 366.6 Z M794.8 213.0 L834.4 213.0 L834.4 232.2 L829.0 232.2 L829.0 347.4 L834.4 347.4 L834.4 366.6 L794.8 366.6 L794.8 347.4 L800.2 347.4 L800.2 232.2 L794.8 232.2 Z M866.2 213.0 L922.6 213.0 C965.8 213.0 993.4 242.28 993.4 289.8 C993.4 337.32 965.8 366.6 922.6 366.6 L866.2 366.6 Z M895.0 237.0 L895.0 342.6 L920.2 342.6 C948.28 342.6 964.12 322.44 964.12 289.8 C964.12 257.16 948.28 237.0 920.2 237.0 Z"/>
+  <path fill="#C9A84C" d="M213.12 203.8 L297.6 203.8 L297.6 329.8 L247.68 329.8 L268.56 254.2 L200.88 254.2 Z"/>
+  <line x1="127" y1="438" x2="994" y2="438" stroke="#C9A84C" stroke-opacity="0.38" stroke-width="1.5"/>
 </svg>
