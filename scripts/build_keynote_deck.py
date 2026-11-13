@@ -488,16 +488,12 @@ def team(d: Deck) -> None:
 
 
 def links(d: Deck) -> None:
-    s = d.slide("12 · Project links", "Inspect the product, the code and the validation lab.")
-    items = [("Product", "ayvid.ai", "ayvid.ai/research  ·  ayvid.ai/companies/US:NASDAQ:NVDA"),
-             ("GitHub repository", "github.com/LEOATIS/AYVID", "~77k lines of Python, TypeScript and C++ · 538 automated tests in CI"),
-             ("Shock Lab", "ayvid.ai/console/live-shock?demo=1", "20 named historical shocks replayed through the graph, paper only")]
-    for i, (t, url, sub) in enumerate(items):
-        y = 2.35 + i * 1.25
-        d.card(s, M, y, W - 2 * M, 1.05)
-        d.text(s, M + 0.3, y + 0.18, 3, 0.3, t.upper(), MONO, 9, GOLD, spacing=120)
-        d.text(s, M + 0.3, y + 0.46, 6.5, 0.45, url, SERIF, 18, IVORY)
-        d.text(s, M + 7.0, y + 0.3, W - 2 * M - 7.3, 0.6, sub, SANS, 10.5, STONE, line=1.25)
+    s = d.slide("12 · Project links", None)
+    cw, ch = 6.0, 1.9
+    x, y = (W - cw) / 2, (H - ch) / 2
+    d.card(s, x, y, cw, ch, border=GOLD)
+    d.text(s, x, y + 0.42, cw, 0.3, "PRODUCT", MONO, 11, GOLD, align=PP_ALIGN.CENTER)
+    d.text(s, x, y + 0.8, cw, 0.7, "ayvid.ai", SERIF, 40, IVORY, align=PP_ALIGN.CENTER)
 
 
 def close(d: Deck) -> None:
