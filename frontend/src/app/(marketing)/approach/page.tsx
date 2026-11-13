@@ -3,68 +3,67 @@ import Link from "next/link";
 export const metadata = {
   title: "Approach",
   description:
-    "The Quant Lab behind AYVID's shock research: historical shock backtests, the causal propagation engine, and paper-only execution research.",
+    "The methodology behind AYVID: deterministic accounting from SEC filings, multi-hop supply-chain propagation, and the historical shock validation.",
 };
 
 export default function ApproachPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Quant Lab · paper only"
-        title="Six asset classes, three tiers, one risk frame."
-        lede="This page documents AYVID's Quant Lab — the historical shock-backtesting and paper-trading research engine that powers the causal graph behind the research workspace. It runs with PAPER_TRADING=true and AUTO_EXECUTE=false by default and is isolated from the workspace. It studies a multi-asset strategy on a three-tier architecture. The system was designed under the constraint that any subsystem can fail and the rest must degrade gracefully — no single agent, model, or data feed gets to take the firm down."
+        eyebrow="Methodology"
+        title="How AYVID turns a shock into a cited answer."
+        lede="Three parts: calculate every number from the filing, trace who else is exposed, and test the graph against history. Each part is built so a reader can check it."
       />
 
       <SectionTwoCol
-        eyebrow="Track A · Index futures & options"
-        title="Direction-of-shock trades on global indices."
+        eyebrow="Part 1 · Accounting from the filing"
+        title="Code calculates. The model only words."
         body={[
-          "We trade futures and short-dated options across roughly twenty index venues — S&P 500, Nasdaq 100, FTSE 100, DAX, Nikkei 225, Hang Seng, KOSPI 200, Nifty 50, Sensex, ASX 200, and others — depending on which markets are open when a shock prints.",
-          "Sizing is conviction-weighted with hard −1R stops and per-index cooldowns. We never compound losses inside the same shock window.",
+          "Income statement, balance sheet and cash flow come live from SEC EDGAR's standardised accounting data (XBRL), each value tied to its filing and accession number. Margins, growth, free cash flow, volatility and drawdown are calculated in Python; period, currency and scale mismatches are refused rather than blended.",
+          "Every sentence in an answer is labelled as a reported fact (RPT), a calculation (CALC), a management statement (MGMT), an interpretation (INTERP) or a hypothesis (HYP). A claim that cannot be cited is removed before you see it.",
         ]}
-        rightTitle="Why F&O first"
-        rightBody="Index F&O gives the cleanest expression of macro shocks: deep liquidity, defined risk, and minimal single-name idiosyncrasy. It also lets us hedge equity exposure cheaply when an idea has narrow conviction."
+        rightTitle="Where Gemini fits"
+        rightBody="Gemini 4 writes the summary in a fixed JSON format from facts the code has already verified: Hydrogen for most answers, Argon for multi-hop shocks, Carbon for reading long 10-K filings. Any number it adds is rejected."
       />
 
       <SectionTwoCol
-        eyebrow="Track B · Equities"
-        title="Causally-implied beneficiaries and victims."
+        eyebrow="Part 2 · Multi-hop propagation"
+        title="From the headline to the second and third order."
         body={[
-          "When a shock breaks, the graph proposes the names that should move — direct exposure, secondary supplier dependencies, geographic chokepoints. We screen these against liquidity and cost-to-trade in real time, and only the survivors enter the equity book.",
-          "The universe is ~50+ tickers, dynamically rebuilt every cycle. There is no fixed watchlist; the engine selects what to watch from the graph itself.",
+          "Supply shock: a TSMC advanced-packaging squeeze reaches NVIDIA's gross margin, then Broadcom's custom chips and the hyperscalers that buy them.",
+          "Incident: a Microsoft Azure and Microsoft 365 outage pushes customers to hedge with Google Cloud and AWS, and raises demand for independent observability (Datadog, Cloudflare) and security (CrowdStrike, Palo Alto Networks).",
+          "Each link is ranked by how much one company depends on the other, says whether it was extracted from a filing or is an estimate, and states when the effect should show (1–5 days, then 30–90 days) and what would prove it wrong.",
         ]}
-        rightTitle="Hard rules"
-        rightBody="No earnings-day positions held into the print. No overnight gap risk on conviction below threshold. No single name above 4% of risk capital. All overrideable by the supervisor agent — and every override is logged."
+        rightTitle="Built for doubt"
+        rightBody="Estimated links are labelled as estimates. Missing data reads unknown, never zero. A saved thesis re-checks the conditions that would break it on every new filing and price."
       />
 
       <SectionTwoCol
-        eyebrow="Multi-asset expression"
-        title="One shock, six asset classes."
+        eyebrow="Part 3 · Historical validation"
+        title="Eight years, 20 shocks, honest costs."
         body={[
-          "A single geopolitical event simultaneously routes to equities, index F&O, FX, commodities, crypto, ETFs, and bonds. The graph decides which asset classes are structurally exposed — and the execution engine sizes each expression independently with per-asset-class cost models, slippage assumptions, and exposure caps.",
-          "FX macro trends, commodity supply shocks, crypto momentum, ETF sector rotation, and rate-curve trades all fire from the same causal thesis. Multi-asset expression is how we capture the full consequence surface of every shock the graph detects.",
+          "The Shock Lab replays 20 named shocks from 2018 to 2025 with modelled IBKR commissions and slippage. Trading only the companies the graph surfaced, inside each shock window, returned +33.43% compounded over 1,392 trades (63.7% win rate; best window +23.81% in the 2023 SVB crisis).",
+          "The same engine trading every ticker daily on technicals, before risk gates, lost 99.98% over 16,168 trades, mostly to costs. With risk gates on, it refuses to trade at all. The windows were chosen in hindsight, so this validates the graph and the cost model, not alpha. A blind out-of-sample test is next on the roadmap.",
         ]}
-        rightTitle="Per-class risk limits"
-        rightBody="Equity 50%, Index 30%, FX 15%, Commodity 15%, Crypto 10%, ETF 25%, Bond 15% of gross exposure. A portfolio-level drawdown circuit breaker and 7-layer pre-trade risk check prevent any single asset class from dominating the book."
+        rightTitle="Fault isolation"
+        rightBody="The paper-trading engine's risk watchdog runs as a separate C++ process that can stop the book without consulting Python. The research workspace has no import path to execution at all."
       />
 
-      <SectionTwoCol
-        eyebrow="Risk frame"
-        title="The kill switch is independent."
-        body={[
-          "An out-of-process C++ watchdog monitors equity, drawdown, and order flow every tick. If equity breaches the daily loss budget, or if order flow looks anomalous (rate, sign, or imbalance), the watchdog flattens the book without consulting Python — sub-millisecond.",
-          "This is the single most important architectural choice we made. It says explicitly that we don't trust our own LLMs to behave under stress.",
-        ]}
-        rightTitle="Cost transparency"
-        rightBody="Every backtest in the operations console is reported post-cost using the IBKR Tiered commission schedule and exchange-specific slippage assumptions. We do not publish gross figures."
-      />
-
-      <FootCta />
+      <section className="bg-[hsl(var(--bg-elev))]">
+        <div className="container-page section-y-sm flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
+          <div>
+            <p className="eyebrow">See it run</p>
+            <h3 className="font-display display-3 mt-3 text-fg">Ask a question, or replay a shock.</h3>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/research" className="btn-primary">Open the workspace →</Link>
+            <Link href="/console/live-shock?demo=1" className="btn-ghost">Inspect the Shock Lab →</Link>
+          </div>
+        </div>
+      </section>
     </>
   );
 }
-
-/* ─── shared marketing primitives (kept local to keep imports light) ── */
 
 function PageHeader({ eyebrow, title, lede }: { eyebrow: string; title: string; lede: string }) {
   return (
@@ -108,24 +107,6 @@ function SectionTwoCol({
           <p className="eyebrow text-[10px]">{rightTitle}</p>
           <p className="mt-3 text-[13.5px] leading-relaxed text-fg">{rightBody}</p>
         </aside>
-      </div>
-    </section>
-  );
-}
-
-function FootCta() {
-  return (
-    <section className="bg-[hsl(var(--bg-elev))]">
-      <div className="container-page section-y-sm flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
-        <div>
-          <p className="eyebrow">Want to dig deeper?</p>
-          <h3 className="font-display display-3 mt-3 text-fg">
-            Selected research notes are public.
-          </h3>
-        </div>
-        <Link href="/notes" className="btn-primary">
-          Read research →
-        </Link>
       </div>
     </section>
   );

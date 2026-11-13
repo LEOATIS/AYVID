@@ -3,14 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
+import { MARGIN_QUERY, OUTAGE_QUERY, PACKAGING_QUERY } from "@/lib/queries";
 
-const SAMPLES = [
-  "How does a Taiwan fab disruption propagate to NVDA, AAPL, and ASML?",
-  "Analyze NVDA gross margin trajectory, customer concentration, and key invalidation risks",
-  "Compare ASML vs. AMAT capital intensity and China revenue exposure",
-];
+const SAMPLES = [OUTAGE_QUERY, PACKAGING_QUERY, MARGIN_QUERY];
 
-/** Landing-page entry into the research workspace — no passphrase, no sign-up. */
+/** Landing-page entry into the research workspace (internal access: the gate asks for the password). */
 export function ResearchLauncher() {
   const router = useRouter();
   const [q, setQ] = useState(SAMPLES[0]);

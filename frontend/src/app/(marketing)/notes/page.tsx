@@ -1,55 +1,60 @@
 import Link from "next/link";
+import { CORE_QUERY, MARGIN_QUERY, OUTAGE_QUERY, researchHref } from "@/lib/queries";
 
 export const metadata = {
   title: "Research notes",
   description:
-    "Selected research notes from AYVID — on causal supply-chain inference, agent-driven debate, and event-conditioned trading.",
+    "Notes from AYVID on supply-shock propagation, cited financial research and historical shock validation — each one runnable in the workspace.",
 };
 
-const NOTES: { date: string; tag: string; title: string; teaser: string }[] = [
+const NOTES: { date: string; tag: string; title: string; teaser: string; href: string; cta: string }[] = [
   {
-    date: "2026 · Q1",
+    date: "2026 · Nov",
+    tag: "Live case",
+    title: "A Microsoft cloud outage, two steps out.",
+    teaser:
+      "When Azure and Microsoft 365 go down, the first-order story is Microsoft. The second-order story is who absorbs the shock: Google Cloud and AWS as substitutes, Datadog and Cloudflare for independent resilience, CrowdStrike and Palo Alto Networks as CISOs rethink bundled security. Each link carries its timing and what would prove it wrong.",
+    href: researchHref(OUTAGE_QUERY),
+    cta: "Run live in workspace",
+  },
+  {
+    date: "2026 · Nov",
+    tag: "Validation",
+    title: "Why a naive backtest loses 99.98% and a graph-filtered one does not.",
+    teaser:
+      "Trading every ticker every day on technicals lost 99.98% over eight years, mostly to costs. The same engine, trading only companies the graph surfaced inside 20 named shock windows, returned +33.43% compounded with a 63.7% win rate. The windows were chosen in hindsight: this validates the graph, not alpha.",
+    href: "/console/live-shock?demo=1",
+    cta: "Inspect the Shock Lab",
+  },
+  {
+    date: "2026 · Oct",
+    tag: "Graph",
+    title: "What a multi-hop supply-chain graph actually buys you.",
+    teaser:
+      "A TSMC packaging squeeze is priced into TSMC in minutes. NVIDIA's gross margin, Broadcom's custom chips and the hyperscalers that buy them reprice over weeks. The graph makes those second- and third-order links explicit, and labels each one as filing-extracted or estimated.",
+    href: researchHref(CORE_QUERY),
+    cta: "Run live in workspace",
+  },
+  {
+    date: "2026 · Oct",
     tag: "Method",
-    title: "Why naive walk-forward backtests are an indictment of the trader, not the market.",
+    title: "Models never write the numbers.",
     teaser:
-      "Trading every ticker every day on technicals lost 99.98% over an 8-year window in our shop. The same engine, restricted to event-conditioned windows surfaced by the graph, returned +33.43% compounded across 20 named shocks with a 63.7% win rate. The full report is in the operations console.",
-  },
-  {
-    date: "2026 · Q2",
-    tag: "Architecture",
-    title: "A seven-agent swarm produces calibrated conviction. A single model does not.",
-    teaser:
-      "Strategist, Mapper, Researchers, Analyst, Pattern, Auditor, Supervisor. We measure their disagreement as a first-class signal — high-disagreement trades are systematically smaller, regardless of average conviction.",
-  },
-  {
-    date: "2026 · Q2",
-    tag: "Data",
-    title: "What an N-th order supply-chain graph actually buys you.",
-    teaser:
-      "On the Red Sea closure of late 2024, the graph proposed bunker-fuel beneficiaries (BP) two hops from the shock — names a keyword search would miss. The relevant traversal is exhibit 1 in the AYVID 10-K corpus.",
-  },
-  {
-    date: "2026 · Q2",
-    tag: "Risk",
-    title: "Independent kill switches are not paranoia. They are uptime.",
-    teaser:
-      "An out-of-process C++ watchdog flattened the book three times in shadow-mode last quarter. Twice it was wrong. Once it wasn't. We will keep it.",
+      "Every figure in an AYVID answer is calculated in code from SEC filings and live prices. Gemini only words verified facts in a fixed JSON format, and an automatic check rejects any sentence that cites an unknown source or adds a number the code did not produce.",
+    href: researchHref(MARGIN_QUERY),
+    cta: "Run live in workspace",
   },
 ];
 
-export default function ResearchPage() {
+export default function NotesPage() {
   return (
     <>
       <section className="border-b border-app">
         <div className="container-page section-y reveal">
-          <p className="eyebrow">Research</p>
-          <h1 className="font-display display-1 mt-6 max-w-[18ch] text-fg">
-            Notes from the desk.
-          </h1>
+          <p className="eyebrow">Research notes</p>
+          <h1 className="font-display display-1 mt-6 max-w-[18ch] text-fg">Notes you can run.</h1>
           <p className="lede mt-7">
-            We publish selected research externally — methodology, philosophy, and
-            counterintuitive findings — and keep proprietary signal work inside the
-            firm. Below is what we&rsquo;re comfortable saying out loud.
+            Each note links to the live investigation behind it, so you can check the sources and numbers yourself.
           </p>
         </div>
       </section>
@@ -57,31 +62,19 @@ export default function ResearchPage() {
       <section>
         <div className="container-page section-y">
           <ul className="space-y-px overflow-hidden border border-app bg-[hsl(var(--border))]">
-            {NOTES.map((n, i) => (
-              <li
-                key={n.title}
-                className="group bg-panel p-7 transition-colors hover:bg-[hsl(var(--bg-sunken))]"
-              >
-                <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
+            {NOTES.map((n) => (
+              <li key={n.title} className="bg-panel">
+                <Link href={n.href} className="group grid grid-cols-1 gap-6 p-7 transition-colors hover:bg-[hsl(var(--bg-sunken))] md:grid-cols-12">
                   <div className="md:col-span-3">
-                    <div className="num text-[12px] uppercase tracking-[0.16em] text-subtle">
-                      {n.date}
-                    </div>
-                    <div className="mt-1 inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.18em] text-brand">
-                      <span aria-hidden>—</span>
-                      {n.tag}
-                    </div>
+                    <div className="num text-[12px] uppercase tracking-[0.16em] text-subtle">{n.date}</div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-brand">{n.tag}</div>
                   </div>
                   <div className="md:col-span-9">
-                    <h2 className="font-display text-[24px] leading-snug text-fg group-hover:text-brand transition-colors">
-                      {n.title}
-                    </h2>
+                    <h2 className="font-display text-[24px] leading-snug text-fg transition-colors group-hover:text-brand">{n.title}</h2>
                     <p className="prose-body mt-3 max-w-prose">{n.teaser}</p>
-                    <span className="mt-4 inline-flex items-center gap-1.5 text-[12px] uppercase tracking-[0.16em] text-subtle">
-                      Note {String(i + 1).padStart(2, "0")} · Internal release
-                    </span>
+                    <span className="mt-4 inline-flex items-center gap-1.5 text-[13px] text-brand">{n.cta} →</span>
                   </div>
-                </div>
+                </Link>
               </li>
             ))}
           </ul>
@@ -91,12 +84,9 @@ export default function ResearchPage() {
       <section className="border-t border-app bg-[hsl(var(--bg-elev))]">
         <div className="container-page section-y-sm flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
           <p className="prose-body max-w-2xl">
-            Verifying any of the above against the live system requires console
-            access. LP and YC partner enquiries get a passphrase the same day.
+            The workspace and Shock Lab are open to internal users. Want access? Write to us and we&rsquo;ll reply the same day.
           </p>
-          <Link href="/contact" className="btn-primary">
-            Contact the desk →
-          </Link>
+          <Link href="/contact" className="btn-primary">Request access →</Link>
         </div>
       </section>
     </>

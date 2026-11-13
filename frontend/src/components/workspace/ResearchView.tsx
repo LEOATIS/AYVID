@@ -10,17 +10,15 @@ import { researchApi, type Artifact } from "@/lib/research";
 import { ResearchAnswer } from "./ResearchAnswer";
 import { FOCUS_QUERY_EVENT } from "./WorkspaceShell";
 
-export const CORE_QUERY =
-  "What is NVDA's supply-chain exposure to TSMC and how do its recent margins, volatility regime, and China restrictions affect a long-term thesis?";
+import { CORE_QUERY, MARGIN_QUERY, OUTAGE_QUERY, PACKAGING_QUERY, researchHref } from "@/lib/queries";
 
-export const OUTAGE_QUERY =
-  "How does the Microsoft Azure and M365 cascading outage propagate across cloud, observability, and cybersecurity stocks (MSFT, GOOGL, AMZN, DDOG, CRWD, NET)?";
+export { CORE_QUERY, OUTAGE_QUERY };
 
 export const SAMPLE_QUERIES = [
-  CORE_QUERY,
   OUTAGE_QUERY,
-  "How does a Taiwan fab disruption propagate to NVDA, AAPL, and ASML?",
-  "Analyze NVDA gross margin trajectory, customer concentration, and key invalidation risks",
+  CORE_QUERY,
+  PACKAGING_QUERY,
+  MARGIN_QUERY,
   "Compare ASML vs. AMAT capital intensity and China revenue exposure",
 ];
 
@@ -31,13 +29,9 @@ const PIPELINE = [
   "Synthesizing cited analysis & auditing claims",
 ];
 
-function researchHref(q: string, extra = ""): string {
-  return `/research?q=${encodeURIComponent(q)}&run=1${extra}`;
-}
-
 export const SCENARIOS: { label: string; hint: string; href: string }[] = [
-  { label: "Core loop", hint: "NVDA × TSMC, cited answer → save thesis", href: researchHref(CORE_QUERY) },
   { label: "Cloud outage", hint: "MSFT outage → GOOGL, AMZN, DDOG, CRWD, NET", href: researchHref(OUTAGE_QUERY) },
+  { label: "Core loop", hint: "NVDA × TSMC, cited answer → save thesis", href: researchHref(CORE_QUERY) },
   { label: "Missing data", hint: "Churn condition → UNKNOWN, never 0", href: "/theses?demo=missing-data" },
   { label: "Stale data", hint: "Shows how stale data is labelled", href: researchHref("INFY.NS volatility regime and 90-day momentum") },
   { label: "Provider failure", hint: "SEC EDGAR outage → degraded mode", href: researchHref(CORE_QUERY, "&simulate=edgar") },

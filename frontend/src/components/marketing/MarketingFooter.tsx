@@ -14,7 +14,7 @@ const FOOTER_LINKS: {
   items: { href: string; label: string }[];
 }[] = [
   {
-    heading: "Firm",
+    heading: "Company",
     items: [
       { href: "/about", label: "About" },
       { href: "/approach", label: "Approach" },
@@ -26,17 +26,16 @@ const FOOTER_LINKS: {
   {
     heading: "Disclosures",
     items: [
-      { href: "/about#legal", label: "Regulatory standing" },
-      { href: "/about#legal", label: "Risk disclosure" },
-      { href: "/about#legal", label: "Privacy policy" },
+      { href: "/about#legal", label: "Research only · no orders" },
+      { href: "/about#legal", label: "Not investment advice" },
     ],
   },
   {
-    heading: "For partners",
+    heading: "Get access",
     items: [
-      { href: "/contact", label: "LP enquiries" },
-      { href: "/contact", label: "Press enquiries" },
-      { href: "/console", label: "Quant lab (paper only)" },
+      { href: "/contact", label: "Request access" },
+      { href: "/contact", label: "Join us" },
+      { href: "/console/live-shock?demo=1", label: "Shock Lab (paper only)" },
     ],
   },
 ];
@@ -165,12 +164,10 @@ export function MarketingFooter() {
               maxWidth: "62ch",
             }}
           >
-            © {year} AYVID. The materials on this site are for informational
-            purposes only and do not constitute an offer to sell, or a
-            solicitation of an offer to buy, any security or interest in any
-            AYVID-managed fund. Past simulated or live performance is not
-            indicative of future results. All trading involves substantial risk
-            of loss.
+            © {year} AYVID. AYVID is a research tool and is not a registered
+            investment adviser. Nothing on this site is investment advice or an
+            offer to buy or sell any security. Historical and simulated results
+            are not indicative of future results.
           </p>
           <p
             className="label-mono"
