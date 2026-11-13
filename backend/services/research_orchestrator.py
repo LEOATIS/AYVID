@@ -47,6 +47,7 @@ MECHANISM = {
     "SUPPLIER": "{src} supplies {dst}; a disruption at {src} constrains {dst}'s input supply.",
     "CUSTOMER": "{src} is a customer of {dst}; demand changes at {src} flow to {dst}'s revenue.",
     "COMPETITOR": "{src} competes with {dst}; share shifts between them.",
+    "RESILIENCE_VENDOR": "{src} outages raise demand for {dst}'s independent observability, edge and failover tooling.",
     "GEOGRAPHIC_CHOKEPOINT": "{src} concentrates capacity {dst} depends on in one region.",
     "COMMODITY_INPUT": "{src} provides a commodity input priced into {dst}'s costs.",
 }
@@ -232,14 +233,8 @@ class ResearchOrchestrator:
         else:
             data_mode = "HYBRID"
         data_down = sorted({d["provider"] for d in run.degraded if d["provider"] == "SEC_EDGAR"})
-        llm_down = sorted({d["provider"] for d in run.degraded if d["provider"] != "SEC_EDGAR"})
-        if llm_down:
-            reasons = ", ".join(sorted({d["error"] for d in run.degraded if d["provider"] in llm_down}))
-            run.banners.insert(0, {
-                "kind": "DEGRADED",
-                "message": f"DEGRADED MODE — LLM provider unavailable ({', '.join(llm_down)}: {reasons}). "
-                           "Synthesis fell back to the deterministic engine; every figure and citation is unaffected.",
-            })
+        # An LLM outage only skips the prose rewrite; figures and citations are unchanged, so it is
+        # reported in telemetry (degraded_providers, engine label), not as a data-quality banner.
         if data_down:
             run.banners.insert(0, {
                 "kind": "DEGRADED",

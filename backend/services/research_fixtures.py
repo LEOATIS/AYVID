@@ -170,6 +170,34 @@ UPSTREAM_SUPPLIERS = {
     "NVDA", "AMD", "AVGO", "QCOM",
 }
 
+# Microsoft cloud-outage propagation: who gains or loses when Azure / Microsoft 365
+# goes down. Analyst hypotheses (INFERRED), each with a lag window and a falsifier.
+# (src, dst, relationship, dependency % estimate, criticality, note)
+CLOUD_OUTAGE_EDGES: list[tuple[str, str, str, float, float, str]] = [
+    ("MSFT", "GOOGL", "COMPETITOR", 8.0, 0.55,
+     "Hypothesis: CIOs hedge Microsoft 365 / Azure lock-in with Google Workspace and Google Cloud. "
+     "Lag: 1-5d incident response, 30-90d procurement and renewal cycle. Falsifier: no acceleration in "
+     "Google Cloud revenue growth over the next two quarters."),
+    ("MSFT", "AMZN", "COMPETITOR", 6.0, 0.50,
+     "Hypothesis: multi-cloud workload diversification toward AWS after an Azure outage. Lag: 30-90d. "
+     "Falsifier: AWS segment growth unchanged in the next two quarterly filings."),
+    ("MSFT", "DDOG", "RESILIENCE_VENDOR", 5.0, 0.45,
+     "Hypothesis: cross-cloud observability spend rises when a provider's own health checks fail. "
+     "Lag: 30-90d. Falsifier: flat Datadog net revenue retention and customer count growth."),
+    ("MSFT", "NET", "RESILIENCE_VENDOR", 4.0, 0.40,
+     "Hypothesis: demand for independent traffic routing and failover at the edge. Lag: 30-90d. "
+     "Falsifier: no change in Cloudflare large-customer growth."),
+    ("MSFT", "CRWD", "COMPETITOR", 6.0, 0.50,
+     "Hypothesis: CISOs reconsider bundling Microsoft Defender XDR with the same single point of failure. "
+     "Lag: 30-90d renewal cycle. Falsifier: CrowdStrike net new ARR shows no change."),
+    ("MSFT", "PANW", "COMPETITOR", 4.0, 0.40,
+     "Hypothesis: best-of-breed security displaces bundled suites at renewal. Lag: 30-90d. "
+     "Falsifier: no change in Palo Alto next-gen security ARR growth."),
+    ("MSFT", "ORCL", "COMPETITOR", 3.0, 0.35,
+     "Hypothesis: OCI gains as a secondary cloud in multi-cloud contracts. Lag: 90d+. "
+     "Falsifier: no change in Oracle cloud infrastructure growth."),
+]
+
 # ── Curated filing summaries ────────────────────────────────────────────
 # key → document metadata. ``excerpt`` is a curated summary, never a quote.
 FILINGS: dict[str, dict[str, str]] = {

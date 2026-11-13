@@ -102,6 +102,9 @@ _EARNINGS = re.compile(r"earnings|quarter|guidance|margin|eps\b|results", re.I)
 _VALUATION = re.compile(r"\bdcf\b|valuation|intrinsic|fair\s+value|multiple|terminal", re.I)
 
 
+_TICKER_LIST = re.compile(r"\(\s*(\$?[A-Z][A-Z0-9.]*(?:\s*,\s*\$?[A-Z][A-Z0-9.]*)+)\s*\)")
+
+
 def classify_intent(query: str, n_instruments: int) -> str:
     if _EVENT.search(query):
         return "EVENT_IMPACT"
@@ -192,9 +195,11 @@ def resolve_query(store: ResearchStore, query: str) -> Resolution:
             seen.add(symbol)
             _choose(symbol, _lookup(store, symbol), res, explicit=True)
 
+    # Tokens inside an explicit ticker list, e.g. "(MSFT, GOOGL, NET)", are tickers even if they are words.
+    listed = {t.strip().lstrip("$") for grp in _TICKER_LIST.findall(query) for t in grp.split(",")}
     for match in _TOKEN.finditer(query):
         raw = match.group(0)
-        explicit = raw.startswith("$")
+        explicit = raw.startswith("$") or raw in listed
         token = raw.lstrip("$")
         if token in seen or token.lower() in fx.NAME_ALIASES:
             continue

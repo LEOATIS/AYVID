@@ -234,8 +234,8 @@ function Exposures({ art }: { art: Artifact }) {
                   <td className="num whitespace-nowrap">
                     <button type="button" className="hover:text-brand" onClick={(ev) => { ev.stopPropagation(); select(e); }}>{e.path.join(" → ")}</button>
                   </td>
-                  <td className="text-[12px]">{e.relationship_type}</td>
-                  <td className="min-w-[220px] text-[12px] text-muted">{e.mechanism}</td>
+                  <td className="text-[12px]">{e.relationship_type.replace(/_/g, " ").toLowerCase()}</td>
+                  <td className="min-w-[180px] text-[12px] text-muted">{e.mechanism}</td>
                   <td className="num text-right">{e.revenue_dependency_pct != null ? `${e.revenue_dependency_pct}%` : "—"}</td>
                   <td><span className={clsx("ws-tag", e.evidence_status === "EXTRACTED" ? "ws-tag-pos" : "ws-tag-warn")}>{e.evidence_status}</span></td>
                   <td className="num text-[11px] text-subtle">{e.source_label}</td>
@@ -317,11 +317,8 @@ const WIDE_SCREEN_PX = 1280;
 /** States what actually ran — never claims an LLM that did not answer. */
 function VerificationLine({ art }: { art: Artifact }) {
   const t = art.telemetry;
-  const engine = t.llm_used
-    ? `${t.provider} · ${t.model} (wording only)`
-    : t.provider && t.provider !== "deterministic"
-      ? `Deterministic synthesis (${t.provider} unavailable)`
-      : "Deterministic synthesis";
+  // Never claims a model that did not answer; a skipped LLM rewrite changes no figure or citation.
+  const engine = t.llm_used ? `${t.provider} · ${t.model} (wording only)` : "Deterministic SEC XBRL engine";
   const items: [string, string][] = [
     ["Engine", engine],
     ["Numbers", "SEC XBRL + deterministic Python"],

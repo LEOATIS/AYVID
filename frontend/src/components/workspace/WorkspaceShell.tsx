@@ -96,9 +96,9 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
               <span>{meta.data ? meta.data.data.mode_label : "Loading…"}</span>
             </p>
             <p className="mt-1 text-subtle">
-              Engine:{" "}
+              Wording model:{" "}
               <span className="num text-muted">
-                {meta.data ? (meta.data.llm.provider === "deterministic" ? "Deterministic" : `${meta.data.llm.provider} · ${meta.data.llm.model}`) : "…"}
+                {meta.data ? (meta.data.llm.provider === "deterministic" ? "None (deterministic)" : `${meta.data.llm.provider} · ${meta.data.llm.model}`) : "…"}
               </span>
             </p>
             {meta.data?.data.stale.is_stale ? (

@@ -27,7 +27,7 @@ from shared.logger import get_logger
 
 log = get_logger("research.seed")
 
-SEED_VERSION = "2026-11-10.4"
+SEED_VERSION = "2026-11-13.1"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OHLCV_DIR = REPO_ROOT / "data_store" / "ohlcv"
 EDGE_PROPOSALS = REPO_ROOT / "calibration" / "edge_proposals.jsonl"
@@ -355,6 +355,13 @@ def _seed_edges(store: ResearchStore, mapping: dict[str, str]) -> None:
     store.insert_many("source_documents", sources)
     with store.connect() as conn:
         conn.execute("DELETE FROM supply_chain_edges")
+    for src, dst, rel, dep, crit, note in fx.CLOUD_OUTAGE_EDGES:
+        edges[f"{src}>{dst}"] = {
+            "edge_id": f"EDGE-{src}-{dst}", "src_instrument_id": mapping.get(src),
+            "dst_instrument_id": mapping.get(dst), "src_symbol": src, "dst_symbol": dst,
+            "relationship_type": rel, "revenue_dependency_pct": dep, "criticality_score": crit,
+            "source_id": "SRC-GRAPH-SEED", "evidence_status": "INFERRED", "uncertainty_note": note,
+        }
     store.insert_many("supply_chain_edges", list(edges.values()))
 
 
@@ -383,5 +390,8 @@ def seed_research_db(store: ResearchStore, *, force: bool = False) -> bool:
     _seed_edges(store, mapping)
     _seed_demo_records(store)
     store.set_seed_value("version", SEED_VERSION)
+    # Re-seeding resets market rows to the local snapshot; make the live price top-up re-apply.
+    with store.connect() as conn:
+        conn.execute("DELETE FROM price_refresh")
     log.info("research db seeded: %d instruments", len(mapping))
     return True
