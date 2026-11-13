@@ -176,7 +176,7 @@ class ResearchOrchestrator:
 
         t3 = time.perf_counter()
         sections = self._synthesise(run, instruments, intent, metrics, exposures, verdict.clean_query)
-        telemetry = await self._llm_polish(run, sections, simulate_failure)
+        telemetry = await self._llm_polish(run, sections, simulate_failure, intent)
         audit = self._audit(run, sections)
         run.step("synthesise", "done",
                  f"{audit['verified']} citations verified, {audit['dropped']} unverifiable claims dropped", t3)
@@ -576,11 +576,15 @@ class ResearchOrchestrator:
             return f"Side-by-side evidence for {syms}. Figures are in each company's reporting currency — not converted."
         return f"Evidence-backed profile of {syms}: reported fundamentals, deterministic market metrics, exposures and what would invalidate the view."
 
-    async def _llm_polish(self, run: Run, sections: dict[str, Any], simulate_failure: str | None) -> dict[str, Any]:
+    async def _llm_polish(
+        self, run: Run, sections: dict[str, Any], simulate_failure: str | None, intent: str
+    ) -> dict[str, Any]:
         from shared import llm_client
 
         provider = llm_client.active_provider()
-        base = {"provider": provider, "model": llm_client.active_model(provider), "llm_used": False,
+        # Multi-hop event answers need reasoning (Gemini 4 Argon); the rest use the fast tier (Hydrogen).
+        tier = "reasoning" if intent == "EVENT_IMPACT" else "fast"
+        base = {"provider": provider, "model": llm_client.active_model(provider, tier), "llm_used": False,
                 "latency_ms": None, "input_tokens": None, "output_tokens": None}
         if provider == llm_client.DETERMINISTIC or not settings.RESEARCH_LLM_SYNTHESIS:
             return {**base, "provider": "deterministic", "model": None,
@@ -598,7 +602,7 @@ class ResearchOrchestrator:
         try:
             text, meta = await llm_client.json_call_with_meta(
                 system, json.dumps({"facts": facts}), max_tokens=600, timeout=LLM_SYNTHESIS_TIMEOUT_SEC,
-                schema=SYNTHESIS_SCHEMA,
+                schema=SYNTHESIS_SCHEMA, model=tier,
             )
             synthesis = str(json.loads(text).get("synthesis", "")).strip()
         except Exception as exc:

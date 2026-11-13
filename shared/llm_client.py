@@ -105,8 +105,16 @@ def active_provider() -> str:
     return DETERMINISTIC
 
 
-def active_model(provider: str | None = None) -> str | None:
+MODEL_TIERS: tuple[str, ...] = ("fast", "reasoning", "deep")
+
+
+def active_model(provider: str | None = None, tier: str = "fast") -> str | None:
+    """Model for a tier. Gemini maps tiers to Hydrogen / Argon / Carbon; other
+    providers use their single configured model for every tier."""
     provider = provider or active_provider()
+    if provider == "gemini":
+        return {"fast": settings.GEMINI_MODEL, "reasoning": settings.GEMINI_REASONING_MODEL,
+                "deep": settings.GEMINI_DEEP_MODEL}.get(tier, settings.GEMINI_MODEL)
     return {
         "gemini": settings.GEMINI_MODEL,
         "anthropic": settings.ANTHROPIC_MODEL,
@@ -194,7 +202,7 @@ async def _dispatch(
     provider = active_provider()
     if provider == DETERMINISTIC:
         raise LLMUnavailableError("no LLM provider key configured")
-    chosen = model or active_model(provider) or ""
+    chosen = (active_model(provider, model) if model in MODEL_TIERS else model) or active_model(provider) or ""
 
     if provider == "gemini":
         text, tin, tout = await _gemini_generate(
@@ -270,7 +278,7 @@ async def _call_with_meta(
     except Exception as exc:
         meta = LLMCallMeta(
             provider=provider,
-            model=model or active_model(provider) or "",
+            model=(active_model(provider, model) if model in MODEL_TIERS else model) or active_model(provider) or "",
             latency_ms=int((time.perf_counter() - started) * 1000),
             input_tokens=None,
             output_tokens=None,

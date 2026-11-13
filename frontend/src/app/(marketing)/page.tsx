@@ -26,7 +26,7 @@ const STATES = [
 ];
 
 const STACK = [
-  { k: "Synthesis", v: "Google Gemini (2.5 Flash / Pro), Anthropic or OpenAI — chosen by configured key. Optional: without a key the engine runs deterministically." },
+  { k: "Synthesis", v: "Google Gemini 4 (Hydrogen for answers, Argon for multi-hop reasoning, Carbon for filing reading), Anthropic or OpenAI — chosen by configured key. Optional: without a key the engine runs deterministically." },
   { k: "Guardrails", v: "Unicode / hidden-HTML prompt-injection sanitiser, intent boundary for trade execution and return guarantees, citation + number audit on every LLM sentence." },
   { k: "Storage", v: "SQLite in WAL mode with schema migrations — boots with zero external services; Neo4j and Qdrant enrich when running." },
   { k: "Isolation", v: "The research workspace has no import path to the execution engine (enforced by import-linter). Paper trading stays the default in the Quant Lab." },

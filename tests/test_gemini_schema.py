@@ -29,11 +29,19 @@ def test_gemini_request_carries_response_schema(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "test-key")
     text, tin, tout = asyncio.run(llm_client._gemini_generate(
-        "sys", "user", model="gemini-2.5-flash", max_tokens=50, temperature=0.0, json_mode=True,
+        "sys", "user", model="gemini-4-hydrogen", max_tokens=50, temperature=0.0, json_mode=True,
         schema=SYNTHESIS_SCHEMA))
 
     cfg = sent["body"]["generationConfig"]
     assert cfg["responseMimeType"] == "application/json"
     assert cfg["responseSchema"] == SYNTHESIS_SCHEMA
-    assert sent["url"].endswith("/models/gemini-2.5-flash:generateContent")
+    assert sent["url"].endswith("/models/gemini-4-hydrogen:generateContent")
     assert (text, tin, tout) == ('{"synthesis": "ok [S1]"}', 5, 3)
+
+
+def test_gemini_tiers_map_to_gemini_4_models(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "test-key")
+    assert [llm_client.active_model("gemini", t) for t in llm_client.MODEL_TIERS] == [
+        "gemini-4-hydrogen", "gemini-4-argon", "gemini-4-carbon"]
+    # Non-Gemini providers keep their single configured model for every tier.
+    assert llm_client.active_model("openai", "deep") == settings.OPENAI_MODEL

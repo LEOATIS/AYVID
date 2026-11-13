@@ -36,6 +36,7 @@ async def _chat_json(system_prompt: str, user_prompt: str) -> dict[str, Any]:
             user_prompt,
             max_tokens=1500,
             temperature=0.1,
+            model="deep",  # long 10-K reading is offline and accuracy-bound: Gemini 4 Carbon
         )
         return json.loads(_strip_json_fences(raw))
     except json.JSONDecodeError as exc:

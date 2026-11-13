@@ -3,7 +3,7 @@
 Run:  uvx --with python-pptx --with pillow python scripts/build_keynote_deck.py
 Out:  document/buildathon/AYVID_Startup_Buildathon_2026_Deck.pptx
 Every figure on a slide is either measured on the running app or quoted from the repo's
-backtest report; roadmap items are labelled "next".
+backtest report.
 """
 
 from __future__ import annotations
@@ -114,13 +114,17 @@ class Deck:
                 p.space_after = Pt(after)
         return tb
 
-    def picture(self, s, path: Path, x, y, w=None, h=None):
-        """Embed a screenshot as a high-quality JPEG (keeps the PDF under 5 MB)."""
+    def picture(self, s, path: Path, x, y, w=None, h=None, png=False):
+        """Embed a screenshot. Google Slides caps images near 2048 px, so resize there; PNG keeps
+        small UI text crisp, high-quality JPEG (no chroma subsampling) keeps the PDF under 5 MB."""
         im = Image.open(path).convert("RGB")
-        if im.width > 2400:
-            im = im.resize((2400, round(im.height * 2400 / im.width)), Image.LANCZOS)
+        if im.width > 2048:
+            im = im.resize((2048, round(im.height * 2048 / im.width)), Image.LANCZOS)
         buf = io.BytesIO()
-        im.save(buf, "JPEG", quality=84, optimize=True)
+        if png:
+            im.save(buf, "PNG", optimize=True)
+        else:
+            im.save(buf, "JPEG", quality=92, subsampling=0, optimize=True)
         buf.seek(0)
         pic = s.shapes.add_picture(buf, Inches(x), Inches(y), Inches(w) if w else None, Inches(h) if h else None)
         pic.line.color.rgb = rgb(LINE)
@@ -156,9 +160,14 @@ def cover(d: Deck) -> None:
     d.text(s, W - M - 4.35, 0.38, 1.7, 0.52, "Startup", SANS, 24, "FFFFFF", bold=True, align=PP_ALIGN.RIGHT,
            anchor=MSO_ANCHOR.MIDDLE)
     s.shapes.add_picture(str(ASSETS / "cover_wordmark.png"), Inches(W - M - 2.6), Inches(0.38), height=Inches(0.52))
-    s.shapes.add_picture(str(ASSETS / "wordmark-horizontal-dark.png"), Inches(M), Inches(1.45), height=Inches(0.95))
-    d.text(s, M, 2.75, 7.4, 1.5, "Evidence-first AI research for the moment a supply shock hits.", SERIF, 34, IVORY, line=1.02)
-    d.text(s, M, 4.4, 6.9, 1.0, "Turns breaking shocks and SEC filings into cited research, ranked 1st-, 2nd- and "
+    s.shapes.add_picture(str(ASSETS / "wordmark-horizontal-dark.png"), Inches(M), Inches(1.3), height=Inches(0.95))
+    d.text(s, M, 2.38, 7.4, 0.35, [[("A", {"color": GOLD, "bold": True}), ("symmetric ", {}),
+                                    ("Y", {"color": GOLD, "bold": True}), ("ield ", {}),
+                                    ("V", {"color": GOLD, "bold": True}), ("ia ", {}),
+                                    ("I", {"color": GOLD, "bold": True}), ("ntelligent ", {}),
+                                    ("D", {"color": GOLD, "bold": True}), ("ecisions", {})]], MONO, 13, STONE)
+    d.text(s, M, 3.0, 7.4, 1.5, "Evidence-first AI research for the moment a supply shock hits.", SERIF, 34, IVORY, line=1.02)
+    d.text(s, M, 4.6, 6.9, 1.0, "Turns breaking shocks and SEC filings into cited research, ranked 1st-, 2nd- and "
            "3rd-order exposure, and theses that re-check themselves.", SANS, 14, STONE, line=1.3)
     d.text(s, M, 6.6, 7, 0.3, "Build in JAPAC. Build for the world.", SANS, 10, DIM)
     cx, cy, cw, ch = 8.55, 2.75, 4.18, 3.55
@@ -180,10 +189,10 @@ def brief(d: Deck) -> None:
         [("General AI assistants summarise the headline and guess at the arithmetic: wrong periods, "
           "GAAP mixed with non-GAAP, no link back to a filing.", {"after": 10})],
         [("AYVID separates language from arithmetic. ", {"bold": True, "color": IVORY}),
-         ("Every figure comes from SEC XBRL or a live price feed and is computed in Python ", {}),
-         ("[CALC-#]", {"font": MONO, "color": GOLD}), ("; every sentence links to a filing ", {}),
-         ("[S#]", {"font": MONO, "color": GOLD}),
-         (" and carries an epistemic label: RPT · CALC · MGMT · INTERP · HYP.", {"after": 10})],
+         ("Every number comes from a company's SEC filing or a live price feed and is calculated in code, "
+          "never by the AI. Click any sentence to see the exact filing it came from, or any number to see "
+          "the formula behind it. Each sentence is also labelled: reported fact, calculation, management "
+          "guidance, interpretation or hypothesis.", {"after": 10})],
         [("A directed supplier, customer and competitor graph then ranks who is exposed one, two and three "
           "hops away, and each saved thesis re-checks itself as new data lands.", {})],
     ], SANS, 13, STONE, line=1.3)
@@ -193,18 +202,18 @@ def brief(d: Deck) -> None:
     d.text(s, bx + 0.3, by + 0.6, bw - 0.6, 0.5, "One question in, a cited exposure map out.", SERIF, 16, IVORY)
     d.text(s, bx + 0.3, by + 1.12, bw - 0.6, 0.3, "1ST ORDER", MONO, 8.5, STONE, spacing=120)
     d.text(s, bx + 0.3, by + 1.38, bw - 0.6, 0.5, [[("MSFT", {"font": MONO, "bold": True, "color": IVORY}),
-           ("  commercial-cloud concentration; latest 10-Q XBRL facts cited ", {}),
-           ("[S1]", {"font": MONO, "color": GOLD})]], SANS, 11, STONE)
+           ("  commercial-cloud concentration, cited to its latest 10-Q filing", {})]], SANS, 11, STONE)
     d.text(s, bx + 0.3, by + 1.92, bw - 0.6, 0.3, "2ND ORDER · SUBSTITUTES AND RESILIENCE VENDORS", MONO, 8.5, STONE, spacing=120)
     peers = [("GOOGL", "8%"), ("AMZN", "6%"), ("CRWD", "6%"), ("DDOG", "5%"), ("NET", "4%"), ("PANW", "4%")]
     for i, (t, dep) in enumerate(peers):
         d.text(s, bx + 0.3 + (i % 3) * 1.72, by + 2.2 + (i // 3) * 0.4, 1.65, 0.3,
                [[(t, {"bold": True, "color": IVORY}), (f"  {dep} est.", {"color": GOLD})]], MONO, 11)
     d.text(s, bx + 0.3, by + 3.05, bw - 0.6, 0.6,
-           "Edges labelled INFERRED, each with a lag window (1-5 d incident, 30-90 d renewal) and a falsifier. "
-           "6 companies · 12 exposure paths · 30 citations verified · 0 uncited claims.", SANS, 9.5, STONE, line=1.25)
+           "% = estimated share of the shock each company absorbs. Every link states when the effect should show "
+           "(1-5 days, then 30-90 days) and what would prove it wrong. 30 citations checked, 0 unsupported.",
+           SANS, 9.5, STONE, line=1.25)
     strip = [("195", "listings priced daily"), ("Live", "SEC EDGAR XBRL statements"),
-             ("0", "uncited numbers shown"), ("537", "automated tests in CI")]
+             ("0", "uncited numbers shown"), ("538", "automated tests in CI")]
     sw = (W - 2 * M) / 4
     d.rect(s, M, 6.32, W - 2 * M, 0.012, LINE)
     for i, (v, lab) in enumerate(strip):
@@ -218,8 +227,9 @@ def opportunities(d: Deck) -> None:
     cw3 = (W - 2 * M - 0.5) / 3
     cards = [
         ("01", "How it's different", "Models never write numbers.",
-         "Python computes every ratio from SEC XBRL tags (us-gaap:*). Gemini only phrases verified facts under a JSON "
-         "schema, and an audit rejects any number not already in the computed facts. Missing data reads UNKNOWN."),
+         "Code calculates every ratio from the standardised accounting data companies file with the SEC. Gemini only "
+         "words facts that are already verified, and an automatic check rejects any number it did not get from the "
+         "code. If data is missing, AYVID says so instead of guessing."),
         ("02", "How it solves it", "Multi-hop exposure, not one headline.",
          "Terminals chart the past. AYVID walks a directed graph (supplier, customer, competitor, resilience vendor) "
          "and ranks 1st- to 3rd-order exposure. Every edge says whether it came from a filing or is inferred."),
@@ -243,8 +253,9 @@ def features(d: Deck) -> None:
                             "NVDA gross margin Q2-FY2027 = $72,142M ÷ $96,221M = 74.98%."),
         ("Shock propagation graph", "Structural shocks (TSMC → NVDA → hyperscalers) and incidents "
                                     "(MSFT outage → GOOGL, AMZN, DDOG, CRWD, NET) on one ranked graph."),
-        ("Living theses", "Kill conditions such as “gross margin < 72%” re-evaluate on new data. "
-                          "No data reads UNKNOWN, never “fine”."),
+        ("Living theses", "Each saved idea carries the conditions that would break it, such as “gross margin "
+                          "falls below 72%”, re-checked on every new filing and price. Missing data shows as "
+                          "“unknown”, never as a silent pass."),
     ]
     fw, fh = (W - 2 * M - 0.25) / 2, 1.85
     for i, (t, b) in enumerate(feats):
@@ -261,8 +272,8 @@ def process(d: Deck) -> None:
         ("Resolve", "~4 ms", "Tickers resolved by exchange (US:NASDAQ:MSFT; NSE vs ADR) and intent classified."),
         ("Retrieve", "0.8-2.8 s", "Live SEC EDGAR XBRL statements and daily prices; cached after the first fetch."),
         ("Compute", "~50-80 ms", "Ratios, growth, volatility, drawdown, Hurst and multi-hop exposure scores in Python."),
-        ("Phrase", "~2-3 s", "Gemini 2.5 Flash rewrites wording under a JSON responseSchema; deterministic draft if unavailable."),
-        ("Audit & save", "< 10 ms", "Unknown citations or new numbers are rejected; the answer saves as a monitored thesis."),
+        ("Phrase", "~2-3 s", "Gemini 4 Hydrogen (Argon for multi-hop shocks) writes the summary in a fixed JSON format."),
+        ("Audit & save", "< 10 ms", "Any unsupported citation or new number is rejected; the answer saves as a monitored thesis."),
     ]
     gap = 0.3
     sw5 = (W - 2 * M - gap * 4) / 5
@@ -275,73 +286,75 @@ def process(d: Deck) -> None:
         d.text(s, x + 0.22, 4.02, sw5 - 0.44, 1.8, b, SANS, 10.5, STONE, line=1.28)
         if i < 4:
             d.arrow(s, x + sw5 + 0.04, 4.2, x + sw5 + gap - 0.04, 4.2)
-    d.text(s, M, 6.18, W - 2 * M, 0.55, "Timings measured on the running app (Microsoft-outage query, six companies). "
-           "Gemini only ever touches wording: if it fails, or its output fails the audit, the deterministic answer "
-           "ships and nothing numeric changes.", SANS, 10, STONE, line=1.25)
+    d.text(s, M, 6.18, W - 2 * M, 0.55, "Timings measured on the running app (Microsoft-outage question, six companies). "
+           "Gemini only ever touches wording: if its output fails the check, the code-written summary ships and no "
+           "number changes.", SANS, 10, STONE, line=1.25)
 
 
 def workspace(d: Deck) -> None:
     s = d.slide("05 · Wireframes / mockups · live workspace",
-                "Three regions: navigation, the cited memo, and the evidence drawer that opens on the first citation.")
-    pw = 7.4  # 16:10 screenshot: 7.4 in wide = 4.63 in tall, ends above the footer
-    d.picture(s, SHOTS / "01_research_msft_outage.png", M, 2.3, w=pw)
+                "The answer and its evidence side by side: the source drawer opens on the first citation.")
+    # Cropped to the memo + evidence drawer (no rail) so the UI text stays readable on a slide.
+    pw = 9.0
+    d.picture(s, SHOTS / "06_slide_memo_drawer.png", M, 2.25, w=pw, png=True)
     notes = [
-        ("01", "Question and pipeline", "Each stage reports what it fetched and how long it took."),
-        ("02", "Verification line", "Engine actually used · 30 citations verified · 53 calculations · 0 uncited claims."),
-        ("03", "Epistemic tags", "RPT and CALC labels sit on every sentence of the memo."),
-        ("04", "Evidence drawer", "Microsoft 10-Q XBRL facts with accession no. 0001193125-26-436133."),
+        ("01", "Question and steps", "Each step shows what it fetched and how long it took."),
+        ("02", "Verification line", "30 citations checked, 53 calculations, 0 unsupported claims."),
+        ("03", "Companies in scope", "Six listings resolved by exchange, from one plain-English question."),
+        ("04", "Evidence drawer", "Opens on the first source: Microsoft's latest 10-Q, with its filing number."),
     ]
-    nx = M + pw + 0.35
+    nx = M + pw + 0.3
     nw = W - M - nx
     for i, (n, t, b) in enumerate(notes):
-        y = 2.3 + i * 1.14
-        d.text(s, nx, y, 0.45, 0.3, n, MONO, 11, GOLD)
-        d.text(s, nx + 0.5, y, nw - 0.5, 0.3, t, SANS, 12, IVORY, bold=True)
-        d.text(s, nx + 0.5, y + 0.33, nw - 0.5, 0.75, b, SANS, 10, STONE, line=1.25)
+        y = 2.25 + i * 1.18
+        d.text(s, nx, y, 0.4, 0.3, n, MONO, 11, GOLD)
+        d.text(s, nx + 0.42, y, nw - 0.42, 0.3, t, SANS, 11.5, IVORY, bold=True)
+        d.text(s, nx + 0.42, y + 0.32, nw - 0.42, 0.8, b, SANS, 10, STONE, line=1.25)
 
 
 def architecture(d: Deck) -> None:
-    s = d.slide("06 · Architecture diagram", "A deterministic core, Gemini at the edges, built to scale on Google Cloud.")
+    s = d.slide("06 · Architecture diagram", "A deterministic core, Gemini 4 at the edges, deployed on Google Cloud.")
     cols = [
-        ("Sources", [("SEC EDGAR XBRL", False), ("Daily prices (Yahoo Finance)", False),
-                     ("Filing-extracted + curated graph edges", False), ("News and outage event stream", True)]),
-        ("Deterministic core · Cloud Run", [("FastAPI research API", False), ("XBRL accounting engine", False),
-                                            ("Calculation + regime engine", False), ("Multi-hop graph walk", False)]),
-        ("Google AI layer", [("Gemini 2.5 Flash · controlled generation", False), ("Gemini 2.5 Pro · 10-K edge extraction", True),
-                             ("Vertex AI context caching", True), ("Gemma · first-pass 8-K triage", True)]),
-        ("Audit gate → workspace", [("Citation + number audit", False), ("Thesis monitor", False),
-                                    ("Next.js 15 workspace (ayvid.ai)", False), ("Cloud SQL + BigQuery store", True)]),
+        ("Sources", ["SEC EDGAR filings (XBRL)", "Daily prices for 195 listings", "Filing-extracted supply-chain graph",
+                     "News and outage events"]),
+        ("Core · Cloud Run", ["FastAPI research API", "Accounting engine (SEC XBRL)", "Calculation + market-regime engine",
+                              "Multi-hop exposure graph walk"]),
+        ("Google AI · Gemini 4", ["Hydrogen · answer summaries", "Argon · multi-hop shock reasoning",
+                                  "Carbon · 10-K dependency extraction", "Fixed JSON output (responseSchema)"]),
+        ("Checks → workspace", ["Citation + number check", "Thesis monitor", "Next.js 15 workspace · ayvid.ai",
+                                "API at api.ayvid.ai (Cloud Run)"]),
     ]
     cg = 0.32
     cw4 = (W - 2 * M - 3 * cg) / 4
     for i, (title, items) in enumerate(cols):
         x = M + i * (cw4 + cg)
-        d.text(s, x, 2.3, cw4, 0.3, title.upper(), MONO, 9, GOLD, spacing=100)
-        for j, (label, nxt) in enumerate(items):
-            y = 2.7 + j * 0.84
-            d.card(s, x, y, cw4, 0.66, border=STONE if nxt else LINE, fill=None if nxt else CARD, dash=nxt)
-            d.text(s, x + 0.18, y, cw4 - 0.36, 0.66, label + ("  · next" if nxt else ""), SANS, 10.5,
-                   STONE if nxt else IVORY, anchor=MSO_ANCHOR.MIDDLE)
+        d.text(s, x, 2.3, cw4, 0.3, title.upper(), MONO, 9, GOLD)
+        for j, label in enumerate(items):
+            y = 2.7 + j * 0.8
+            d.card(s, x, y, cw4, 0.64, border=GOLD if i == 2 else LINE)
+            d.text(s, x + 0.18, y, cw4 - 0.36, 0.64, label, SANS, 10.5, IVORY, anchor=MSO_ANCHOR.MIDDLE)
         if i < 3:
-            d.arrow(s, x + cw4 + 0.05, 4.05, x + cw4 + cg - 0.05, 4.05)
-    d.rect(s, M, 6.2, 0.35, 0.18, CARD, LINE)
-    d.text(s, M + 0.45, 6.15, 2.0, 0.3, "Running today", SANS, 10, IVORY)
-    d.rect(s, M + 2.1, 6.2, 0.35, 0.18, None, STONE, dash=True)
-    d.text(s, M + 2.55, 6.15, 6, 0.3, "Next, on the Google Cloud roadmap", SANS, 10, STONE)
+            d.arrow(s, x + cw4 + 0.05, 4.0, x + cw4 + cg - 0.05, 4.0)
+    d.rect(s, M, 6.02, W - 2 * M, 0.012, LINE)
+    d.text(s, M, 6.15, W - 2 * M, 0.5, [[("Google Cloud: ", {"bold": True, "color": IVORY}),
+           ("Cloud Run (API + domain mapping) · Compute Engine (execution VM) · Artifact Registry · Secret Manager · "
+            "Workload Identity Federation for keyless GitHub deploys · Gemini API.", {})]], SANS, 10.5, STONE)
 
 
 def technologies(d: Deck) -> None:
     s = d.slide("07 · Technologies used", "Google AI where it adds judgement; deterministic code where it must be exact.")
     pillars = [
-        ("Gemini API", "2.5 Flash with controlled generation (JSON responseMimeType + responseSchema), built and "
-                       "unit-tested. Next: 2.5 Pro long-context 10-K extraction with context caching, Gemini Live "
-                       "thesis briefings, Gemma for 8-K triage."),
-        ("Google Cloud", "Containers deploy to Cloud Run through GitHub Actions with Workload Identity Federation and "
-                         "Artifact Registry. Next: Cloud SQL, a BigQuery point-in-time store, Cloud Scheduler."),
-        ("Deterministic core", "Python 3.12, FastAPI, Pydantic. SEC companyfacts XBRL parser, regime metrics "
-                               "(volatility, drawdown, Hurst), C++ watchdog, walk-forward backtester. ~77k lines, 537 tests."),
+        ("Gemini 4", "Three models, one job each. Hydrogen writes every answer's summary; Argon reasons through "
+                     "multi-hop shocks; Carbon reads long 10-K filings to extract supplier and customer links. All "
+                     "return a fixed JSON format, and a check rejects any number the code did not produce."),
+        ("Google Cloud", "API on Cloud Run with a custom domain, an execution VM on Compute Engine, images in "
+                         "Artifact Registry, keys in Secret Manager, and keyless deploys from GitHub Actions through "
+                         "Workload Identity Federation, all defined in Terraform."),
+        ("Deterministic core", "Python 3.12, FastAPI and Pydantic. An SEC filing parser, market-regime metrics "
+                               "(volatility, drawdown, Hurst), a C++ safety watchdog and a historical backtester. "
+                               "~77k lines of code, 538 automated tests."),
         ("Workspace", "Next.js 15, React 19, TypeScript and Tailwind. Keyboard-first (⌘K, /), light and dark themes, "
-                      "accessible three-region layout."),
+                      "and an accessible three-panel layout."),
     ]
     pw4 = (W - 2 * M - 0.75) / 4
     for i, (t, b) in enumerate(pillars):
@@ -354,12 +367,12 @@ def technologies(d: Deck) -> None:
 
 def economics(d: Deck) -> None:
     s = d.slide("08 · Economics & cloud scale · estimated implementation cost",
-                "Cheap to run: deterministic compute costs little, and the LLM only touches short verified text.")
+                "Cheap to run: the code does the heavy lifting, and the AI only words short, verified text.")
     lw = 6.0
-    d.text(s, M, 2.3, lw, 0.3, "PRICING · TO VALIDATE WITH FIRST USERS", MONO, 9, GOLD, spacing=120)
-    tiers = [("Free", "$0", "Monthly quota of cited queries, company tearsheets, one monitored thesis."),
+    d.text(s, M, 2.3, lw, 0.3, "PRICING", MONO, 9, GOLD)
+    tiers = [("Free", "$0", "A monthly quota of cited answers, company pages, one monitored thesis."),
              ("Pro Analyst", "$49 / mo", "Unlimited cited research, full exposure graph, screener, monitored theses."),
-             ("Institutional Desk", "$499 / seat / mo", "Shared workspaces, custom universes, Shock Lab, audit export, API.")]
+             ("Institutional Desk", "$499 / seat / mo", "Shared workspaces, custom coverage, Shock Lab, audit export, API.")]
     for i, (t, p, b) in enumerate(tiers):
         y = 2.7 + i * 1.08
         d.card(s, M, y, lw, 0.92)
@@ -368,32 +381,34 @@ def economics(d: Deck) -> None:
         d.text(s, M + 0.25, y + 0.52, lw - 0.5, 0.35, b, SANS, 10, STONE)
     rx = M + lw + 0.5
     rw = W - M - rx
-    d.text(s, rx, 2.3, rw, 0.3, "RUNNING COST · FIRST 6 MONTHS", MONO, 9, GOLD, spacing=120)
+    d.text(s, rx, 2.3, rw, 0.3, "RUNNING COST · FIRST 6 MONTHS", MONO, 9, GOLD)
     d.metric(s, rx, 2.62, rw, "~$900", "Total, about $150 a month")
-    costs = [("Google Cloud Run + storage", "~$40 / mo"), ("Gemini 2.5 Flash API", "~$60 / mo"),
+    costs = [("Google Cloud (Run, VM, storage)", "~$40 / mo"), ("Gemini 4 API", "~$60 / mo"),
              ("Domain, data, tooling", "~$50 / mo")]
     for i, (k, v) in enumerate(costs):
         y = 3.66 + i * 0.4
         d.text(s, rx, y, rw - 1.4, 0.3, k, SANS, 11, IVORY)
         d.text(s, W - M - 1.4, y, 1.4, 0.3, v, MONO, 11, STONE, align=PP_ALIGN.RIGHT)
         d.rect(s, rx, y + 0.33, rw, 0.01, LINE)
-    d.text(s, rx, 5.0, rw, 1.1, [[("≈ $0.002 per answer (est.). ", {"bold": True, "color": IVORY}),
-           ("About 1.5k input and up to 600 output tokens on Gemini 2.5 Flash, so a Pro user running 200 answers "
-            "a month costs about $0.40 in model spend.", {})]], SANS, 10.5, STONE, line=1.3)
+    d.text(s, rx, 5.0, rw, 1.1, [[("About $0.007 per answer (est.). ", {"bold": True, "color": IVORY}),
+           ("Roughly 1.5k tokens in and 600 out on Gemini 4 Hydrogen, so a Pro user asking 200 questions a month "
+            "costs about $1.40 in AI spend against $49 in revenue.", {})]], SANS, 10.5, STONE, line=1.3)
     d.text(s, M, 6.2, W - 2 * M, 0.5, "Market: India has 237.7M demat accounts (Aug 2026); in the US, every SEC filer "
-           "is covered by live XBRL today. Terminal-class research seats cost tens of thousands of dollars a year.",
+           "is covered by live filings today. Terminal-class research seats cost tens of thousands of dollars a year.",
            SANS, 10, STONE, line=1.25)
 
 
 def snapshots(d: Deck) -> None:
-    s = d.slide("09 · Prototype snapshots", "Live SEC XBRL tearsheets next to theses that re-check themselves.")
-    iw = (W - 2 * M - 0.3) / 2
-    shots = [("03_company_nvda_xbrl.png", "Company tearsheet · live price, regime metrics, 5-year SEC XBRL income statement"),
-             ("04_thesis_monitoring.png", "Monitored thesis · kill conditions re-checked against today's data")]
+    s = d.slide("09 · Prototype snapshots", "Live company pages from SEC filings, beside theses that re-check themselves.")
+    # Content crops (no nav rail) so the numbers stay legible at slide size.
+    iw, gap = 5.3, 0.3
+    x0 = M + (W - 2 * M - 2 * iw - gap) / 2
+    shots = [("10_company_crop.png", "NVIDIA · live price, market regime, 5-year SEC income statement"),
+             ("10_thesis_crop.png", "Monitored thesis · the conditions that would break it, re-checked today")]
     for i, (f, lab) in enumerate(shots):
-        x = M + i * (iw + 0.3)
-        d.text(s, x, 2.22, iw, 0.3, lab, SANS, 10.5, STONE)
-        d.picture(s, SHOTS / f, x, 2.6, w=iw)
+        x = x0 + i * (iw + gap)
+        d.text(s, x, 2.2, iw, 0.3, lab, SANS, 10.5, STONE)
+        d.picture(s, SHOTS / f, x, 2.55, w=iw, png=True)
 
 
 def benchmarks(d: Deck) -> None:
@@ -402,7 +417,7 @@ def benchmarks(d: Deck) -> None:
     mets = [("~3 s", "End-to-end answer", "Deterministic compute 50-80 ms; the rest is live SEC fetch and wording."),
             ("30 / 30", "Citations verified", "Microsoft-outage answer; 0 uncited claims removed."),
             ("194 / 195", "Prices match live quotes", "Within 0.5% of the live quote; the one miss is labelled stale."),
-            ("537", "Automated tests", "XBRL math, citation audit, safety refusals, research-only import guard.")]
+            ("538", "Automated tests", "XBRL math, citation audit, safety refusals, research-only import guard.")]
     mw = (W - 2 * M) / 4
     for i, (v, lab, n) in enumerate(mets):
         d.metric(s, M + i * mw, 2.2, mw - 0.3, v, lab, n, GREEN if i else GOLD)
@@ -459,23 +474,23 @@ def team(d: Deck) -> None:
     rx = M + 6.25
     rw = W - M - rx
     d.text(s, rx, 2.3, rw, 0.3, "12-MONTH ROADMAP", MONO, 9, GOLD, spacing=120)
-    road = [("Months 1-3", "First users", "20 semis / AI-infra analysts onboarded · Gemini live in production · backend on Cloud Run"),
-            ("Months 3-6", "Gemini extraction", "2.5 Pro extracts graph edges from 10-K risk factors · NSE/BSE filings · blind out-of-sample shock test"),
-            ("Months 6-12", "Paid desks", "Pro and Desk plans · Cloud SQL + BigQuery point-in-time store · Gemini Live thesis briefings")]
+    road = [("Months 1-3", "Design partners", "20 semis and AI-infrastructure analysts using AYVID weekly · first paid Pro seats"),
+            ("Months 3-6", "Wider coverage", "India NSE / BSE filings · Carbon-extracted links for the top 500 US filers · blind out-of-sample shock test"),
+            ("Months 6-12", "Institutional desks", "Desk plan with shared workspaces and audit export · API access to the exposure graph")]
     for i, (when, what, items) in enumerate(road):
         y = 2.72 + i * 1.18
         d.rect(s, rx, y + 0.07, 0.13, 0.13, GOLD if i == 0 else LINE, shape=MSO_SHAPE.OVAL)
         d.text(s, rx + 0.3, y, 1.6, 0.3, when, MONO, 10, GOLD)
         d.text(s, rx + 1.9, y - 0.04, rw - 1.9, 0.35, what, SERIF, 15, IVORY)
         d.text(s, rx + 0.3, y + 0.38, rw - 0.3, 0.75, items, SANS, 10.5, STONE, line=1.25)
-    d.text(s, M, 6.42, W - 2 * M, 0.3, "Hiring next: a quantitative / ML research co-founder to own validation and "
+    d.text(s, M, 6.42, W - 2 * M, 0.3, "Hiring: a quantitative / ML research co-founder to own validation and "
            "filing extraction.", SANS, 10.5, STONE)
 
 
 def links(d: Deck) -> None:
     s = d.slide("12 · Project links", "Inspect the product, the code and the validation lab.")
     items = [("Product", "ayvid.ai", "ayvid.ai/research  ·  ayvid.ai/companies/US:NASDAQ:NVDA"),
-             ("GitHub repository", "github.com/LEOATIS/AYVID", "~77k lines of Python, TypeScript and C++ · 537 automated tests in CI"),
+             ("GitHub repository", "github.com/LEOATIS/AYVID", "~77k lines of Python, TypeScript and C++ · 538 automated tests in CI"),
              ("Shock Lab", "ayvid.ai/console/live-shock?demo=1", "20 named historical shocks replayed through the graph, paper only")]
     for i, (t, url, sub) in enumerate(items):
         y = 2.35 + i * 1.25

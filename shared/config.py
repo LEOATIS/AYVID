@@ -39,8 +39,10 @@ class Settings(BaseSettings):
     # is accepted as a fallback name in ``_resolve_gemini_key``.
     GEMINI_API_KEY: str | None = None
     GOOGLE_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-2.5-flash"
-    GEMINI_PRO_MODEL: str = "gemini-2.5-pro"
+    # Gemini 4 tiers: Hydrogen = fast default, Argon = efficient reasoning, Carbon = strongest.
+    GEMINI_MODEL: str = "gemini-4-hydrogen"
+    GEMINI_REASONING_MODEL: str = "gemini-4-argon"
+    GEMINI_DEEP_MODEL: str = "gemini-4-carbon"
     GEMINI_EMBEDDING_MODEL: str = "text-embedding-004"
     # "gemini" | "anthropic" | "openai". If the selected provider has no key,
     # ``shared.llm_client.active_provider`` falls back to whichever key exists,
